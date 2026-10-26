@@ -299,13 +299,13 @@ extension AppModel {
             || (channelID == selectedChannelID && hasMoreLaterMessages)
     }
 
-    /// Drops any debounced or queued acknowledgement for the channel. Read
-    /// state already shows them and does not change.
+    /// Drops any debounced or queued read for the channel. Read state already
+    /// shows it and does not change. A queued Mark Unread is kept, as
+    /// Discord sends it at once.
     func discardPendingAcknowledgement(for channelID: ChannelID) {
         acknowledgementTasks[channelID]?.cancel()
         acknowledgementTasks[channelID] = nil
-        queuedAcknowledgements[channelID] = nil
-        acknowledgementQueueOrder.removeAll { $0 == channelID }
+        queuedAcknowledgements.removeAll { $0.channelID == channelID && !$0.mutation.manual }
     }
 
     func scheduleAcknowledgement(channelID: ChannelID, messageID: MessageID) {
@@ -349,9 +349,14 @@ extension AppModel {
             if let scope = ProcessInfo.processInfo.environment["SAKURACORD_INBOX_VERIFICATION_GUILD_ID"],
                readState[channelID]?.guildID?.description != scope { return }
         #endif
-        // The most recent action replaces an unsent one.
-        if queuedAcknowledgements.updateValue(mutation, forKey: channelID) == nil {
-            acknowledgementQueueOrder.append(channelID)
+        // The most recent read replaces an unsent one. Mark Unread replaces
+        // nothing; its Gateway event cancels unsent reads.
+        if !mutation.manual,
+           let index = queuedAcknowledgements.firstIndex(where: { $0.channelID == channelID && !$0.mutation.manual })
+        {
+            queuedAcknowledgements[index].mutation = mutation
+        } else {
+            queuedAcknowledgements.append((channelID, mutation))
         }
         guard acknowledgementProcessorTask == nil else { return }
         let generation = acknowledgementGeneration
@@ -365,12 +370,9 @@ extension AppModel {
         while !Task.isCancelled,
               generation == acknowledgementGeneration,
               isCurrentAccountSession(session),
-              let channelID = acknowledgementQueueOrder.first
+              !queuedAcknowledgements.isEmpty
         {
-            acknowledgementQueueOrder.removeFirst()
-            guard let mutation = queuedAcknowledgements.removeValue(forKey: channelID) else {
-                continue
-            }
+            let (channelID, mutation) = queuedAcknowledgements.removeFirst()
             let token = readState.acknowledgementToken
             do {
                 logReadAcknowledgementSending(channelID: channelID, mutation: mutation)

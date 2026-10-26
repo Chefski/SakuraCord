@@ -43,8 +43,11 @@ conversation has one current boundary. A read sets it and clears the counts
 immediately, and nothing rolls back if Discord rejects the request; there is no
 automatic replay. A completed request only chains its response token, unless a
 newer token or READY replaced the one it was sent with. Account requests are
-serialized and coalesced per channel, where the most recent action replaces an
-unsent one; this transport never changes the displayed read state. Gateway
+serialized and coalesced per channel, where the most recent read replaces an
+unsent one; Mark Unread replaces nothing. This transport never changes the
+displayed read state. The account's own message, except a poll result,
+acknowledges its conversation locally without a request and replaces an
+unsent read, as Discord's `MESSAGE_CREATE` does. Gateway
 acknowledgements apply in received order, with no version or boundary
 comparison: an ordinary one at the current boundary is ignored, any other
 acknowledges there and clears mentions, and a manual one always rebuilds at its
@@ -59,11 +62,11 @@ and recomputed mention count (module 439147, build 649389). Discord compares
 read boundaries by timestamp, so a boundary inside the selected message's own
 millisecond, such as its ID less one, leaves it read in the official client.
 Read state changes only when the manual Gateway event arrives, and a failed
-request changes nothing. That event cancels the conversation's unsent reads and,
-while it is selected or open as a thread, holds automatic acknowledgement until
-the selection changes. Unlike a held backlog, scrolling does not release it;
-reading the conversation or sending to it does, as Discord's own-message
-acknowledgement does (build 649389). **Inbox Undo is different:** it
+request changes nothing. That event, not the click, cancels the conversation's
+unsent reads and, while it is selected or open as a thread, holds automatic
+acknowledgement until the selection changes. Unlike a held backlog, scrolling
+does not release it; reading the conversation or sending to it does.
+**Inbox Undo is different:** it
 sends an ordinary ACK to the captured old boundary, preserving `last_viewed`
 and omitting `manual` and `mention_count`, and applies it locally like any
 read, moving the boundary backwards.

@@ -955,18 +955,17 @@ extension AccountReadStateModel {
         }
         entry.latestKnownMessageID = message.id
 
-        if message.author.id == currentUserID {
-            if !entry.isUnread {
-                entry.lastAcknowledgedMessageID = maximum(
-                    entry.lastAcknowledgedMessageID, message.id
-                )
-            }
+        // Discord acknowledges the account's own message locally, except a
+        // poll result, which can mention it (build 649389).
+        if message.author.id == currentUserID, message.type != .pollResult {
             self[message.channelID] = entry
+            acknowledge(channelID: message.channelID, messageID: message.id)
             return MessageDisposition(
                 accepted: true, mentionKind: .none, shouldNotify: false,
                 requiresUnreadPresentationRefresh: requiresUnreadPresentationRefresh(
-                    previous: previous, current: entry, now: now
-                )
+                    previous: previous, current: self[message.channelID] ?? entry, now: now
+                ),
+                acknowledgesOwnMessage: true
             )
         }
 

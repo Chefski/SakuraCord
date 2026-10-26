@@ -74,7 +74,6 @@ extension AppModel {
         guildAcknowledgementTasks.values.forEach { $0.cancel() }
         guildAcknowledgementTasks.removeAll()
         queuedAcknowledgements.removeAll()
-        acknowledgementQueueOrder.removeAll()
     }
 
     func resetChannelNotificationMutations() {
@@ -569,6 +568,8 @@ extension AppModel {
         guard let currentUserID = snapshot?.currentUser.id else { return }
         let disposition = readState.receive(message, currentUserID: currentUserID)
         guard disposition.accepted else { return }
+        // Discord's own-message acknowledgement replaces an unsent read.
+        if disposition.acknowledgesOwnMessage { discardPendingAcknowledgement(for: message.channelID) }
         if message.author.id != currentUserID, !isMessageSuppressed(message),
            accessibilitySettings.announcesNewMessages
         {

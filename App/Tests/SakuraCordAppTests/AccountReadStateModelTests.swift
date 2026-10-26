@@ -276,13 +276,16 @@ struct AccountReadStateModelTests {
         #expect(!model.guildUnread(guildID))
     }
 
-    @Test func `own messages do not clear earlier unseen messages`() {
+    /// Discord's MESSAGE_CREATE acknowledges the account's own message
+    /// locally, clearing earlier unseen messages (build 649389).
+    @Test func `own messages acknowledge the conversation`() {
         let unreadModel = makeModel(latest: 12, acknowledged: 10, mentions: 1)
-        _ = unreadModel.receive(
+        #expect(unreadModel.receive(
             message(id: 13, author: currentUser), currentUserID: currentUser.id
-        )
-        #expect(unreadModel.unread(channelID: channelID))
-        #expect(unreadModel.mentions(channelID: channelID) == 1)
+        ).acknowledgesOwnMessage)
+        #expect(unreadModel.entries[channelID]?.lastAcknowledgedMessageID == MessageID(rawValue: 13))
+        #expect(!unreadModel.unread(channelID: channelID))
+        #expect(unreadModel.mentions(channelID: channelID) == 0)
     }
 
     @Test func `selection alone never acknowledges and view gate requires every condition`() {
@@ -1188,7 +1191,6 @@ func `guild pages do not acknowledge the hidden selected conversation`(page: Gui
 
     #expect(await provider.acknowledgementRequests.isEmpty)
     #expect(model.queuedAcknowledgements.isEmpty)
-    #expect(model.acknowledgementQueueOrder.isEmpty)
 }
 
 @MainActor

@@ -590,6 +590,7 @@ extension AccountReadStateModel {
         var mentionKind: MentionKind
         var shouldNotify: Bool
         var requiresUnreadPresentationRefresh = false
+        var acknowledgesOwnMessage = false
     }
 
     struct AcknowledgementMetadata: Equatable, Sendable {
