@@ -38,6 +38,17 @@ struct InboxTests {
         #expect(model.inbox.visibleMentions.map(\.id) == originalIDs)
     }
 
+    @Test func `Inbox acknowledges a forum up to now so posts after its captured boundary stay read`() {
+        let captured = MessageID(rawValue: 300)
+        let group = InboxUnreadGroup(
+            channelID: ChannelID(rawValue: 400), guildID: GuildID(rawValue: 401),
+            title: "forum", subtitle: nil, oldestReadMessageID: nil,
+            newestUnreadMessageID: captured, mentionCount: 0, isForum: true
+        )
+        let postedAfterCapture = MessageID(timestamp: .now)
+        #expect(AppModel.inboxAcknowledgementTarget(for: group, now: .now) >= postedAfterCapture)
+    }
+
     @Test func `opening paging and dismissing mentions never acknowledge a conversation`() async throws {
         let (model, provider) = await fixture()
         model.inbox.tab = .mentions

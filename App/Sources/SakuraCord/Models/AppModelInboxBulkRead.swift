@@ -82,9 +82,18 @@ extension AppModel {
 }
 
 extension AppModel {
+    /// A forum group acknowledges up to now, like every forum acknowledgement;
+    /// any other group acknowledges its captured newest message.
+    nonisolated static func inboxAcknowledgementTarget(for group: InboxUnreadGroup, now: Date) -> MessageID {
+        group.isForum ? MessageID(timestamp: now) : group.newestUnreadMessageID
+    }
+
     private func inboxBulkTargets(_ groups: [InboxUnreadGroup], additionalTargets: [BulkReadStateAcknowledgement]) -> [BulkReadStateAcknowledgement] {
+        let now = Date.now
         var targets = groups.map {
-            BulkReadStateAcknowledgement(channelID: $0.id, messageID: $0.newestUnreadMessageID, readStateType: $0.isEvents ? 1 : 0)
+            BulkReadStateAcknowledgement(
+                channelID: $0.id, messageID: Self.inboxAcknowledgementTarget(for: $0, now: now), readStateType: $0.isEvents ? 1 : 0
+            )
         }
         for target in additionalTargets {
             if let index = targets.firstIndex(where: { $0.channelID == target.channelID && $0.readStateType == target.readStateType }) {

@@ -62,7 +62,8 @@ Opening/refreshing Unread freezes group order and message boundaries. New messag
 do not append to that frozen range; edits/deletions reconcile existing entries.
 Groups page history forward from the captured old boundary. Forum groups use post
 IDs and the live thread catalogue. A normal Mark Read targets the captured newest
-boundary; bulk operations capture targets before batching `/read-states/ack-bulk`.
+boundary, except that a forum group, like every forum acknowledgement, targets the
+current time; bulk operations capture targets before batching `/read-states/ack-bulk`.
 Do not recompute targets from a later rerender or restore obsolete mention counts
 on Undo. Fully loaded expanded empty groups may acknowledge and disappear without
 Undo; incomplete loads do not establish emptiness.

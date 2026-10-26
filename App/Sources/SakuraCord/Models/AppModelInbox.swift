@@ -407,7 +407,7 @@ extension AppModel {
             markInboxEventGroupRead(group)
             return
         }
-        let boundary = group.newestUnreadMessageID
+        let boundary = Self.inboxAcknowledgementTarget(for: group, now: .now)
         inbox.pendingReadGroups[channelID] = group
         let metadata = readState.acknowledgementMetadata(channelID: channelID)
         let lastViewed = readState[channelID]?.lastViewed
