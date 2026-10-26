@@ -360,6 +360,10 @@ func `Desktop and sound delivery are independent and share message filters`(appI
 
         model.applyCurrentStatus(.online)
         let deliversDesktop = desktop && !appIsActive
+        // A call's own message stays quiet; the call rings instead.
+        var callMessage = message
+        callMessage.type = .call
+        model.deliverNativeNotification(for: callMessage)
         model.deliverNativeNotification(for: message)
         if deliversDesktop {
             #expect(await until { service.messageSounds == [sound] })
