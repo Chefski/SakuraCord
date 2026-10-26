@@ -126,7 +126,10 @@ and a never-opened forum post's starter is unread. The boundary is computed
 once, when the thread is first known, and is not a tracked acknowledgement.
 
 Server unread indicators and the Dock's unread-conversation count use current
-channels and active joined threads with accessible current parents. Retained
+channels and active joined threads with accessible current parents. As in
+Discord's thread row and `GuildReadStateStore`, a joined thread's unread row
+ignores its parent's mute and unread setting, and it lights the server unless
+the thread or the server is muted. Retained
 thread read state is not evidence of membership: archived, left or orphaned
 threads keep their read history without contributing to those aggregates.
 Thread membership changes refresh both indicators. A forum contributes unseen
@@ -155,9 +158,11 @@ post since joining. An unknown `joined_at` counts as now. The count stays on
 the selected row during a visit and is hidden behind a mention badge, on a
 muted forum, and unless the forum's unread setting resolves to All Messages. A
 recently created, never-acknowledged channel shows Discord's separate "NEW" channel pill instead,
-which SakuraCord does not implement. Server, category and Read All
-acknowledgements include a forum with counted posts even when its own boundary
-is seeded, so they clear a never-read forum's count, and a completed local
+which SakuraCord does not implement. Server and Read All acknowledgements
+include every forum, read or not, as Discord's bulk acknowledgement does
+(observed 26 October 2026); a category acknowledgement includes a forum with
+counted posts even when its own boundary is seeded. Both clear a never-read
+forum's count, and a completed local
 acknowledgement is tracked before its Gateway echo; a still-pending earlier
 intent that later fails cannot roll back behind it. A forum's own Mark as Read
 is enabled only by Discord's forum unread count: active posts newer than the

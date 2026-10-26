@@ -90,11 +90,15 @@ extension ForumBoardView {
     private func needsExcerptRenderer(_ postID: ChannelID) -> Bool {
         guard let presentation = presentations[postID] else { return false }
         if isGallery {
-            if case .text = presentation.hero { return true }
-            return false
+            switch presentation.hero {
+            case .text, .deleted: return true
+            default: return false
+            }
         }
-        if case .message = presentation.excerpt { return true }
-        return false
+        switch presentation.excerpt {
+        case .message, .deleted: return true
+        default: return false
+        }
     }
 
     /// Excerpt fonts, emoji sizes and the list/gallery source all feed the
@@ -108,25 +112,31 @@ extension ForumBoardView {
     @discardableResult
     private func configureExcerpt(for postID: ChannelID) -> Bool {
         guard let model, let presentation = presentations[postID] else { return false }
+        // `nil` is a deleted starter, which shows Discord's placeholder.
         let message: Message?
         let lines: Int
         var prefix: ForumPostPreviewTextView.Prefix?
         if isGallery {
-            guard case let .text(value) = presentation.hero else {
-                return excerptRenderers.removeValue(forKey: postID) != nil
+            switch presentation.hero {
+            case let .text(value): message = value
+            case .deleted: message = nil
+            default: return excerptRenderers.removeValue(forKey: postID) != nil
             }
-            message = value
             let tagReserve = presentation.tags.isEmpty ? 0 : InterfaceScale.metric(34)
             lines = max(1, Int((metrics.galleryHeroHeight - InterfaceScale.metric(28) - tagReserve) / metrics.excerptLineHeight))
         } else {
-            guard case let .message(value, author) = presentation.excerpt else {
-                return excerptRenderers.removeValue(forKey: postID) != nil
+            switch presentation.excerpt {
+            case let .message(value, author):
+                message = value
+                prefix = authorPrefix(author)
+            case let .deleted(author):
+                message = nil
+                prefix = author.map(authorPrefix)
+            default: return excerptRenderers.removeValue(forKey: postID) != nil
             }
-            message = value
             lines = metrics.excerptLines
-            prefix = authorPrefix(author)
         }
-        guard let message else { return false }
+        let fontSize = metrics.excerptFont.pointSize
         let renderer = excerptRenderers[postID] ?? {
             let renderer = ForumPostPreviewTextRenderer()
             renderer.onDisplayChange = { [weak self] in
@@ -139,10 +149,22 @@ extension ForumBoardView {
         }()
         let previous = renderer.configuration
         renderer.configure(
-            ForumPostPreviewTextView.Configuration(
-                resolving: message,
-                model: model,
-                fontSize: metrics.excerptFont.pointSize,
+            message.map {
+                ForumPostPreviewTextView.Configuration(
+                    resolving: $0,
+                    model: model,
+                    fontSize: fontSize,
+                    maximumNumberOfLines: lines,
+                    isEmphasized: presentation.isEmphasized,
+                    underlinesLinks: presentation.underlinesLinks,
+                    prefix: prefix
+                )
+            } ?? ForumPostPreviewTextView.Configuration(
+                messageID: MessageID(rawValue: postID.rawValue),
+                source: "Original message was deleted",
+                mentionPresentations: [:],
+                fontSize: fontSize,
+                emojiSize: (fontSize * 1.375).rounded(),
                 maximumNumberOfLines: lines,
                 isEmphasized: presentation.isEmphasized,
                 underlinesLinks: presentation.underlinesLinks,

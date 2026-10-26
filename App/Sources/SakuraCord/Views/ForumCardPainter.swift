@@ -303,7 +303,7 @@ enum ForumCardPainter {
             drawGalleryHeader(presentation, in: regions.statusRowFrame ?? .zero, on: canvas)
             drawTitle(presentation, in: regions.titleFrame, maximumLines: metrics.maximumTitleLines, metrics: metrics, on: canvas)
             if let hero = regions.heroFrame {
-                drawHero(presentation, in: hero, excerpt: input.excerpt, failedMedia: input.failedMedia, metrics: metrics, on: canvas)
+                drawHero(presentation, in: hero, excerpt: input.excerpt, failedMedia: input.failedMedia, on: canvas)
             }
         } else {
             if let status = regions.statusRowFrame {
@@ -539,28 +539,10 @@ enum ForumCardPainter {
                 font: metrics.excerptFont,
                 color: .tertiaryLabelColor
             )
-        case .deleted:
-            drawDeletedStarter(presentation, at: frame.origin, width: frame.width, metrics: metrics, on: canvas)
-        case .message:
+        case .deleted, .message:
             // Markdown lines can be taller than body text; the slot clips.
             drawExcerptText(renderer, at: frame.origin, clip: frame, on: canvas)
         }
-    }
-
-    /// Discord's placeholder for a deleted starter, dimmed with a read post.
-    private static func drawDeletedStarter(
-        _ presentation: ForumCardPresentation,
-        at origin: CGPoint,
-        width: CGFloat,
-        metrics: ForumBoardMetrics,
-        on canvas: ForumCardCanvas
-    ) {
-        canvas.text(
-            "Original message was deleted",
-            in: CGRect(x: origin.x, y: origin.y, width: width, height: metrics.excerptLineHeight),
-            font: metrics.excerptFont,
-            color: presentation.isEmphasized ? .labelColor : .secondaryLabelColor
-        )
     }
 
     private static func drawHero(
@@ -568,7 +550,6 @@ enum ForumCardPainter {
         in frame: CGRect,
         excerpt: ForumPostPreviewTextRenderer?,
         failedMedia: Set<NativeTimelineMediaKey>,
-        metrics: ForumBoardMetrics,
         on canvas: ForumCardCanvas
     ) {
         let radius = InterfaceScale.metric(12)
@@ -578,22 +559,13 @@ enum ForumCardPainter {
             break
         case let .media(media):
             drawMedia(media, in: frame, style: MediaStyle(cornerRadius: radius, isCompact: false), failedMedia: failedMedia, on: canvas)
-        case .text:
+        case .text, .deleted:
             // The preview stays inside the hero, above its tag row.
             let tagReserve = presentation.tags.isEmpty ? 0 : InterfaceScale.metric(34)
             drawExcerptText(
                 excerpt,
                 at: CGPoint(x: frame.minX + InterfaceScale.metric(16), y: frame.minY + InterfaceScale.metric(14)),
                 clip: CGRect(x: frame.minX, y: frame.minY, width: frame.width, height: frame.height - InterfaceScale.metric(14) - tagReserve),
-                on: canvas
-            )
-        case .deleted:
-            let inset = InterfaceScale.metric(16)
-            drawDeletedStarter(
-                presentation,
-                at: CGPoint(x: frame.minX + inset, y: frame.minY + InterfaceScale.metric(14)),
-                width: frame.width - inset * 2,
-                metrics: metrics,
                 on: canvas
             )
         case .empty:

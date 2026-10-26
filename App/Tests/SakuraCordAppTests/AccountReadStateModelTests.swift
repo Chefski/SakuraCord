@@ -806,6 +806,14 @@ struct AccountReadStateModelTests {
         #expect(!model.unread(channelID: reopened.id))
         #expect(model.guildUnread(guildID))
         #expect(model.allServerAcknowledgements(in: [guildID]).map(\.channelID) == [unread.id])
+        // Discord keeps a joined thread unread, and its server lit, under a muted parent.
+        model.apply(GuildNotificationSettings(
+            guildID: guildID,
+            messageNotifications: .allMessages,
+            channelOverrides: [ChannelNotificationOverride(channelID: channelID, isMuted: true)]
+        ))
+        #expect(model.unread(channelID: unread.id))
+        #expect(model.guildUnread(guildID))
     }
 
     /// Discord's server Mark as Read acknowledges muted channels too.

@@ -89,26 +89,23 @@ extension AccountReadStateModel {
 
     /// Discord's server Mark as Read and the server-list Read All scope:
     /// current server channels and active joined threads, including muted
-    /// conversations, without DMs.
+    /// conversations, without DMs. Discord's bulk acknowledgement keeps every
+    /// forum, read or not, and moves it to the current time.
     func allServerAcknowledgements(in guildIDs: Set<GuildID>) -> [BulkReadStateAcknowledgement] {
         let source = unreadPresentationSource()
-        let forumsWithNewPosts = source.forumsWithNewPosts()
         return entries.values.compactMap {
-            serverAcknowledgement(
-                for: $0, guildIDs: guildIDs, source: source, forumsWithNewPosts: forumsWithNewPosts
-            )
+            serverAcknowledgement(for: $0, guildIDs: guildIDs, source: source)
         }.sorted { $0.channelID < $1.channelID }
     }
 
     func serverAcknowledgement(
         for entry: Entry,
         guildIDs: Set<GuildID>,
-        source: UnreadPresentationSource,
-        forumsWithNewPosts: Set<ChannelID>
+        source: UnreadPresentationSource
     ) -> BulkReadStateAcknowledgement? {
         guard let guildID = entry.guildID, guildIDs.contains(guildID),
               entry.isAccessible,
-              entry.isUnread || forumsWithNewPosts.contains(entry.channelID),
+              entry.isUnread || entry.kind == .forum,
               source.isAggregateConversation(entry),
               !isGuildResourceChannel(entry),
               [.text, .announcement, .forum, .voice].contains(entry.kind),

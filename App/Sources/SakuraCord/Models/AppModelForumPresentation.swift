@@ -17,11 +17,24 @@ extension AppModel {
             )
         }
         let starter = post.firstMessage
+        let galleryAuthor: ForumCardPresentation.Author? =
+            if let starter {
+                forumCardAuthor(for: starter)
+            } else if let owner = post.owner {
+                ForumCardPresentation.Author(
+                    name: owner.displayName,
+                    fontID: owner.displayNameStyle?.fontID,
+                    color: owner.isBot ? .sakuraCordAccentColor : nil,
+                    roleDotColor: nil
+                )
+            } else {
+                nil
+            }
         let excerpt: ForumCardPresentation.Excerpt
         if let starter {
             excerpt = starter.content.isEmpty ? .empty : .message(starter, author: forumCardAuthor(for: starter))
         } else {
-            excerpt = post.isFirstMessageLoaded ? .deleted : .pending
+            excerpt = post.isFirstMessageLoaded ? .deleted(author: galleryAuthor) : .pending
         }
         let thumbnail = starter?.attachments.first.map(ForumCardPresentation.Media.init(attachment:))
         let hero: ForumCardPresentation.Hero =
@@ -35,19 +48,6 @@ extension AppModel {
                 .pending
             } else {
                 .empty
-            }
-        let galleryAuthor: ForumCardPresentation.Author? =
-            if let starter {
-                forumCardAuthor(for: starter)
-            } else if let owner = post.owner {
-                ForumCardPresentation.Author(
-                    name: owner.displayName,
-                    fontID: owner.displayNameStyle?.fontID,
-                    color: owner.isBot ? .sakuraCordAccentColor : nil,
-                    roleDotColor: nil
-                )
-            } else {
-                nil
             }
         let reaction = ForumPostReactionPresentation.displayedReaction(
             reactions: starter?.reactions ?? [],

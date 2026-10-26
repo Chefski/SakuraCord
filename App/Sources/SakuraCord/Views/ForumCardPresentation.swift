@@ -23,8 +23,9 @@ struct ForumCardPresentation: Equatable {
         case pending
         /// The post has no displayable starter text.
         case empty
-        /// Discord answered without the starter: it was deleted.
-        case deleted
+        /// Discord answered without the starter: it was deleted. Discord
+        /// still names the post's author before its placeholder.
+        case deleted(author: Author?)
         case message(Message, author: Author)
     }
 

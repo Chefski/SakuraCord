@@ -1623,7 +1623,7 @@ extension AccountReadStateModel {
                 _ = self[unread: parentID]
             }
             return serverAcknowledgement(
-                for: entry, guildIDs: guildIDs, source: source, forumsWithNewPosts: forumsWithNewPosts
+                for: entry, guildIDs: guildIDs, source: source
             ) != nil
         }
     }

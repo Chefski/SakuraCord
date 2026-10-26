@@ -293,8 +293,6 @@ extension AccountReadStateModel {
             let inheritedChannelMuted = directMuted
                 || parentMuted
                 || activeMute(ancestorOverride, now: now)
-            let presentationOverrideMuted = directMuted
-                || (parentIsConversation && parentMuted)
             let categoryMuted = activeMute(categoryOverride, now: now)
             let guildDefault = isDirectMessage
                 ? .allMessages
@@ -330,7 +328,9 @@ extension AccountReadStateModel {
             let channelMuted = inheritedChannelMuted
                 || threadMuted
                 || threadLevel == .nothing
-            let presentationChannelMuted = presentationOverrideMuted
+            // A joined thread's unread ignores its parent's mute, as in
+            // Discord's thread row and GuildReadStateStore.
+            let presentationChannelMuted = directMuted
                 || threadMuted
                 || threadLevel == .nothing
             let showsUnread = showsUnread(
@@ -397,7 +397,13 @@ extension AccountReadStateModel {
             _ entry: Entry,
             effectivePolicy: EffectivePolicy
         ) -> Bool {
-            !effectivePolicy.categoryMuted
+            // Discord lights the server for an unread joined thread unless the
+            // thread or server is muted; channel settings do not apply.
+            if channelByID[entry.channelID] == nil, entry.parentID != nil {
+                return entry.mentionCount > 0
+                    || (!effectivePolicy.guildMuted && !effectivePolicy.presentationChannelMuted)
+            }
+            return !effectivePolicy.categoryMuted
                 && (entry.mentionCount > 0
                     || (entry.kind != .forum
                         && !effectivePolicy.guildMuted
