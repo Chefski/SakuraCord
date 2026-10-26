@@ -208,8 +208,9 @@ extension DiscordRESTProvider {
     /// accept turns into a prompt and send leaves to its caller. Sending
     /// explains every failed status; other routes only explain 400, 403 and 429.
     /// - Parameter quietWhenChallengeClosed: A friend request whose security
-    ///   check went unanswered fails silently. Its failure copy blamed the
-    ///   username. A solution Discord rejects still reports the failure.
+    ///   check the person closed fails silently. Its failure copy blamed the
+    ///   username. A check that failed, or a solution Discord rejects, still
+    ///   reports the failure.
     private func relationshipMutation(
         _ path: String, method: String, body: [String: JSONValue]?, location: String?,
         explainsEveryFailure: Bool = false, quietWhenChallengeClosed: Bool = false,
@@ -221,7 +222,7 @@ extension DiscordRESTProvider {
             let context = try JSONSerialization.data(withJSONObject: ["location": location], options: [.sortedKeys])
             headers["X-Context-Properties"] = context.base64EncodedString()
         }
-        let ((data, response), challengeUnanswered) = try await performAnsweringChallenge(
+        let ((data, response), challengeDismissed) = try await performAnsweringChallenge(
             path, method: method, query: [], body: body, headers: headers, maximumAttempts: 1
         )
         guard !(200 ..< 300).contains(response.statusCode) else { return }
@@ -235,7 +236,7 @@ extension DiscordRESTProvider {
            let fields = try? JSONDecoder().decode([String: JSONValue].self, from: data), fields["note"] != nil {
             throw RelationshipActionError.failed(FriendRequestNote.validationMessage)
         }
-        if quietWhenChallengeClosed, challengeUnanswered { throw CancellationError() }
+        if quietWhenChallengeClosed, challengeDismissed { throw CancellationError() }
         let code = Self.discordErrorCode(from: data)
         if explainsEveryFailure || [400, 403, 429].contains(response.statusCode) {
             guard let message = failure(code, response.statusCode) else {

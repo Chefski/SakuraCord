@@ -711,8 +711,8 @@ extension DiscordRESTProvider {
         ).response
     }
 
-    /// `perform`, also telling whether a challenge went unanswered: the
-    /// person closed it, or it could not be shown, so nothing was replayed.
+    /// `perform`, also telling whether the person closed a challenge, so
+    /// nothing was replayed.
     func performAnsweringChallenge(
         _ path: String,
         method: String,
@@ -721,7 +721,7 @@ extension DiscordRESTProvider {
         headers: [String: String] = [:],
         maximumAttempts requestedMaximumAttempts: Int? = nil,
         statusSave: StatusSettingsSaveContext? = nil
-    ) async throws -> (response: (Data, HTTPURLResponse), challengeUnanswered: Bool) {
+    ) async throws -> (response: (Data, HTTPURLResponse), challengeDismissed: Bool) {
         let account = currentUser?.id
         let response = try await requestPerformance(
             path, method, query, body, headers, requestedMaximumAttempts, statusSave: statusSave
@@ -732,7 +732,12 @@ extension DiscordRESTProvider {
         guard let challenge = DiscordCaptchaChallenge(data: response.0, status: response.1.statusCode) else {
             return (response, false)
         }
-        guard let solution = try await humanSolution(for: challenge, account: account) else { return (response, true) }
+        let solution: String
+        switch try await humanSolution(for: challenge, account: account) {
+        case let .solved(value): solution = value
+        case .dismissed: return (response, true)
+        case .unavailable: return (response, false)
+        }
         let replay = try await requestPerformance(
             path, method, query, body, headers.merging(challenge.replayHeaders(solution: solution)) { $1 }, 1,
             statusSave: statusSave

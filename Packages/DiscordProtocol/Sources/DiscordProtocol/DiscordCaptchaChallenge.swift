@@ -79,17 +79,26 @@ public struct DiscordCaptchaChallenge: Equatable, Identifiable, Sendable {
     }
 }
 
-/// Presents a challenge to a human and returns the solution, or nil when it
-/// was dismissed or failed.
+/// Presents a challenge to a human and returns the solution: nil when the
+/// person closed it, or an empty string when it could not be completed.
 public typealias DiscordCaptchaHandler = @Sendable (DiscordCaptchaChallenge) async -> String?
 
+/// What became of a challenge put to a person.
+enum HumanCaptchaResult: Equatable {
+    case solved(String)
+    /// The person closed it.
+    case dismissed
+    /// It could not be shown or completed.
+    case unavailable
+}
+
 extension DiscordRESTProvider {
-    /// A human's solution, or nil when the challenge was dismissed or failed.
-    /// Throws instead when the request's account changed: a solution is never
-    /// replayed against another one. The transport checks a body's Gateway
-    /// session just before sending the replay.
-    func humanSolution(for challenge: DiscordCaptchaChallenge, account: UserID?) async throws -> String? {
-        guard let captchaHandler, !requestSafetyCircuitIsOpen else { return nil }
+    /// What a human made of the challenge. Throws instead when the request's
+    /// account changed: a solution is never replayed against another one.
+    /// The transport checks a body's Gateway session just before sending the
+    /// replay.
+    func humanSolution(for challenge: DiscordCaptchaChallenge, account: UserID?) async throws -> HumanCaptchaResult {
+        guard let captchaHandler, !requestSafetyCircuitIsOpen else { return .unavailable }
         // Unstructured so teardown can withdraw the sheet; the request's own
         // cancellation is forwarded to it.
         let presentation = Task { await captchaHandler(challenge) }
@@ -97,8 +106,9 @@ extension DiscordRESTProvider {
         let solution = await withTaskCancellationHandler { await presentation.value } onCancel: { presentation.cancel() }
         captchaPresentations[challenge.id] = nil
         try Task.checkCancellation()
-        guard let solution, !solution.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        guard let solution else { return .dismissed }
+        guard !solution.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return .unavailable }
         guard !requestSafetyCircuitIsOpen, currentUser?.id == account else { throw CancellationError() }
-        return solution
+        return .solved(solution)
     }
 }

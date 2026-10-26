@@ -399,9 +399,9 @@ struct RelationshipContractTests {
         let error = await #expect(throws: (any Error).self) {
             try await provider.sendFriendRequest(username: username, discriminator: nil)
         }
-        // Only a challenge left unanswered ends quietly; a rejected solution
-        // still reports the failure.
-        #expect((error is CancellationError) == (outcome != "repeated"))
+        // Only a challenge the person closed ends quietly (and an account
+        // change cancels); one that failed, or a rejected solution, reports.
+        #expect((error is CancellationError) == ["cancel", "accountChanged"].contains(outcome))
         #expect(fixture.requests.withLock { $0.count } == (outcome == "repeated" ? 2 : 1))
         #expect(await !provider.requestSafetyCircuitIsOpen)
         await provider.disconnect()

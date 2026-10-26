@@ -14,7 +14,8 @@ final class HumanCaptchaStore {
     @ObservationIgnored private var waiting: [(challenge: DiscordCaptchaChallenge, continuation: CheckedContinuation<String?, Never>)] = []
 
     func solution(for challenge: DiscordCaptchaChallenge) async -> String? {
-        guard isPresentable else { return nil }
+        // Empty: it could not be shown, as opposed to closed (nil).
+        guard isPresentable else { return "" }
         return await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
                 guard !Task.isCancelled else {

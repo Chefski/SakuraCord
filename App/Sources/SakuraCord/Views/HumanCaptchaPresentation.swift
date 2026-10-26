@@ -8,7 +8,9 @@ struct HumanCaptchaPresentation: ViewModifier {
         content.background {
             WindowModalOverlay(presentation: store.challenge, dismiss: { store.cancel() }, content: { challenge, context in
                 HumanCaptchaContent(challenge: challenge, context: context, cancel: { store.cancel(id: challenge.id) }, onToken: { token in
-                    store.complete(id: challenge.id, token: token)
+                    // A widget that ends without a token failed; only Cancel
+                    // and Escape mean the person closed it.
+                    store.complete(id: challenge.id, token: token ?? "")
                 })
                 .id(challenge.id)
             })
