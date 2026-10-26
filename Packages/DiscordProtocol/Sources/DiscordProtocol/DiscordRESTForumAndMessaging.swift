@@ -574,7 +574,7 @@ extension DiscordRESTProvider {
             body: nil
         )
         if Self.discordErrorCode(from: data) == 30033 { throw ChatProviderError.threadMemberLimitReached }
-        try validateEmptyResponse(response)
+        try validateEmptyResponse(data, response)
         // A Gateway membership event or a newer join/leave supersedes this
         // answer; an overlapping read does not.
         guard threadMembershipEpochs[threadID] == epoch else { return }
