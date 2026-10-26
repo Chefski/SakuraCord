@@ -1039,5 +1039,7 @@ extension AppModel {
         value.notificationSettings.removeAll { $0.guildID == settings.guildID }
         value.notificationSettings.append(settings)
         snapshot = value
+        // Muting a ringing conversation silences it.
+        reconcilePrivateCallSounds()
     }
 }

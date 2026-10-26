@@ -1185,6 +1185,8 @@ final class AppModel {
     @ObservationIgnored var forumNotificationMutationGeneration = 0
     @ObservationIgnored var mainWindowIsActive = false
     @ObservationIgnored var applicationIsActive = false
+    /// The Dock bounce requested for a call ringing in the background.
+    @ObservationIgnored var incomingCallAttentionRequest: Int?
     @ObservationIgnored var clientAppStateUpdateTask: Task<Void, Never>?
     var emojiEligibilityRevision: UInt64 = 0
     @ObservationIgnored var currentUserRoleIDsByGuild: [GuildID: Set<RoleID>] = [:] {

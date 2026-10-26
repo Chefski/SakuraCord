@@ -286,6 +286,7 @@ extension AppModel {
         didAttemptDiscordEmojiSettings = false
         voiceStates = [:]
         privateCallsByChannel = [:]
+        reconcilePrivateCallSounds()
         visibleChannels = []
         unreadCategoryIDsByGuild = [:]
         selectedChannel = nil

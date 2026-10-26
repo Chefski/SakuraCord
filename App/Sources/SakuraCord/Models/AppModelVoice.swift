@@ -1,3 +1,4 @@
+import AppKit
 import DiscordProtocol
 import Foundation
 import MediaPipeline
@@ -429,19 +430,38 @@ extension AppModel {
                 locallyStartedOutgoingPrivateCallRings
         )
         // Calls never post banners: the app rings and shows its own prompt
-        // whether or not it is in front, and only Do Not Disturb silences it.
-        let shouldRingIncoming = state.ringsIncoming
+        // whether or not it is in front. Do Not Disturb and a muted
+        // conversation silence it.
+        let alertsIncoming = state.ringsIncoming
             && currentStatus != .dnd
-            && notificationPreferences.playsSound
             && privateCallsByChannel.values.contains { call in
                 snapshot.map { call.isRinging($0.currentUser.id) } == true && !isIncomingCallSuppressed(call)
+                    && !isPrivateCallConversationMuted(call)
                     && notificationPreferences.allows(
                         .incomingCall,
                         isCurrentConversation: readState.isActivelyPresentedAtNewest(call.channelID)
                     )
             }
-        soundPlayer.setLooping(.callRinging, active: shouldRingIncoming)
+        soundPlayer.setLooping(.callRinging, active: alertsIncoming && notificationPreferences.playsSound)
         soundPlayer.setLooping(.callCalling, active: state.ringsOutgoing)
+        // In the background the prompt is out of sight, so the Dock icon
+        // bounces until SakuraCord comes forward or the ringing stops.
+        requestIncomingCallAttention(alertsIncoming && !applicationIsActive)
+    }
+
+    private func isPrivateCallConversationMuted(_ call: PrivateCall) -> Bool {
+        guard let channel = snapshot?.channels.first(where: { $0.id == call.channelID }) else { return false }
+        return isChannelMuted(channel)
+    }
+
+    private func requestIncomingCallAttention(_ requested: Bool) {
+        guard let application = NSApp else { return }
+        if requested, incomingCallAttentionRequest == nil {
+            incomingCallAttentionRequest = application.requestUserAttention(.criticalRequest)
+        } else if !requested, let request = incomingCallAttentionRequest {
+            application.cancelUserAttentionRequest(request)
+            incomingCallAttentionRequest = nil
+        }
     }
 
     func leaveVoice(

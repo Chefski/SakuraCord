@@ -233,6 +233,38 @@ func `Incoming calls ring in the app whether or not it is in front, and only Do 
 }
 
 @MainActor
+@Test func `Muting a ringing conversation silences its call`() async throws {
+    let sounds = RecordingAppSoundPlayer()
+    let model = AppModel(
+        launchMode: .offlineTesting,
+        notificationService: RecordingNotificationService(),
+        soundPlayer: sounds,
+        notificationPreferences: NotificationPreferences(defaults: InMemoryPreferences())
+    )
+    await model.start()
+    let currentUser = try #require(model.snapshot?.currentUser)
+    let channel = try #require(model.snapshot?.channels.first {
+        $0.kind == .directMessage && !$0.recipients.isEmpty
+    })
+    let caller = try #require(channel.recipients.first)
+    model.applyCurrentStatus(.online)
+    var call = PrivateCall(
+        channelID: channel.id,
+        messageID: MessageID(rawValue: 41),
+        ongoingRings: [
+            PrivateCallRing(recipientID: currentUser.id, senderID: caller.id),
+        ]
+    )
+    model.consumePrivateCallChanged(&call)
+    #expect(sounds.looping[.callRinging] == true)
+
+    model.updateLocalChannelNotificationOverride(guildID: nil, channelID: channel.id) { $0.isMuted = true }
+    #expect(sounds.looping[.callRinging] == false)
+    model.updateLocalChannelNotificationOverride(guildID: nil, channelID: channel.id) { $0.isMuted = false }
+    #expect(sounds.looping[.callRinging] == true)
+}
+
+@MainActor
 @Test func `Read clearing and denied permission remain honest`() async throws {
     let service = RecordingNotificationService(status: .denied)
     let preferences = NotificationPreferences(defaults: InMemoryPreferences())
