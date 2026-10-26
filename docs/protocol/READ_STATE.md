@@ -169,8 +169,12 @@ is enabled only by Discord's forum unread count: active posts newer than the
 forum's tracked acknowledgement that are unread, where a joined post must be
 unmuted unless mentioned. It is therefore unavailable on a never-read forum
 whatever its new-post count. A forum card is emphasized while its active post
-is unread, so closed posts are dimmed. Its footer shows "(N New)" only for an
-unread post the account has opened, with N its unread count capped at the
+is unread, joined or not, so closed posts are dimmed. That state alone enables
+the post's own Mark as Read (`isForumPostUnread`), which acknowledges its newest
+message. A message arriving in a post never opened leaves it unopened. Its
+footer shows "(N New)" only for an unread post with a tracked acknowledgement
+(Discord's "opened"), which a post created while running gains only from an
+acknowledgement or the next READY, with N its unread count capped at the
 reply count, so an unread starter alone shows "(0 New)", and at 25+ (module
 435470). Every acknowledgement of a forum, from a visit, its row, the server, a
 category, Read All or the Inbox, targets the current time. Labels, counts and server

@@ -177,6 +177,9 @@ struct AccountReadStateModelTests {
         // Discord's forum unread count includes a never-opened post past the
         // forum's acknowledgement, which enables the row's Mark as Read.
         #expect(acknowledged.hasUnreadForumPosts(channelID: channelID))
+        // Its own Mark as Read ignores membership, unlike aggregate unread.
+        #expect(acknowledged.isForumPostUnread(channelID: newPostID) == true)
+        #expect(!acknowledged.unread(channelID: newPostID))
         visitAndAcknowledge(acknowledged)
         #expect(acknowledged.isNewForumPost(newPost))
         #expect(acknowledged.forumNewPostCount(channelID: channelID) == 1)

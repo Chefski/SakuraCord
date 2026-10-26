@@ -1477,7 +1477,6 @@ func `reaction cooldown drops cancelled intent and cleared mutations`(clearMutat
     )
     #expect(model.readState.isNewForumPost(newPost))
     #expect(model.shouldEmphasizeForumPost(newPost))
-    #expect(model.isForumPostUnread(unreadPost))
     #expect(model.shouldEmphasizeForumPost(unreadPost))
     #expect(!model.isChannelUnread(provider.forumID))
 

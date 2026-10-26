@@ -54,10 +54,6 @@ extension AppModel {
             || guildAcknowledgementTasks[guildID] != nil
     }
 
-    func isForumPostUnread(_ post: ForumPost) -> Bool {
-        readState[post.id]?.isUnread ?? post.isUnread
-    }
-
     func isForumNotificationMutationPending(_ postID: ChannelID) -> Bool {
         forumNotificationMutationTasks[postID] != nil
     }
@@ -77,9 +73,8 @@ extension AppModel {
         return inheritedChannelNotificationLevel(for: parent)
     }
 
-    /// Discord's forum card unread state: an active post past its read boundary.
     func shouldEmphasizeForumPost(_ post: ForumPost) -> Bool {
-        !post.thread.isArchived && isForumPostUnread(post)
+        readState.isForumPostUnread(channelID: post.id) == true
     }
 
     /// Discord's card footer counts new replies only in an unread post the

@@ -1327,6 +1327,16 @@ extension AccountReadStateModel {
         return MessageID(rawValue: postID.rawValue) > acknowledged
     }
 
+    /// Discord's `isForumPostUnread`, which emphasizes a post's card and
+    /// enables its Mark as Read: an active post past its read boundary,
+    /// joined or not. `nil` when the channel is not a forum post.
+    func isForumPostUnread(channelID: ChannelID) -> Bool? {
+        guard let entry = self[channelID],
+              entry.parentID.flatMap({ self[$0] })?.kind == .forum
+        else { return nil }
+        return forumPostArchivedByID[channelID] != true && entry.isUnread
+    }
+
     func forumNewPostCount(channelID: ChannelID) -> Int {
         let source = unreadPresentationSource()
         return entries.values.lazy.filter { entry in

@@ -260,10 +260,15 @@ extension AppModel {
     }
 
     func acknowledgeIfEligible(channelID: ChannelID) {
-        guard let target = readState.updatePresentation(
-            channelID: channelID,
-            isPresented: isConversationPresented(channelID)
-        ) else { return }
+        let isPresented = isConversationPresented(channelID)
+        // Only a shown conversation acknowledges. Recording one never shown,
+        // as each arriving message would, marks an unopened post as opened.
+        guard isPresented || readState[presentation: channelID] != nil,
+              let target = readState.updatePresentation(
+                  channelID: channelID,
+                  isPresented: isPresented
+              )
+        else { return }
         scheduleAcknowledgement(channelID: channelID, messageID: target)
     }
 
@@ -459,11 +464,14 @@ extension AppModel {
     }
 
     /// Discord enables a forum's own Mark as Read only for its unread posts,
-    /// never for its new-post count, and acknowledges the forum up to now.
+    /// never for its new-post count, and acknowledges the forum up to now. A
+    /// post's own is enabled by `isForumPostUnread`, joined or not.
     func canMarkConversationRead(channelID: ChannelID) -> Bool {
-        readState[channelID]?.kind == .forum
-            ? readState.hasUnreadForumPosts(channelID: channelID)
-            : readState.unread(channelID: channelID)
+        if readState[channelID]?.kind == .forum {
+            return readState.hasUnreadForumPosts(channelID: channelID)
+        }
+        return readState.isForumPostUnread(channelID: channelID)
+            ?? readState.unread(channelID: channelID)
     }
 
     func markConversationRead(channelID: ChannelID) {
