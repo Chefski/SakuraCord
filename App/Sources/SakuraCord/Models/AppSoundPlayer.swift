@@ -237,7 +237,8 @@ final class MacAppSoundPlayer: AppSoundPlaying {
         } onChange: { [weak self] in
             Task { @MainActor in self?.syncBannerSounds() }
         }
-        for kind in NotificationSoundKind.allCases {
+        // Calls ring only in the app, so only the message sound has a banner copy.
+        for kind in [NotificationSoundKind.message] {
             let choice = notificationPreferences.soundChoice(for: kind)
             let previous = bannerExports[kind]
             // Waiting keeps a superseded export from finishing after the newer one.

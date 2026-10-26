@@ -90,6 +90,8 @@ extension AppModel {
     func deliverNativeNotification(for message: Message, isMention: Bool = false) {
         // Keep synthetic performance events away from Notification Center's XPC queue.
         guard !runsChatPerformanceBenchmark, currentStatus != .dnd, !isMessageSuppressed(message) else { return }
+        // A call announces itself by ringing, not with a banner for its message.
+        guard message.type != .call else { return }
         let channel = snapshot?.channels.first { $0.id == message.channelID }
             ?? visibleChannels.first { $0.id == message.channelID }
         guard let currentUserID = snapshot?.currentUser.id else { return }
@@ -171,75 +173,6 @@ extension AppModel {
         startAccountChildTask(account: account) { model, account in
             guard model.isCurrentAccountSession(account), !Task.isCancelled else { return }
             await model.notificationService.cancel(
-                accountID: accountID,
-                channelID: channelID
-            )
-        }
-    }
-
-    func deliverIncomingCallNotification(_ call: PrivateCall) {
-        guard !isIncomingCallSuppressed(call) else { return }
-        guard !runsChatPerformanceBenchmark,
-              let currentUserID = snapshot?.currentUser.id
-        else { return }
-        guard currentStatus != .dnd else {
-            dndSuppressedIncomingCallChannelIDs.insert(call.channelID)
-            return
-        }
-        guard notificationPreferences.allows(
-            .incomingCall,
-            isCurrentConversation: readState.isActivelyPresentedAtNewest(call.channelID)
-        ) else { return }
-        guard notificationPreferences.isEnabled, !applicationIsActive else { return }
-        let channel = snapshot?.channels.first { $0.id == call.channelID }
-            ?? visibleChannels.first { $0.id == call.channelID }
-        let callerID = call.ongoingRings.first { $0.recipientID == currentUserID }?.senderID
-        let caller = callerID.flatMap { id in
-            channel?.recipients.first { $0.id == id }
-                ?? snapshot?.members.first { $0.user.id == id }?.user
-        }
-        let accountID = readState.accountID ?? "offline"
-        let account = accountSession()
-        startAccountChildTask(account: account) { model, account in
-            guard model.isCurrentAccountSession(account), !Task.isCancelled,
-                  model.privateCallsByChannel[call.channelID]?.isRinging(currentUserID) == true,
-                  !model.isIncomingCallSuppressed(call),
-                  model.activeVoiceChannel?.id != call.channelID
-            else { return }
-            guard model.currentStatus != .dnd else {
-                model.dndSuppressedIncomingCallChannelIDs.insert(call.channelID)
-                return
-            }
-            await model.notificationService.deliverIncomingCall(
-                call: call,
-                channel: channel,
-                caller: caller,
-                accountID: accountID,
-                preferences: model.notificationPreferences
-            )
-        }
-    }
-
-    func resumeDNDSuppressedIncomingCalls() {
-        let channelIDs = dndSuppressedIncomingCallChannelIDs
-        dndSuppressedIncomingCallChannelIDs.removeAll()
-        guard let currentUserID = snapshot?.currentUser.id else { return }
-        for channelID in channelIDs {
-            guard let call = privateCallsByChannel[channelID], call.isRinging(currentUserID),
-                  activeVoiceChannel?.id != channelID
-            else { continue }
-            deliverIncomingCallNotification(call)
-        }
-    }
-
-    func cancelIncomingCallNotification(channelID: ChannelID) {
-        dndSuppressedIncomingCallChannelIDs.remove(channelID)
-        guard !runsChatPerformanceBenchmark else { return }
-        let accountID = readState.accountID ?? "offline"
-        let account = accountSession()
-        startAccountChildTask(account: account) { model, account in
-            guard model.isCurrentAccountSession(account), !Task.isCancelled else { return }
-            await model.notificationService.cancelIncomingCall(
                 accountID: accountID,
                 channelID: channelID
             )

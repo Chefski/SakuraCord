@@ -103,7 +103,7 @@ nonisolated extension SettingsCatalog {
         ),
         control(
             .notificationIncomingCalls, page: .notifications, section: .notificationEvents,
-            label: "Incoming calls", help: "Allow native alerts for newly ringing private calls.",
+            label: "Incoming calls", help: "Ring for newly ringing private calls.",
             keywords: ["call", "ring", "voice"], scope: .appWideLocal
         ),
         control(

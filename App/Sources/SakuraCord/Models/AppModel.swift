@@ -336,7 +336,6 @@ final class AppModel {
             guard oldValue != currentStatus else { return }
             notificationService.setSuppressed(currentStatus == .dnd)
             reconcilePrivateCallSounds()
-            if oldValue == .dnd { resumeDNDSuppressedIncomingCalls() }
         }
     }
     var connectionState: ConnectionState = .disconnected
@@ -540,7 +539,6 @@ final class AppModel {
         }
     }
     var privateCallsByChannel: [ChannelID: PrivateCall] = [:]
-    @ObservationIgnored var dndSuppressedIncomingCallChannelIDs: Set<ChannelID> = []
     var privateCallActionChannelIDs: Set<ChannelID> = []
     var mediaDevices: MediaDeviceSnapshot = .empty
     var emojisByGuild: [GuildID: [DiscordEmoji]] = [:] {
@@ -1187,6 +1185,9 @@ final class AppModel {
     @ObservationIgnored var forumNotificationMutationGeneration = 0
     @ObservationIgnored var mainWindowIsActive = false
     @ObservationIgnored var applicationIsActive = false
+    /// The Dock bounce requested for a call ringing in the background.
+    @ObservationIgnored var incomingCallAttentionRequest: Int?
+    @ObservationIgnored var ringingMuteExpiryTask: Task<Void, Never>?
     @ObservationIgnored var clientAppStateUpdateTask: Task<Void, Never>?
     var emojiEligibilityRevision: UInt64 = 0
     @ObservationIgnored var currentUserRoleIDsByGuild: [GuildID: Set<RoleID>] = [:] {
