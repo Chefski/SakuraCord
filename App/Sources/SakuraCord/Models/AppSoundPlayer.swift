@@ -64,6 +64,9 @@ final class MacAppSoundPlayer: AppSoundPlaying {
         var choice: NotificationSoundLibrary.Choice
         var player: AVAudioPlayer
         var scopedURL: URL?
+        /// A player keeps reading its file with the format it opened, so a
+        /// file replaced in place needs a new player.
+        var fileStamp: NotificationSoundLibrary.FileStamp?
     }
 
     private var players: [AppSoundEffect: AVAudioPlayer] = [:]
@@ -150,10 +153,14 @@ final class MacAppSoundPlayer: AppSoundPlaying {
         return player
     }
 
-    /// Rebuilds the player only when the stored choice changes.
+    /// Rebuilds the player only when the stored choice or its file changes.
     private func notificationPlayer(for effect: AppSoundEffect, kind: NotificationSoundKind) -> AVAudioPlayer? {
         var choice = notificationPreferences.soundChoice(for: kind)
-        if let slot = notificationSlots[effect], slot.choice == choice { return slot.player }
+        if let slot = notificationSlots[effect], slot.choice == choice,
+           slot.fileStamp == NotificationSoundLibrary.FileStamp(slot.player.url)
+        {
+            return slot.player
+        }
         releaseNotificationSlot(effect)
 
         let resolution = NotificationSoundLibrary.resolve(choice, kind: kind)
@@ -161,11 +168,11 @@ final class MacAppSoundPlayer: AppSoundPlaying {
         if resolution.isSecurityScoped, resolution.url.startAccessingSecurityScopedResource() {
             scopedURL = resolution.url
         }
-        var player = try? AVAudioPlayer(contentsOf: resolution.url)
+        var player = NotificationSoundLibrary.makePlayer(at: resolution.url)
         if player == nil {
             scopedURL?.stopAccessingSecurityScopedResource()
             scopedURL = nil
-            player = try? AVAudioPlayer(contentsOf: NotificationSoundLibrary.defaultURL(kind: kind))
+            player = NotificationSoundLibrary.makePlayer(at: NotificationSoundLibrary.defaultURL(kind: kind))
         } else if resolution.isStaleBookmark, scopedURL != nil,
                   let refreshed = try? resolution.url.bookmarkData(
                       options: .withSecurityScope,
@@ -184,8 +191,12 @@ final class MacAppSoundPlayer: AppSoundPlaying {
             scopedURL?.stopAccessingSecurityScopedResource()
             return nil
         }
-        player.prepareToPlay()
-        notificationSlots[effect] = NotificationSlot(choice: choice, player: player, scopedURL: scopedURL)
+        notificationSlots[effect] = NotificationSlot(
+            choice: choice,
+            player: player,
+            scopedURL: scopedURL,
+            fileStamp: NotificationSoundLibrary.FileStamp(player.url)
+        )
         return player
     }
 

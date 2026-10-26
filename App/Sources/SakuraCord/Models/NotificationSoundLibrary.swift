@@ -95,10 +95,33 @@ nonisolated enum NotificationSoundLibrary {
         }
         return Resolution(url: defaultURL(kind: kind), isSecurityScoped: false, isStaleBookmark: false)
     }
+
+    /// A player that can actually play `url`. Some files open but never play,
+    /// such as Ogg Opus, so preparing is part of the check.
+    @MainActor
+    static func makePlayer(at url: URL) -> AVAudioPlayer? {
+        guard let player = try? AVAudioPlayer(contentsOf: url), player.prepareToPlay() else { return nil }
+        return player
+    }
+
+    /// Identifies one version of a sound file. Read uncached, unlike URL resource values.
+    struct FileStamp: Equatable {
+        var modified: Date?
+        var size: Int?
+
+        init?(_ url: URL?) {
+            guard let url, let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
+            else { return nil }
+            modified = attributes[.modificationDate] as? Date
+            size = (attributes[.size] as? NSNumber)?.intValue
+        }
+    }
 }
 
 /// Notification Center plays `UNNotificationSound(named:)` files from the
 /// app's `Library/Sounds`, so a custom choice is exported there as a CAF.
+/// The sandbox links that folder to `~/Library/Sounds`, which the
+/// entitlements make writable.
 nonisolated extension NotificationSoundLibrary {
     private static let logger = Logger(subsystem: "dev.sakuracord.SakuraCord", category: "Notifications")
     /// Notification Center ignores sounds of 30 seconds or longer.

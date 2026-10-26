@@ -10,6 +10,7 @@ struct NotificationSoundSettingsSection: View {
     @State private var selections: [NotificationSoundKind: String] = [:]
     @State private var previewingEffect: AppSoundEffect?
     @State private var previewResetTask: Task<Void, Never>?
+    @State private var unplayableFileName: String?
     private let systemSounds = NotificationSoundLibrary.systemAlertSoundNames
 
     var body: some View {
@@ -29,6 +30,17 @@ struct NotificationSoundSettingsSection: View {
         .onDisappear { stopPreview() }
         .onChange(of: preferences.messageSoundID) { syncSelection(.message) }
         .onChange(of: preferences.callRingtoneID) { syncSelection(.call) }
+        .alert(
+            "Can’t Use “\(unplayableFileName ?? "")”",
+            isPresented: Binding(
+                get: { unplayableFileName != nil },
+                set: { if !$0 { unplayableFileName = nil } }
+            )
+        ) {
+            Button("OK") { unplayableFileName = nil }
+        } message: {
+            Text("SakuraCord can’t play this file. Choose a different sound.", bundle: #bundle)
+        }
     }
 
     private func soundPicker(
@@ -40,6 +52,7 @@ struct NotificationSoundSettingsSection: View {
         let selection = Binding(
             get: { selections[kind] ?? NotificationSoundLibrary.bundledID },
             set: { newValue in
+                if previewingEffect == kind.defaultEffect { stopPreview() }
                 selections[kind] = newValue
                 if newValue == NotificationSoundLibrary.chooseFileID {
                     chooseFile(for: kind)
@@ -113,17 +126,20 @@ struct NotificationSoundSettingsSection: View {
             panel.title = kind == .message ? "Choose Message Sound" : "Choose Call Ringtone"
             panel.prompt = "Choose"
             panel.allowsMultipleSelection = false
-            panel.allowedContentTypes = [.audio]
+            // Movies are allowed for their audio track.
+            panel.allowedContentTypes = [.audio, .audiovisualContent]
             panel.canChooseFiles = true
             panel.canChooseDirectories = false
-            if await panel.begin() == .OK, let url = panel.url,
-                let bookmark = try? url.bookmarkData(
+            if await panel.begin() == .OK, let url = panel.url {
+                if NotificationSoundLibrary.makePlayer(at: url) == nil {
+                    unplayableFileName = url.lastPathComponent
+                } else if let bookmark = try? url.bookmarkData(
                     options: .withSecurityScope,
                     includingResourceValuesForKeys: nil,
                     relativeTo: nil
-                )
-            {
-                preferences.setCustomSound(bookmark: bookmark, name: url.lastPathComponent, for: kind)
+                ) {
+                    preferences.setCustomSound(bookmark: bookmark, name: url.lastPathComponent, for: kind)
+                }
             }
             syncSelection(kind)
         }

@@ -1,3 +1,4 @@
+import AVFAudio
 @testable import SakuraCord
 import Foundation
 import SakuraCordModels
@@ -45,6 +46,32 @@ import UserNotifications
             == .string("system:Glass")
     )
     #expect(export.values[SettingsControlID.notificationCallRingtone.rawValue] == nil)
+}
+
+@MainActor
+@Test func `Custom sounds must be playable, and a file replaced in place gets a new stamp`() throws {
+    let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let garbage = directory.appending(path: "garbage.mp3")
+    try Data(repeating: 0x5A, count: 4_096).write(to: garbage)
+    #expect(NotificationSoundLibrary.makePlayer(at: garbage) == nil)
+
+    let tone = directory.appending(path: "tone.wav")
+    func writeTone(seconds: Double) throws {
+        let format = try #require(AVAudioFormat(standardFormatWithSampleRate: 8_000, channels: 1))
+        let frames = AVAudioFrameCount(8_000 * seconds)
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames))
+        buffer.frameLength = frames
+        try AVAudioFile(forWriting: tone, settings: format.settings).write(from: buffer)
+    }
+    try writeTone(seconds: 0.5)
+    #expect(NotificationSoundLibrary.makePlayer(at: tone) != nil)
+    let stamp = NotificationSoundLibrary.FileStamp(tone)
+    try writeTone(seconds: 1)
+    #expect(NotificationSoundLibrary.FileStamp(tone) != stamp)
+    try FileManager.default.removeItem(at: tone)
+    #expect(NotificationSoundLibrary.FileStamp(tone) == nil)
 }
 
 @Test func `Message notification events classify replies mentions and conversation kinds`() {
