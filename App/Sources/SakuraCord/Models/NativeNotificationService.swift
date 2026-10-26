@@ -85,10 +85,6 @@ nonisolated enum NativeNotificationIdentity {
         "message:\(accountID):\(channelID):\(messageID)"
     }
 
-    static func call(accountID: String, channelID: ChannelID) -> String {
-        "call:\(accountID):\(channelID)"
-    }
-
     static func conversation(accountID: String, channelID: ChannelID) -> String {
         "conversation:\(accountID):\(channelID)"
     }
@@ -181,25 +177,6 @@ nonisolated struct NotificationContentPresentation: Equatable, Sendable {
         case .role: "@unknown-role"
         case .channel, .channelLink: "#unknown-channel"
         case .message: "Message link"
-        }
-    }
-
-    static func makeIncomingCall(
-        callerName: String?,
-        conversationName: String?,
-        style: NotificationPreviewStyle
-    ) -> Self {
-        switch style {
-        case .full:
-            Self(
-                title: callerName ?? "Incoming call",
-                subtitle: conversationName ?? "",
-                body: "Incoming call"
-            )
-        case .senderOnly:
-            Self(title: callerName ?? "Incoming call", subtitle: "", body: "Incoming call")
-        case .hidden:
-            Self(title: "SakuraCord", subtitle: "", body: "Incoming call")
         }
     }
 }
@@ -398,15 +375,7 @@ protocol NativeNotificationService: Sendable {
         presentation: NotificationContentPresentation,
         preferences: NotificationPreferences
     ) async
-    func deliverIncomingCall(
-        call: PrivateCall,
-        channel: Channel?,
-        caller: User?,
-        accountID: String,
-        preferences: NotificationPreferences
-    ) async
     func cancel(accountID: String, channelID: ChannelID) async
-    func cancelIncomingCall(accountID: String, channelID: ChannelID) async
     func setDockBadge(_ count: Int, enabled: Bool)
 }
 
@@ -429,16 +398,6 @@ extension NativeNotificationService {
             preferences: preferences
         )
     }
-
-    func deliverIncomingCall(
-        call _: PrivateCall,
-        channel _: Channel?,
-        caller _: User?,
-        accountID _: String,
-        preferences _: NotificationPreferences
-    ) async {}
-
-    func cancelIncomingCall(accountID _: String, channelID _: ChannelID) async {}
 }
 
 @MainActor
@@ -586,48 +545,6 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
         await add(content, identifier: identifier, kind: "Message", preferences: preferences)
     }
 
-    func deliverIncomingCall(
-        call: PrivateCall,
-        channel: Channel?,
-        caller: User?,
-        accountID: String,
-        preferences: NotificationPreferences
-    ) async {
-        guard deliversNotifications, !isSuppressed, preferences.isEnabled else { return }
-        let identifier = NativeNotificationIdentity.call(accountID: accountID, channelID: call.channelID)
-        let token = UUID()
-        let style = preferences.previewStyle
-        pendingRequests[identifier] = token
-        defer { if pendingRequests[identifier] == token { pendingRequests[identifier] = nil } }
-        let content = UNMutableNotificationContent()
-        let presentation = NotificationContentPresentation.makeIncomingCall(
-            callerName: caller?.displayName,
-            conversationName: nil,
-            style: preferences.previewStyle
-        )
-        content.title = presentation.title
-        content.subtitle = presentation.subtitle
-        content.body = presentation.body
-        // Standard active notifications remain governed by the user's Focus configuration.
-        content.interruptionLevel = NotificationFocusPolicy.interruptionLevel
-        if preferences.groupsByConversation {
-            content.threadIdentifier = NativeNotificationIdentity.conversation(
-                accountID: accountID,
-                channelID: call.channelID
-            )
-        }
-        content.userInfo = NotificationDeepLink(
-            accountID: accountID,
-            guildID: nil,
-            channelID: call.channelID,
-            messageID: call.messageID
-        ).userInfo
-        guard pendingRequests[identifier] == token, !Task.isCancelled,
-              preferences.isEnabled, preferences.previewStyle == style
-        else { return }
-        await add(content, identifier: identifier, kind: "Call", preferences: preferences)
-    }
-
     func cancel(accountID: String, channelID: ChannelID) async {
         guard deliversNotifications else { return }
         let prefix = "message:\(accountID):\(channelID):"
@@ -638,17 +555,6 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
         let pending = await center.pendingNotificationRequests()
         let pendingIDs = pending.map(\.identifier).filter { $0.hasPrefix(prefix) }
         center.removePendingNotificationRequests(withIdentifiers: pendingIDs)
-    }
-
-    func cancelIncomingCall(accountID: String, channelID: ChannelID) async {
-        guard deliversNotifications else { return }
-        let identifier = NativeNotificationIdentity.call(
-            accountID: accountID,
-            channelID: channelID
-        )
-        pendingRequests[identifier] = nil
-        center.removeDeliveredNotifications(withIdentifiers: [identifier])
-        center.removePendingNotificationRequests(withIdentifiers: [identifier])
     }
 
     func setDockBadge(_ count: Int, enabled: Bool) {
