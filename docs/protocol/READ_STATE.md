@@ -68,9 +68,10 @@ Do not recompute targets from a later rerender or restore obsolete mention count
 on Undo. Fully loaded expanded empty groups may acknowledge and disappear without
 Undo; incomplete loads do not establish emptiness.
 
-The optional server-rail Read All action uses the same bulk route with type 0
-entries for accessible current server channels and active joined threads, including
-muted conversations. It excludes DMs, departed/archived threads, resource channels
+The optional server-rail Read All action and a server's own Mark as Read (as in
+web build 649389) use the same bulk route with type 0 entries for accessible
+current server channels and active joined threads, including muted
+conversations. They exclude DMs, departed/archived threads, resource channels
 and scheduled events. Targets are captured only after native confirmation; new
 messages beyond those boundaries stay unread. Accepted batches remain read if a
 later batch fails; failed targets roll back without automatic replay.
@@ -116,6 +117,14 @@ update provider state; these are implemented consumers, not ignored families.
 
 ## Settings and notifications
 
+A thread without a saved acknowledgement, or with READY's `0`, is read up to
+Discord's fallback boundary (`ReadStateStore`, build 649389): the later of
+joining it less five seconds and its archive time less a millisecond, else its
+creation less a millisecond, and for a text thread never before the account
+joined the server. A reopened thread with no newer message is therefore read,
+and a never-opened forum post's starter is unread. The boundary is computed
+once, when the thread is first known, and is not a tracked acknowledgement.
+
 Server unread indicators and the Dock's unread-conversation count use current
 channels and active joined threads with accessible current parents. Retained
 thread read state is not evidence of membership: archived, left or orphaned
@@ -142,10 +151,10 @@ by the same rule, elsewhere by post ID above the forum's tracked
 acknowledgement, or above the join time when there is none, with no separate
 join check. Only a server or local acknowledgement is tracked; the boundary
 seeded for a read state READY omits is not, so a never-read forum counts every
-post since joining. An unknown `joined_at` counts as now. The count is hidden
-on the selected row, behind a mention badge, on a muted forum, and unless the
-forum's unread setting resolves to All Messages. A recently created,
-never-acknowledged channel shows Discord's separate "NEW" channel pill instead,
+post since joining. An unknown `joined_at` counts as now. The count stays on
+the selected row during a visit and is hidden behind a mention badge, on a
+muted forum, and unless the forum's unread setting resolves to All Messages. A
+recently created, never-acknowledged channel shows Discord's separate "NEW" channel pill instead,
 which SakuraCord does not implement. Server, category and Read All
 acknowledgements include a forum with counted posts even when its own boundary
 is seeded, so they clear a never-read forum's count, and a completed local
@@ -153,11 +162,13 @@ acknowledgement is tracked before its Gateway echo; a still-pending earlier
 intent that later fails cannot roll back behind it. A forum's own Mark as Read
 is enabled only by Discord's forum unread count: active posts newer than the
 forum's tracked acknowledgement that are unread, where a joined post must be
-unmuted unless mentioned and a never-opened post counts as unread (its fallback
-boundary is its creation; observed in the store on 26 October 2026). It is
-therefore unavailable on a never-read forum whatever its new-post count. Every
-acknowledgement of a forum, from a visit, its row, the server, a category,
-Read All or the Inbox, targets the current time. Labels, counts and server
+unmuted unless mentioned. It is therefore unavailable on a never-read forum
+whatever its new-post count. A forum card is emphasized while its active post
+is unread, so closed posts are dimmed. Its footer shows "(N New)" only for an
+unread post the account has opened, with N its unread count capped at the
+reply count, so an unread starter alone shows "(0 New)", and at 25+ (module
+435470). Every acknowledgement of a forum, from a visit, its row, the server, a
+category, Read All or the Inbox, targets the current time. Labels, counts and server
 Mark as Read were compared live in web build 649389 and SakuraCord on 25 and
 26 October 2026, with the official client's acknowledgements blocked so both
 read the same server state.

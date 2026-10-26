@@ -21,12 +21,14 @@ extension AppModel {
         if let starter {
             excerpt = starter.content.isEmpty ? .empty : .message(starter, author: forumCardAuthor(for: starter))
         } else {
-            excerpt = .pending
+            excerpt = post.isFirstMessageLoaded ? .deleted : .pending
         }
         let thumbnail = starter?.attachments.first.map(ForumCardPresentation.Media.init(attachment:))
         let hero: ForumCardPresentation.Hero =
             if let thumbnail {
                 .media(thumbnail)
+            } else if starter == nil, post.isFirstMessageLoaded {
+                .deleted
             } else if let preview = post.mostRecentMessage ?? starter, !preview.content.isEmpty {
                 .text(preview)
             } else if starter == nil {

@@ -23,6 +23,8 @@ struct ForumCardPresentation: Equatable {
         case pending
         /// The post has no displayable starter text.
         case empty
+        /// Discord answered without the starter: it was deleted.
+        case deleted
         case message(Message, author: Author)
     }
 
@@ -39,6 +41,7 @@ struct ForumCardPresentation: Equatable {
         case media(Media)
         case text(Message)
         case empty
+        case deleted
     }
 
     struct ReactionSummary: Equatable {
@@ -63,7 +66,8 @@ struct ForumCardPresentation: Equatable {
     let galleryAuthor: Author?
     let reaction: ReactionSummary?
     let messageCount: Int
-    let unreadCount: Int
+    /// New replies in an opened unread post; `nil` shows no count.
+    let unreadCount: Int?
     let createdAt: Date
     let lastActivityAt: Date
     let underlinesLinks: Bool
@@ -88,11 +92,16 @@ struct ForumCardPresentation: Equatable {
         return parts.joined(separator: ", ")
     }
 
+    /// Discord caps the footer's new-reply count at 25+.
+    var unreadCountText: String? {
+        unreadCount.map { $0 >= 25 ? "25+" : $0.formatted() }
+    }
+
     var messageCountAccessibilityText: String {
         let messages = messageCount == 1 ? "message" : "messages"
-        guard unreadCount > 0 else { return "\(messageCount) \(messages)" }
+        guard let unreadCount, let unreadCountText else { return "\(messageCount) \(messages)" }
         let newMessages = unreadCount == 1 ? "new message" : "new messages"
-        return "\(messageCount) \(messages), \(unreadCount) \(newMessages)"
+        return "\(messageCount) \(messages), \(unreadCountText) \(newMessages)"
     }
 }
 

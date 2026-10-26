@@ -493,7 +493,7 @@ extension AppModel {
     func markGuildRead(_ guildID: GuildID) {
         guard !runsChatPerformanceBenchmark else { return }
         guard guildAcknowledgementTasks[guildID] == nil else { return }
-        let targets = readState.bulkAcknowledgements(for: guildID)
+        let targets = readState.allServerAcknowledgements(in: [guildID])
         guard !targets.isEmpty else { return }
 
         for target in targets {

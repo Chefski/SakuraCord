@@ -138,7 +138,8 @@ struct AccountReadStateModelTests {
                 guildID: guildID,
                 parentID: channelID,
                 name: "First unread post",
-                lastMessageID: MessageID(rawValue: newPostID.rawValue)
+                // A reply a millisecond later, past Discord's fallback boundary.
+                lastMessageID: MessageID(rawValue: newPostID.rawValue + (1 << 22))
             )
         )
         func model(acknowledging boundary: MessageID?, joinedAt: Date?) -> AccountReadStateModel {
@@ -209,9 +210,8 @@ struct AccountReadStateModelTests {
         // boundary hiding the forum's own unread state.
         let unvisited = model(acknowledging: nil, joinedAt: joinedBefore)
         #expect(!unvisited.hasUnreadForumPosts(channelID: channelID))
-        let targets = unvisited.bulkAcknowledgements(for: guildID)
+        let targets = unvisited.allServerAcknowledgements(in: [guildID])
         #expect(targets.map(\.channelID) == [channelID])
-        #expect(unvisited.allServerAcknowledgements(in: [guildID]).map(\.channelID) == [channelID])
         // Like the visit, bulk acknowledgement covers the forum up to now.
         #expect(targets.allSatisfy { $0.messageID > MessageID(rawValue: newPostID.rawValue) })
         for target in targets {
@@ -237,8 +237,9 @@ struct AccountReadStateModelTests {
     }
 
     @Test func `forum catalogue unread state seeds omitted thread read state`() {
-        let threadID = ChannelID(rawValue: 201)
-        let latestMessageID = MessageID(rawValue: 12)
+        // Snowflakes a millisecond apart, so the reply is past the post's creation.
+        let threadID = ChannelID(rawValue: 1 << 22)
+        let latestMessageID = MessageID(rawValue: 2 << 22)
         let model = AccountReadStateModel()
         model.reset(accountID: "account")
         model.setCurrentUserID(currentUser.id)
@@ -277,7 +278,7 @@ struct AccountReadStateModelTests {
         )
 
         #expect(model.entries[threadID]?.latestKnownMessageID == latestMessageID)
-        #expect(model.unread(channelID: threadID))
+        #expect(model.entries[threadID]?.isUnread == true)
         #expect(model.unreadMessageCount(channelID: threadID) == 3)
         #expect(!model.guildUnread(guildID))
     }
@@ -580,7 +581,7 @@ struct AccountReadStateModelTests {
         #expect(model.entries[threadID]?.pendingAcknowledgementID == nil)
         #expect(model.entries[threadID]?.lastAcknowledgedMessageID == MessageID(rawValue: acknowledgementSucceeds ? 30 : 20))
         #expect(model.entries[threadID]?.mentionCount == (acknowledgementSucceeds ? 0 : 1))
-        #expect(model.unread(channelID: threadID) == !acknowledgementSucceeds)
+        #expect(model.entries[threadID]?.isUnread == !acknowledgementSucceeds)
     }
 
     @Test(arguments: [[UInt64(13)], [14, 12]])
@@ -777,6 +778,50 @@ struct AccountReadStateModelTests {
         #expect(model.totalMentions == 0)
     }
 
+    /// A joined thread READY lists without a read state is read only up to
+    /// Discord's fallback boundary. Without it the thread lost its unread
+    /// row and server Mark as Read skipped it.
+    @Test func `joined threads without a saved read state use Discord's fallback boundary`() {
+        let model = makeModel(latest: 10, acknowledged: 10)
+        let serverJoin = Date(timeIntervalSince1970: 1_750_000_000)
+        model.merge(guilds: [Guild(id: guildID, name: "Guild", defaultMessageNotifications: .allMessages, joinedAt: serverJoin)])
+        let created = serverJoin.addingTimeInterval(3_600)
+        func thread(_ offset: TimeInterval, lastMessageAfter: TimeInterval, archivedAfter: TimeInterval)
+            -> MessageThreadSummary
+        {
+            let start = created.addingTimeInterval(offset)
+            return MessageThreadSummary(
+                id: ChannelID(timestamp: start), guildID: guildID, parentID: channelID, name: "Thread",
+                lastMessageID: MessageID(timestamp: start.addingTimeInterval(lastMessageAfter)),
+                archiveTimestamp: start.addingTimeInterval(archivedAfter),
+                notificationSettings: ThreadNotificationSettings(joinedAt: start.addingTimeInterval(1))
+            )
+        }
+        let unread = thread(0, lastMessageAfter: 60, archivedAfter: 0)
+        // Reopened after its last message: the archive time is the boundary.
+        let reopened = thread(10, lastMessageAfter: 60, archivedAfter: 120)
+        model.replaceActiveJoinedThreads([unread, reopened])
+
+        #expect(model.unread(channelID: unread.id))
+        #expect(!model.unread(channelID: reopened.id))
+        #expect(model.guildUnread(guildID))
+        #expect(model.allServerAcknowledgements(in: [guildID]).map(\.channelID) == [unread.id])
+    }
+
+    /// Discord's server Mark as Read acknowledges muted channels too.
+    @Test func `server mark as read targets include muted channels`() {
+        let model = makeModel(
+            latest: 20,
+            acknowledged: 10,
+            settings: GuildNotificationSettings(
+                guildID: guildID,
+                channelOverrides: [ChannelNotificationOverride(channelID: channelID, isMuted: true)]
+            )
+        )
+        #expect(!model.unread(channelID: channelID))
+        #expect(model.allServerAcknowledgements(in: [guildID]).map(\.channelID) == [channelID])
+    }
+
     @Test func `guild unread comes from unseen forum posts not the forum boundary`() {
         let forumID = ChannelID(rawValue: 250)
         let postID = ChannelID(rawValue: 300)
@@ -860,7 +905,7 @@ struct AccountReadStateModelTests {
         ))
         #expect(model.guildUnread(guildID))
         #expect(model.unreadPresentationProjection().unreadConversationCount == 1)
-        #expect(model.bulkAcknowledgements(for: guildID).contains { $0.channelID == threadID })
+        #expect(model.allServerAcknowledgements(in: [guildID]).contains { $0.channelID == threadID })
 
         switch change {
         case "archived":

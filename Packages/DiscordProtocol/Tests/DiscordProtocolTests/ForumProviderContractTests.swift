@@ -1628,6 +1628,8 @@ func `deleted messages cannot return through cached thread previews`(bulk: Bool)
     await provider.receiveGatewayDispatchForTesting(name: bulk ? "MESSAGE_DELETE_BULK" : "MESSAGE_DELETE", data: .object(payload))
     let cached = try #require(await provider.cachedForumPostForTesting(threadID: thread.id))
     #expect(cached.firstMessage == nil)
+    // A deleted starter is answered, not still loading.
+    #expect(cached.isFirstMessageLoaded)
     #expect(cached.mostRecentMessage == nil)
     await provider.disconnect()
 }

@@ -1494,10 +1494,10 @@ private struct ChannelRow: View {
         !isChecking && channel.unreadCount > 0
     }
 
-    /// Discord hides a forum's count on the selected row, behind a mention
-    /// badge, and unless the unmuted forum resolves to All Messages unreads.
+    /// Discord hides a forum's count behind a mention badge and unless the
+    /// unmuted forum resolves to All Messages unreads.
     private var showsNewPostCount: Bool {
-        channel.kind == .forum && showsUnread && !isSelected && !isMuted
+        channel.kind == .forum && showsUnread && !isMuted
             && channel.mentionCount == 0
             && model.usesAllMessagesUnreadSetting(channel)
     }

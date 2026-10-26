@@ -213,7 +213,7 @@ extension AccountReadStateModel {
                     unreadByGuildID[guildID] = true
                 }
                 if isEligible,
-                   entry.countsAsUnreadConversation
+                   entry.countsAsUnreadConversation && isAggregateConversation(entry)
                     || newForumPostParentID(of: entry) != nil,
                    let guildID = entry.guildID,
                    let parentID = entry.parentID

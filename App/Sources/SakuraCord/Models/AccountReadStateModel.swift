@@ -271,7 +271,8 @@ extension AccountReadStateModel {
             assembly.entries[channelID] = entry
         }
 
-        applyInitialThreads(threads, to: &assembly)
+        let guildJoinedAtByID = guildJoinedAtByID(guilds)
+        applyInitialThreads(threads, guildJoinedAtByID: guildJoinedAtByID, to: &assembly)
 
         let notificationIndex = initialNotificationSettingsIndex(notificationSettings)
         return InitialState(
@@ -284,7 +285,7 @@ extension AccountReadStateModel {
             remoteReadStateOrderIDs: assembly.remoteReadStateOrderIDs,
             channelByID: assembly.channelByID,
             defaultNotificationLevelByGuild: assembly.defaultNotificationLevelByGuild,
-            guildJoinedAtByID: guildJoinedAtByID(guilds),
+            guildJoinedAtByID: guildJoinedAtByID,
             forumPostArchivedByID: assembly.forumPostArchivedByID,
             readStateVersion: assembly.readStateVersion,
             usesNewNotifications: usesNewNotifications,
@@ -394,6 +395,7 @@ extension AccountReadStateModel {
 
     private nonisolated static func applyInitialThreads(
         _ threads: [MessageThreadSummary],
+        guildJoinedAtByID: [GuildID: Date],
         to assembly: inout InitialStateAssembly
     ) {
         assembly.forumPostArchivedByID.reserveCapacity(threads.count)
@@ -408,7 +410,12 @@ extension AccountReadStateModel {
                 entry.threadNotificationSettings = settings
             }
             entry.latestKnownMessageID = maximum(entry.latestKnownMessageID, thread.lastMessageID)
-            updateInitialThreadUnread(thread, entry: &entry)
+            updateThreadUnread(
+                thread,
+                entry: &entry,
+                isForumPost: thread.parentID.flatMap { assembly.channelByID[$0] }?.kind == .forum,
+                guildJoinedAt: entry.guildID.flatMap { guildJoinedAtByID[$0] }
+            )
             if let parentID = thread.parentID, let parent = assembly.entries[parentID] {
                 entry.isAccessible = parent.isAccessible
             }
@@ -418,13 +425,44 @@ extension AccountReadStateModel {
         }
     }
 
-    private nonisolated static func updateInitialThreadUnread(
+    /// A thread without a saved acknowledgement (or READY's `0`) is read up to
+    /// Discord's fallback boundary, so its newer messages are unread.
+    private nonisolated static func updateThreadUnread(
         _ thread: MessageThreadSummary,
-        entry: inout Entry
+        entry: inout Entry,
+        isForumPost: Bool,
+        guildJoinedAt: Date?
     ) {
-        guard entry.hasAuthoritativeReadState else { return }
+        if entry.lastAcknowledgedMessageID.map({ $0.rawValue == 0 }) ?? true,
+           entry.pendingAcknowledgementID == nil
+        {
+            entry.lastAcknowledgedMessageID = fallbackAcknowledgedMessageID(
+                for: thread, isForumPost: isForumPost, guildJoinedAt: guildJoinedAt
+            )
+        }
         entry.latestUnreadMessageID = maximum(entry.latestUnreadMessageID, thread.lastMessageID)
         entry.unreadMessageCount = entry.isUnread ? max(1, entry.unreadMessageCount) : 0
+    }
+
+    /// Discord's `ReadStateStore` fallback (build 649389): the later of joining
+    /// the thread less five seconds and its archive time less a millisecond,
+    /// else its creation less a millisecond. A text thread's boundary is never
+    /// before the account joined the server, or now when that is unknown.
+    /// Discord compares milliseconds, so the result is that millisecond's last
+    /// snowflake.
+    nonisolated static func fallbackAcknowledgedMessageID(
+        for thread: MessageThreadSummary,
+        isForumPost: Bool,
+        guildJoinedAt: Date?,
+        now: Date = .now
+    ) -> MessageID {
+        func milliseconds(_ date: Date) -> Int { Int(MessageID(timestamp: date).rawValue >> 22) }
+        let joined = thread.notificationSettings?.joinedAt.map { milliseconds($0) - 5_000 } ?? -5_000
+        let archived = thread.archiveTimestamp.map { milliseconds($0) - 1 } ?? 0
+        var boundary = max(joined, archived)
+        if boundary <= 0 { boundary = Int(thread.id.rawValue >> 22) - 1 }
+        if !isForumPost { boundary = max(boundary, milliseconds(guildJoinedAt ?? now)) }
+        return MessageID(rawValue: UInt64(max(boundary, 0) + 1) << 22 - 1)
     }
 
     private nonisolated static func updateInitialForumParent(
@@ -757,7 +795,8 @@ extension AccountReadStateModel {
             if let version = state.version { readStateVersion = max(readStateVersion ?? version, version) }
             return false
         }
-        if let existing = entry.lastAcknowledgedMessageID,
+        // A seeded boundary is not an acknowledgement, so any server one replaces it.
+        if let existing = entry.trackedAcknowledgedMessageID,
            let incoming = state.lastAcknowledgedMessageID,
            incoming < existing,
            !authoritativeBoundary
@@ -771,8 +810,8 @@ extension AccountReadStateModel {
             entry.lastAcknowledgedMessageID = state.lastAcknowledgedMessageID
         } else {
             entry.lastAcknowledgedMessageID = maximum(
-                entry.lastAcknowledgedMessageID, state.lastAcknowledgedMessageID
-            )
+                entry.trackedAcknowledgedMessageID, state.lastAcknowledgedMessageID
+            ) ?? entry.lastAcknowledgedMessageID
         }
         entry.mentionCount = max(0, state.mentionCount)
         entry.flags = state.flags ?? entry.flags
@@ -1189,14 +1228,12 @@ extension AccountReadStateModel {
             entry.threadNotificationSettings = settings
         }
         entry.latestKnownMessageID = maximum(entry.latestKnownMessageID, thread.lastMessageID)
-        if entry.hasAuthoritativeReadState {
-            entry.latestUnreadMessageID = maximum(
-                entry.latestUnreadMessageID, thread.lastMessageID
-            )
-            entry.unreadMessageCount = entry.isUnread
-                ? max(1, entry.unreadMessageCount)
-                : 0
-        }
+        Self.updateThreadUnread(
+            thread,
+            entry: &entry,
+            isForumPost: thread.parentID.flatMap { channelByID[$0] }?.kind == .forum,
+            guildJoinedAt: entry.guildID.flatMap { guildJoinedAtByID[$0] }
+        )
         if let parentID = thread.parentID, let parent = self[parentID] {
             entry.isAccessible = parent.isAccessible
         }
@@ -1229,27 +1266,10 @@ extension AccountReadStateModel {
             ?? forumPost.firstMessage?.id
         guard let latestMessageID else { return }
         var entry = entry(for: forumPost.id)
-        let hadNoAcknowledgedBoundary = entry.lastAcknowledgedMessageID == nil
-        if entry.lastAcknowledgedMessageID == nil {
-            let firstUnreadMessageID = forumPost.firstMessage?.id ?? latestMessageID
-            entry.lastAcknowledgedMessageID = MessageID(
-                rawValue: firstUnreadMessageID.rawValue == 0
-                    ? 0
-                    : firstUnreadMessageID.rawValue - 1
-            )
-        }
         entry.latestKnownMessageID = maximum(entry.latestKnownMessageID, latestMessageID)
         entry.latestUnreadMessageID = maximum(entry.latestUnreadMessageID, latestMessageID)
-        let allRepliesAreAfterAcknowledgement: Bool
-        if hadNoAcknowledgedBoundary {
-            allRepliesAreAfterAcknowledgement = true
-        } else if let acknowledged = entry.lastAcknowledgedMessageID,
-           let firstMessageID = forumPost.firstMessage?.id
-        {
-            allRepliesAreAfterAcknowledgement = acknowledged <= firstMessageID
-        } else {
-            allRepliesAreAfterAcknowledgement = entry.lastAcknowledgedMessageID == nil
-        }
+        let starterID = forumPost.firstMessage?.id ?? MessageID(rawValue: forumPost.id.rawValue)
+        let allRepliesAreAfterAcknowledgement = entry.lastAcknowledgedMessageID.map { $0 <= starterID } ?? true
         let catalogueUnreadCount =
             allRepliesAreAfterAcknowledgement ? max(1, forumPost.replyCount) : 1
         entry.unreadMessageCount = max(catalogueUnreadCount, entry.unreadMessageCount)
@@ -1270,14 +1290,10 @@ extension AccountReadStateModel {
         forumSelectionAcknowledgementBoundary.removeValue(forKey: channelID) != nil
     }
 
-    func isUnopenedForumPost(_ post: ForumPost) -> Bool {
-        self[post.id]?.hasAuthoritativeReadState != true
-            && self[presentation: post.id] == nil
-    }
-
     func isNewForumPost(_ post: ForumPost) -> Bool {
         guard !post.thread.isArchived,
-              isUnopenedForumPost(post),
+              self[post.id]?.hasAuthoritativeReadState != true,
+              self[presentation: post.id] == nil,
               let parent = post.thread.parentID.flatMap({ self[$0] }),
               parent.kind == .forum
         else { return false }
@@ -1323,9 +1339,8 @@ extension AccountReadStateModel {
     /// Discord's forum unread count, which alone enables a forum's own Mark as
     /// Read: active posts whose newest message is past the forum's tracked
     /// acknowledgement and that are unread. A joined post must also be unmuted
-    /// unless mentioned; a never-opened post counts as unread, because Discord's
-    /// fallback boundary for it is its creation. A never-acknowledged forum has
-    /// none, whatever its new-post count.
+    /// unless mentioned. A never-acknowledged forum has none, whatever its
+    /// new-post count.
     func hasUnreadForumPosts(channelID: ChannelID, now: Date = .now) -> Bool {
         guard let forum = self[channelID], forum.kind == .forum,
               let acknowledged = forum.trackedAcknowledgedMessageID
@@ -1335,9 +1350,7 @@ extension AccountReadStateModel {
                   forumPostArchivedByID[entry.channelID] != true,
                   let latest = entry.latestKnownMessageID, latest > acknowledged
             else { return false }
-            guard activeJoinedThreadIDs.contains(entry.channelID) else {
-                return !entry.hasAuthoritativeReadState || entry.isUnread
-            }
+            guard activeJoinedThreadIDs.contains(entry.channelID) else { return entry.isUnread }
             let settings = entry.threadNotificationSettings
             let isMuted = settings?.isMuted == true
                 && (settings?.muteConfiguration?.isActive(at: now) ?? true)
@@ -1656,9 +1669,10 @@ extension AccountReadStateModel {
 
     func unread(channelID: ChannelID, now: Date = .now) -> Bool {
         _ = self[unread: channelID]
-        guard let entry = entriesStorage[channelID], entry.isAccessible, entry.isUnread else {
-            return false
-        }
+        // Discord's `canBeUnread` shares the joined-thread rule of mentions.
+        guard let entry = entriesStorage[channelID], entry.isAccessible, entry.isUnread,
+              countsMentions(entry)
+        else { return false }
         guard !isGuildResourceChannel(entry) else { return false }
         if entry.kind == .voice && entry.mentionCount == 0 {
             return false

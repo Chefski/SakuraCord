@@ -421,8 +421,9 @@ extension AppModel {
             result.firstMessage = firstMessage.preservingReactionReactors(
                 from: previous.firstMessage ?? firstMessage
             )
-        } else {
+        } else if !incoming.isFirstMessageLoaded {
             result.firstMessage = previous.firstMessage
+            result.isFirstMessageLoaded = previous.isFirstMessageLoaded
         }
         if let mostRecentMessage = incoming.mostRecentMessage {
             result.mostRecentMessage = mostRecentMessage.preservingReactionReactors(

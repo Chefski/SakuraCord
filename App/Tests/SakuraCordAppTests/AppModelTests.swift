@@ -1534,7 +1534,6 @@ func `reaction cooldown drops cancelled intent and cleared mutations`(clearMutat
         model.forumPosts.first(where: { $0.id == provider.unreadPostID })
     )
     #expect(model.readState.isNewForumPost(newPost))
-    #expect(!model.isForumPostUnread(newPost))
     #expect(model.shouldEmphasizeForumPost(newPost))
     #expect(model.isForumPostUnread(unreadPost))
     #expect(model.shouldEmphasizeForumPost(unreadPost))
@@ -1542,7 +1541,6 @@ func `reaction cooldown drops cancelled intent and cleared mutations`(clearMutat
 
     model.open(newPost)
     #expect(!model.readState.isNewForumPost(newPost))
-    #expect(!model.shouldEmphasizeForumPost(newPost))
 }
 
 @MainActor
@@ -7767,7 +7765,8 @@ private actor ForumVisitAcknowledgementTestProvider: ChatProvider {
                     guildID: guild.id,
                     parentID: forumID,
                     name: "Brand new",
-                    lastMessageID: MessageID(rawValue: newPostID.rawValue)
+                    // A reply a millisecond later, past Discord's fallback boundary.
+                    lastMessageID: MessageID(rawValue: newPostID.rawValue + (1 << 22))
                 )
             ),
             ForumPost(

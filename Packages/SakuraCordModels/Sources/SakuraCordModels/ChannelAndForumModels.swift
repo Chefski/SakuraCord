@@ -259,6 +259,9 @@ public struct ForumPost: Identifiable, Codable, Hashable, Sendable {
     private var storedFirstMessage: StoredMessage?
     private var storedMostRecentMessage: StoredMessage?
     public var isUnread: Bool
+    /// Whether Discord has answered for the starter, so a missing
+    /// `firstMessage` means it was deleted rather than not yet loaded.
+    public var isFirstMessageLoaded = false
 
     // Most bootstrap thread entries have no messages. Immutable boxes keep
     // absent messages compact and preserve independent mutation after a copy.

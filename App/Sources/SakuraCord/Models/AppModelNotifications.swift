@@ -77,13 +77,19 @@ extension AppModel {
         return inheritedChannelNotificationLevel(for: parent)
     }
 
+    /// Discord's forum card unread state: an active post past its read boundary.
     func shouldEmphasizeForumPost(_ post: ForumPost) -> Bool {
-        isForumPostUnread(post) || readState.isUnopenedForumPost(post)
+        !post.thread.isArchived && isForumPostUnread(post)
     }
 
-    func forumUnreadMessageCount(_ post: ForumPost) -> Int {
-        guard isForumPostUnread(post) else { return 0 }
-        return readState.unreadMessageCount(channelID: post.id)
+    /// Discord's card footer counts new replies only in an unread post the
+    /// account has opened, never more than its replies, so an unread starter
+    /// alone shows zero.
+    func forumUnreadMessageCount(_ post: ForumPost) -> Int? {
+        guard shouldEmphasizeForumPost(post),
+              readState[post.id]?.trackedAcknowledgedMessageID != nil
+        else { return nil }
+        return min(readState.unreadMessageCount(channelID: post.id), max(0, post.thread.messageCount))
     }
 
     func deliverNativeNotification(for message: Message, isMention: Bool = false) {

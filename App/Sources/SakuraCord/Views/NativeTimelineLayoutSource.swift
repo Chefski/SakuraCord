@@ -293,7 +293,10 @@ private struct AppModelMentionResolver {
 
     private var sourceGuildID: GuildID? {
         if let guildID = message?.guildID { return guildID }
-        if let channelID = message?.channelID { return channel(channelID)?.guildID }
+        // REST thread messages, such as a forum card's starter, omit their guild.
+        if let channelID = message?.channelID {
+            return channel(channelID)?.guildID ?? model.messagePresentationThread(channelID)?.guildID
+        }
         return model.selectedGuildID
     }
 

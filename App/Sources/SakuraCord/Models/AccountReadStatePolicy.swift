@@ -87,8 +87,9 @@ extension AccountReadStateModel {
         entry.kind == .forum ? MessageID(timestamp: now) : entry.latestKnownMessageID
     }
 
-    /// Match the server-list Read All scope: current server channels and
-    /// active joined threads, including muted conversations, without DMs.
+    /// Discord's server Mark as Read and the server-list Read All scope:
+    /// current server channels and active joined threads, including muted
+    /// conversations, without DMs.
     func allServerAcknowledgements(in guildIDs: Set<GuildID>) -> [BulkReadStateAcknowledgement] {
         let source = unreadPresentationSource()
         let forumsWithNewPosts = source.forumsWithNewPosts()
@@ -117,30 +118,12 @@ extension AccountReadStateModel {
     }
 
     func bulkAcknowledgements(
-        for guildID: GuildID,
-        now: Date = .now
-    ) -> [BulkReadStateAcknowledgement] {
-        let forumsWithNewPosts = unreadPresentationSource().forumsWithNewPosts()
-        return entries.values.compactMap { entry in
-            guard entry.guildID == guildID,
-                  unread(channelID: entry.channelID, now: now)
-                    || forumsWithNewPosts.contains(entry.channelID),
-                  let messageID = Self.acknowledgementTarget(for: entry, now: now)
-            else { return nil }
-            return BulkReadStateAcknowledgement(
-                channelID: entry.channelID,
-                messageID: messageID
-            )
-        }
-        .sorted { $0.channelID.rawValue < $1.channelID.rawValue }
-    }
-
-    func bulkAcknowledgements(
         for categoryID: ChannelID,
         guildID: GuildID,
         now: Date = .now
     ) -> [BulkReadStateAcknowledgement] {
-        let forumsWithNewPosts = unreadPresentationSource().forumsWithNewPosts()
+        let source = unreadPresentationSource()
+        let forumsWithNewPosts = source.forumsWithNewPosts()
         return entries.values.compactMap { entry in
             let belongsToCategory = entry.parentID == categoryID
                 || entry.parentID.flatMap {
@@ -150,6 +133,7 @@ extension AccountReadStateModel {
                   belongsToCategory,
                   entry.isAccessible,
                   entry.isUnread || forumsWithNewPosts.contains(entry.channelID),
+                  source.isAggregateConversation(entry),
                   !isGuildResourceChannel(entry),
                   entry.kind != .voice || entry.mentionCount > 0,
                   let messageID = Self.acknowledgementTarget(for: entry, now: now)
@@ -174,7 +158,7 @@ extension AccountReadStateModel {
         for entry in entries.values {
             guard entry.guildID == guildID,
                   entry.isAccessible,
-                  entry.countsAsUnreadConversation
+                  entry.countsAsUnreadConversation && source.isAggregateConversation(entry)
                     || source.newForumPostParentID(of: entry) != nil,
                   !isGuildResourceChannel(entry),
                   let parentID = entry.parentID

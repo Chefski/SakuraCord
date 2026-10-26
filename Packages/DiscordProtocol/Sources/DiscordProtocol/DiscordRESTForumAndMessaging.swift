@@ -717,8 +717,9 @@ extension DiscordRESTProvider {
             merged.firstMessage = firstMessage.preservingReactionReactors(
                 from: existing.firstMessage ?? firstMessage
             )
-        } else {
+        } else if !incoming.isFirstMessageLoaded {
             merged.firstMessage = existing.firstMessage
+            merged.isFirstMessageLoaded = existing.isFirstMessageLoaded
         }
         if let mostRecentMessage = incoming.mostRecentMessage {
             merged.mostRecentMessage = mostRecentMessage.preservingReactionReactors(
@@ -794,7 +795,7 @@ extension DiscordRESTProvider {
             forumPreviewHydrationQueues[supersededParentID] = nil
         }
         let missingIDs = postIDs.lazy.filter {
-            self.cachedForumPosts[parentID]?[$0]?.firstMessage == nil
+            self.cachedForumPosts[parentID]?[$0].map { $0.firstMessage == nil && !$0.isFirstMessageLoaded } ?? false
         }
         forumPreviewHydrationQueues[parentID, default: ForumPreviewHydrationQueue()]
             .enqueue(missingIDs)
@@ -846,6 +847,10 @@ extension DiscordRESTProvider {
                     post.firstMessage = message.preservingReactionReactors(
                         from: post.firstMessage ?? message
                     )
+                    post.isFirstMessageLoaded = true
+                } else if data.firstMessage == nil {
+                    post.firstMessage = nil
+                    post.isFirstMessageLoaded = true
                 }
                 if let message = try? data.mostRecentMessage?.domain() {
                     post.mostRecentMessage = message.preservingReactionReactors(
