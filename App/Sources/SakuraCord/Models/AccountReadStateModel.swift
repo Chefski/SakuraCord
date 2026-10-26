@@ -1321,9 +1321,11 @@ extension AccountReadStateModel {
     }
 
     /// Discord's forum unread count, which alone enables a forum's own Mark as
-    /// Read: active unread posts, joined or opened, whose newest message is past
-    /// the forum's tracked acknowledgement. A never-acknowledged forum has none,
-    /// whatever its new-post count.
+    /// Read: active posts whose newest message is past the forum's tracked
+    /// acknowledgement and that are unread. A joined post must also be unmuted
+    /// unless mentioned; a never-opened post counts as unread, because Discord's
+    /// fallback boundary for it is its creation. A never-acknowledged forum has
+    /// none, whatever its new-post count.
     func hasUnreadForumPosts(channelID: ChannelID, now: Date = .now) -> Bool {
         guard let forum = self[channelID], forum.kind == .forum,
               let acknowledged = forum.trackedAcknowledgedMessageID
@@ -1333,7 +1335,9 @@ extension AccountReadStateModel {
                   forumPostArchivedByID[entry.channelID] != true,
                   let latest = entry.latestKnownMessageID, latest > acknowledged
             else { return false }
-            guard activeJoinedThreadIDs.contains(entry.channelID) else { return entry.isUnread }
+            guard activeJoinedThreadIDs.contains(entry.channelID) else {
+                return !entry.hasAuthoritativeReadState || entry.isUnread
+            }
             let settings = entry.threadNotificationSettings
             let isMuted = settings?.isMuted == true
                 && (settings?.muteConfiguration?.isActive(at: now) ?? true)
@@ -1473,6 +1477,16 @@ extension AccountReadStateModel {
                 messageID: messageID,
                 succeeded: true
             )
+            // An accepted boundary is the floor for any still-pending intent's
+            // rollback, so a later failure cannot restore an older boundary.
+            if var rollbacks = pendingRollbacks[channelID] {
+                for (pendingID, rollback) in rollbacks {
+                    rollbacks[pendingID]?.lastAcknowledgedMessageID = maximum(
+                        rollback.lastAcknowledgedMessageID, messageID
+                    )
+                }
+                pendingRollbacks[channelID] = rollbacks
+            }
         }
         self[channelID] = entry
     }

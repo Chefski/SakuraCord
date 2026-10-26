@@ -173,6 +173,9 @@ struct AccountReadStateModelTests {
         // join check; a visit labels and counts against the captured boundary.
         let acknowledged = model(acknowledging: MessageID(rawValue: 100), joinedAt: joinedBefore)
         #expect(acknowledged.forumNewPostCount(channelID: channelID) == 1)
+        // Discord's forum unread count includes a never-opened post past the
+        // forum's acknowledgement, which enables the row's Mark as Read.
+        #expect(acknowledged.hasUnreadForumPosts(channelID: channelID))
         visitAndAcknowledge(acknowledged)
         #expect(acknowledged.isNewForumPost(newPost))
         #expect(acknowledged.forumNewPostCount(channelID: channelID) == 1)
@@ -205,13 +208,25 @@ struct AccountReadStateModelTests {
         // Mark as Read clears a never-read forum's count despite its seeded
         // boundary hiding the forum's own unread state.
         let unvisited = model(acknowledging: nil, joinedAt: joinedBefore)
+        #expect(!unvisited.hasUnreadForumPosts(channelID: channelID))
         let targets = unvisited.bulkAcknowledgements(for: guildID)
         #expect(targets.map(\.channelID) == [channelID])
-        #expect(unvisited.allServerAcknowledgements(in: [guildID]) == targets)
+        #expect(unvisited.allServerAcknowledgements(in: [guildID]).map(\.channelID) == [channelID])
+        // Like the visit, bulk acknowledgement covers the forum up to now.
+        #expect(targets.allSatisfy { $0.messageID > MessageID(rawValue: newPostID.rawValue) })
         for target in targets {
             unvisited.markAcknowledgementPending(channelID: target.channelID, messageID: target.messageID)
         }
         #expect(unvisited.forumNewPostCount(channelID: channelID) == 0)
+
+        // A bulk acknowledgement that succeeds while the visit's is pending is
+        // the floor if the visit's then fails, so the post stays read.
+        let overlapping = model(acknowledging: MessageID(rawValue: 100), joinedAt: joinedBefore)
+        overlapping.markAcknowledgementPending(channelID: channelID, messageID: MessageID(rawValue: 1_000))
+        overlapping.markAcknowledgementPending(channelID: channelID, messageID: MessageID(rawValue: 500))
+        overlapping.completeAcknowledgement(channelID: channelID, messageID: MessageID(rawValue: 500), token: nil)
+        overlapping.failAcknowledgement(channelID: channelID, messageID: MessageID(rawValue: 1_000))
+        #expect(overlapping.forumNewPostCount(channelID: channelID) == 0)
 
         // Joined posts keep their label but leave the sidebar count.
         let joined = model(acknowledging: nil, joinedAt: joinedBefore)

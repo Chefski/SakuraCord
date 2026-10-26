@@ -80,6 +80,13 @@ extension AccountReadStateModel {
         return unreadPolicySource.defaultNotificationLevelByGuild[guildID] ?? .onlyMentions
     }
 
+    /// Discord acknowledges a forum up to the current time, so its boundary
+    /// covers every post and reply so far, and any other conversation up to
+    /// its newest message.
+    nonisolated static func acknowledgementTarget(for entry: Entry, now: Date) -> MessageID? {
+        entry.kind == .forum ? MessageID(timestamp: now) : entry.latestKnownMessageID
+    }
+
     /// Match the server-list Read All scope: current server channels and
     /// active joined threads, including muted conversations, without DMs.
     func allServerAcknowledgements(in guildIDs: Set<GuildID>) -> [BulkReadStateAcknowledgement] {
@@ -104,7 +111,7 @@ extension AccountReadStateModel {
               source.isAggregateConversation(entry),
               !isGuildResourceChannel(entry),
               [.text, .announcement, .forum, .voice].contains(entry.kind),
-              let messageID = entry.latestKnownMessageID
+              let messageID = Self.acknowledgementTarget(for: entry, now: .now)
         else { return nil }
         return BulkReadStateAcknowledgement(channelID: entry.channelID, messageID: messageID)
     }
@@ -118,7 +125,7 @@ extension AccountReadStateModel {
             guard entry.guildID == guildID,
                   unread(channelID: entry.channelID, now: now)
                     || forumsWithNewPosts.contains(entry.channelID),
-                  let messageID = entry.latestKnownMessageID
+                  let messageID = Self.acknowledgementTarget(for: entry, now: now)
             else { return nil }
             return BulkReadStateAcknowledgement(
                 channelID: entry.channelID,
@@ -145,7 +152,7 @@ extension AccountReadStateModel {
                   entry.isUnread || forumsWithNewPosts.contains(entry.channelID),
                   !isGuildResourceChannel(entry),
                   entry.kind != .voice || entry.mentionCount > 0,
-                  let messageID = entry.latestKnownMessageID
+                  let messageID = Self.acknowledgementTarget(for: entry, now: now)
             else { return nil }
             return BulkReadStateAcknowledgement(
                 channelID: entry.channelID,

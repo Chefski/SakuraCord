@@ -148,14 +148,18 @@ never-acknowledged channel shows Discord's separate "NEW" channel pill instead,
 which SakuraCord does not implement. Server, category and Read All
 acknowledgements include a forum with counted posts even when its own boundary
 is seeded, so they clear a never-read forum's count, and a completed local
-acknowledgement is tracked before its Gateway echo. A forum's own Mark as Read
-is enabled only by Discord's forum unread count: active unread posts, joined or
-opened, newer than the forum's tracked acknowledgement, so it is unavailable on
-a never-read forum whatever its new-post count. It acknowledges the forum up to
-the current time. Labels, counts and server Mark as Read
-were compared live in web build 649389 and SakuraCord on 25 and 26 October
-2026, with the official client's acknowledgements blocked so both read the
-same server state.
+acknowledgement is tracked before its Gateway echo; a still-pending earlier
+intent that later fails cannot roll back behind it. A forum's own Mark as Read
+is enabled only by Discord's forum unread count: active posts newer than the
+forum's tracked acknowledgement that are unread, where a joined post must be
+unmuted unless mentioned and a never-opened post counts as unread (its fallback
+boundary is its creation; observed in the store on 26 October 2026). It is
+therefore unavailable on a never-read forum whatever its new-post count. Every
+acknowledgement of a forum, from a visit, its row, the server, a category,
+Read All or the Inbox, targets the current time. Labels, counts and server
+Mark as Read were compared live in web build 649389 and SakuraCord on 25 and
+26 October 2026, with the official client's acknowledgements blocked so both
+read the same server state.
 
 Inbox tab/collapse settings use the shared type-1 protobuf writer and preserve
 unknown fields. A `400 / 50105` invalid-data rejection reloads settings and reports

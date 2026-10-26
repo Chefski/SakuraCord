@@ -272,9 +272,9 @@ extension AppModel {
         guard selectedChannelID == channelID,
               isConversationPresented(channelID),
               selectedChannel?.kind == .forum,
-              readState.shouldAcknowledgeForumVisit(channelID: channelID),
-              let target = Self.forumAcknowledgementBoundary(at: now)
+              readState.shouldAcknowledgeForumVisit(channelID: channelID)
         else { return }
+        let target = MessageID(timestamp: now)
         readState.markAcknowledgementPending(channelID: channelID, messageID: target)
         refreshUnreadPresentation()
         cancelNativeNotifications(channelID: channelID)
@@ -286,14 +286,6 @@ extension AppModel {
                 manual: false,
                 mentionCount: nil
             )
-        )
-    }
-
-    nonisolated static func forumAcknowledgementBoundary(at date: Date) -> MessageID? {
-        let milliseconds = UInt64(max(0, date.timeIntervalSince1970 * 1_000))
-        guard milliseconds >= ClientNonce.discordEpochMilliseconds else { return nil }
-        return MessageID(
-            rawValue: (milliseconds - ClientNonce.discordEpochMilliseconds) << 22
         )
     }
 
@@ -477,9 +469,9 @@ extension AppModel {
     func markConversationRead(channelID: ChannelID) {
         guard !runsChatPerformanceBenchmark else { return }
         guard canMarkConversationRead(channelID: channelID),
-              let target = readState[channelID]?.kind == .forum
-                ? MessageID(timestamp: .now)
-                : readState[channelID]?.latestKnownMessageID
+              let target = readState[channelID].flatMap({
+                  AccountReadStateModel.acknowledgementTarget(for: $0, now: .now)
+              })
         else { return }
         preserveUnreadDividerIfNeeded(channelID: channelID)
         discardPendingAcknowledgement(for: channelID)
