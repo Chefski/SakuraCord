@@ -48,10 +48,13 @@ or discarding subsequent live messages and mentions.
 Reconnects overlay pending intent rather than cancelling it. No automatic replay
 follows an ambiguous failure.
 
-Explicit Mark Unread uses the preceding message boundary with `manual:true` and
-recomputed mention count. **Inbox Undo is different:** it sends an ordinary ACK
-to the captured old boundary, preserving `last_viewed` and omitting `manual` and
-`mention_count`. A strictly newer account read-state version can therefore move
+Explicit Mark Unread targets the nearest older loaded message, or the first
+snowflake of the previous millisecond when none is loaded, with `manual:true`
+and recomputed mention count (module 439147, build 649389). Discord compares
+read boundaries by timestamp, so a boundary inside the selected message's own
+millisecond, such as its ID less one, leaves it read in the official client.
+**Inbox Undo is different:** it sends an ordinary ACK to the captured old
+boundary, preserving `last_viewed` and omitting `manual` and `mention_count`. A strictly newer account read-state version can therefore move
 the boundary backwards without `manual`. Older versions are ignored; equal-version
 ordinary updates do not gain that authority. A pending Undo's exact target must
 survive a preceding read ACK arriving late. Do not impose unconditional monotonicity.
@@ -62,8 +65,9 @@ Opening/refreshing Unread freezes group order and message boundaries. New messag
 do not append to that frozen range; edits/deletions reconcile existing entries.
 Groups page history forward from the captured old boundary. Forum groups use post
 IDs and the live thread catalogue. A normal Mark Read targets the captured newest
-boundary, except that a forum group, like every forum acknowledgement, targets the
-current time; bulk operations capture targets before batching `/read-states/ack-bulk`.
+boundary, except that a forum group, like every forum acknowledgement but a
+category's, targets the current time; bulk operations capture targets before
+batching `/read-states/ack-bulk`.
 Do not recompute targets from a later rerender or restore obsolete mention counts
 on Undo. Fully loaded expanded empty groups may acknowledge and disappear without
 Undo; incomplete loads do not establish emptiness.
@@ -160,9 +164,11 @@ muted forum, and unless the forum's unread setting resolves to All Messages. A
 recently created, never-acknowledged channel shows Discord's separate "NEW" channel pill instead,
 which SakuraCord does not implement. Server and Read All acknowledgements
 include every forum, read or not, as Discord's bulk acknowledgement does
-(observed 26 October 2026); a category acknowledgement includes a forum with
-counted posts even when its own boundary is seeded. Both clear a never-read
-forum's count, and a completed local
+(observed 26 October 2026). A category's Mark as Read (module 334738) instead
+sends each conversation its own channel ACK: every readable child (text,
+announcement, forum and voice) and its active joined threads, read or unread
+and muted or not, at its newest message, so a forum targets its latest post.
+Each of these clears a never-read forum's count, and a completed local
 acknowledgement is tracked before its Gateway echo; a still-pending earlier
 intent that later fails cannot roll back behind it. A forum's own Mark as Read
 is enabled only by Discord's forum unread count: active posts newer than the
@@ -176,8 +182,8 @@ footer shows "(N New)" only for an unread post with a tracked acknowledgement
 (Discord's "opened"), which a post created while running gains only from an
 acknowledgement or the next READY, with N its unread count capped at the
 reply count, so an unread starter alone shows "(0 New)", and at 25+ (module
-435470). Every acknowledgement of a forum, from a visit, its row, the server, a
-category, Read All or the Inbox, targets the current time. Labels, counts and server
+435470). Every other acknowledgement of a forum, from a visit, its row, the server,
+Read All or the Inbox, targets the current time. Labels, counts and server
 Mark as Read were compared live in web build 649389 and SakuraCord on 25 and
 26 October 2026, with the official client's acknowledgements blocked so both
 read the same server state.

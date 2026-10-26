@@ -114,13 +114,15 @@ extension AccountReadStateModel {
         return BulkReadStateAcknowledgement(channelID: entry.channelID, messageID: messageID)
     }
 
-    func bulkAcknowledgements(
+    /// Discord's category Mark as Read (module 334738, build 649389) forces an
+    /// acknowledgement of every readable child and its active joined threads,
+    /// read or muted alike, at its newest message: a forum's latest post,
+    /// not the current time.
+    func categoryAcknowledgements(
         for categoryID: ChannelID,
-        guildID: GuildID,
-        now: Date = .now
+        guildID: GuildID
     ) -> [BulkReadStateAcknowledgement] {
         let source = unreadPresentationSource()
-        let forumsWithNewPosts = source.forumsWithNewPosts()
         return entries.values.compactMap { entry in
             let belongsToCategory = entry.parentID == categoryID
                 || entry.parentID.flatMap {
@@ -129,11 +131,10 @@ extension AccountReadStateModel {
             guard entry.guildID == guildID,
                   belongsToCategory,
                   entry.isAccessible,
-                  entry.isUnread || forumsWithNewPosts.contains(entry.channelID),
                   source.isAggregateConversation(entry),
                   !isGuildResourceChannel(entry),
-                  entry.kind != .voice || entry.mentionCount > 0,
-                  let messageID = Self.acknowledgementTarget(for: entry, now: now)
+                  [.text, .announcement, .forum, .voice].contains(entry.kind),
+                  let messageID = entry.latestKnownMessageID
             else { return nil }
             return BulkReadStateAcknowledgement(
                 channelID: entry.channelID,
@@ -145,8 +146,8 @@ extension AccountReadStateModel {
 
     /// Resolves every category carrying an acknowledgement-eligible unread
     /// conversation in one account-store pass. The sidebar renders all
-    /// categories together, so asking `bulkAcknowledgements` once per header
-    /// multiplied the same account-wide scan during startup updates.
+    /// categories together, so a scan per header would multiply the same
+    /// account-wide pass during startup updates.
     func unreadCategoryIDs(
         in guildID: GuildID
     ) -> Set<ChannelID> {

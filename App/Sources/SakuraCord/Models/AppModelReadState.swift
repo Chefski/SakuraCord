@@ -208,7 +208,13 @@ extension AppModel {
             startingAt: message.id,
             currentUserID: currentUserID
         )
-        let target = MessageID(rawValue: message.id.rawValue - 1)
+        // Discord (module 439147, build 649389) targets the nearest older
+        // loaded message, else the previous millisecond. Its read state
+        // compares timestamps, so a boundary inside the selected message's
+        // own millisecond would leave that message read.
+        let millisecond = message.id.rawValue >> 22
+        let target = conversationMessages.lazy.map(\.id).filter { $0 < message.id }.max()
+            ?? MessageID(rawValue: millisecond > 0 ? (millisecond - 1) << 22 : 0)
         discardPendingAcknowledgement(for: channelID)
         readState.markUnread(
             channelID: channelID,
@@ -481,11 +487,15 @@ extension AppModel {
                   AccountReadStateModel.acknowledgementTarget(for: $0, now: .now)
               })
         else { return }
+        markRead(channelID: channelID, through: target)
+        refreshUnreadPresentation(readChangedChannelID: channelID)
+    }
+
+    private func markRead(channelID: ChannelID, through target: MessageID) {
         preserveUnreadDividerIfNeeded(channelID: channelID)
         discardPendingAcknowledgement(for: channelID)
         readState.unblockAutomaticAcknowledgement(channelID: channelID)
         readState.markAcknowledgementPending(channelID: channelID, messageID: target)
-        refreshUnreadPresentation(readChangedChannelID: channelID)
         cancelNativeNotifications(channelID: channelID)
         enqueueAcknowledgement(
             channelID: channelID,
@@ -567,74 +577,14 @@ extension AppModel {
         refreshServerRailPresentation(guildID: guildID)
     }
 
+    /// Discord's category Mark as Read sends each conversation its own
+    /// channel acknowledgement, as an explicit read does.
     func markCategoryRead(categoryID: ChannelID, guildID: GuildID) {
         guard !runsChatPerformanceBenchmark else { return }
-        guard categoryAcknowledgementTasks[categoryID] == nil else { return }
-        let targets = readState.bulkAcknowledgements(
-            for: categoryID,
-            guildID: guildID
-        )
-        guard !targets.isEmpty else { return }
-
-        for target in targets {
-            preserveUnreadDividerIfNeeded(channelID: target.channelID)
-            discardPendingAcknowledgement(for: target.channelID)
-            readState.unblockAutomaticAcknowledgement(channelID: target.channelID)
-            readState.markAcknowledgementPending(
-                channelID: target.channelID,
-                messageID: target.messageID
-            )
-            cancelNativeNotifications(channelID: target.channelID)
+        for target in readState.categoryAcknowledgements(for: categoryID, guildID: guildID) {
+            markRead(channelID: target.channelID, through: target.messageID)
         }
         refreshUnreadPresentation()
-
-        let generation = acknowledgementGeneration
-        let session = accountSession()
-        let activeProvider = session.provider
-        categoryAcknowledgementTasks[categoryID] = Task { [weak self] in
-            do {
-                try await activeProvider.acknowledgeBulk(targets)
-                guard let self,
-                      self.isCurrentAccountSession(session),
-                      generation == self.acknowledgementGeneration
-                else { return }
-                for target in targets {
-                    self.readState.completeAcknowledgement(
-                        channelID: target.channelID,
-                        messageID: target.messageID,
-                        token: nil
-                    )
-                }
-            } catch is CancellationError {
-                return
-            } catch let partial as PartialBulkReadAcknowledgementError {
-                guard let self,
-                      self.isCurrentAccountSession(session),
-                      generation == self.acknowledgementGeneration
-                else { return }
-                self.resolvePartialBulkAcknowledgement(partial, targets: targets)
-                self.errorMessage =
-                    "Discord accepted part of the category read-state update, but not the remaining updates."
-            } catch {
-                guard let self,
-                      self.isCurrentAccountSession(session),
-                      generation == self.acknowledgementGeneration
-                else { return }
-                for target in targets {
-                    self.readState.failAcknowledgement(
-                        channelID: target.channelID,
-                        messageID: target.messageID
-                    )
-                }
-                self.errorMessage = "Discord did not accept the category read-state update."
-            }
-            guard let self,
-                  self.isCurrentAccountSession(session),
-                  generation == self.acknowledgementGeneration
-            else { return }
-            self.refreshUnreadPresentation()
-            self.categoryAcknowledgementTasks[categoryID] = nil
-        }
     }
 
     func resolvePartialBulkAcknowledgement(

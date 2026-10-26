@@ -867,7 +867,15 @@ struct AccountReadStateModelTests {
             )
         )
         #expect(model.guildUnread(guildID))
-        #expect(model.bulkAcknowledgements(for: categoryID, guildID: guildID).map(\.channelID) == [forumID])
+        // Discord's category action also acknowledges the read channel, and
+        // targets the forum's latest post rather than the current time.
+        #expect(
+            model.categoryAcknowledgements(for: categoryID, guildID: guildID)
+                == [
+                    BulkReadStateAcknowledgement(channelID: channelID, messageID: MessageID(rawValue: 10)),
+                    BulkReadStateAcknowledgement(channelID: forumID, messageID: MessageID(rawValue: postID.rawValue)),
+                ]
+        )
 
         // A joined thread keeps lighting the server after its forum's
         // boundary has moved past it.
@@ -1009,10 +1017,10 @@ struct AccountReadStateModelTests {
 
     @Test func `inaccessible channels are excluded from bulk acknowledgements`() {
         let model = makeModel(latest: 11, acknowledged: 10)
-        #expect(!model.bulkAcknowledgements(for: categoryID, guildID: guildID).isEmpty)
+        #expect(!model.categoryAcknowledgements(for: categoryID, guildID: guildID).isEmpty)
 
         model.applyAccessibility([channelID: false])
-        #expect(model.bulkAcknowledgements(for: categoryID, guildID: guildID).isEmpty)
+        #expect(model.categoryAcknowledgements(for: categoryID, guildID: guildID).isEmpty)
     }
 
     enum MuteScenario: CaseIterable {
@@ -1986,7 +1994,9 @@ func `read state completion releases a held backlog without another geometry cal
     #expect(await eventually { await provider.acknowledgementRequests.count == 1 })
     let request = try #require(await provider.acknowledgementRequests.first)
     #expect(request.channelID == channelID)
-    #expect(request.messageID.rawValue == selectedMessage.id.rawValue - 1)
+    // Discord's boundary is the previous loaded message, not the selected
+    // ID less one, which its millisecond comparison would treat as read.
+    #expect(request.messageID == model.messages[model.messages.index(before: selectedIndex)].id)
     #expect(request.manual)
     #expect(request.mentionCount == expectedMentions)
     #expect((request.mentionCount ?? 0) > 0)
