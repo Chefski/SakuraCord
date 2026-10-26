@@ -97,6 +97,7 @@ struct RootView: View {
                 )
             }
         }
+        .modifier(HumanCaptchaPresentation(store: model.captcha))
         .modifier(MessageSearchExperienceModifier(
             model: model,
             search: search,

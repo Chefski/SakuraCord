@@ -82,9 +82,16 @@ extension AppModel {
             && (!accountTransitionIsActive || session.allowsTransition)
     }
 
+    /// No challenge is presented for a session being replaced or signed out.
+    func solveCaptcha(_ challenge: DiscordCaptchaChallenge) async -> String? {
+        guard !accountTransitionIsActive else { return nil }
+        return await captcha.solution(for: challenge)
+    }
+
     func invalidateAccountSession() {
         accountSessionGeneration &+= 1
         resetMessageSearches()
+        captcha.cancel()
         serverInvites.reset()
         friends.reset()
         lastDirectMessageSelection = nil

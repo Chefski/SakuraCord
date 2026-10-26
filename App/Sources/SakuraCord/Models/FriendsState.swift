@@ -32,7 +32,6 @@ final class FriendsState {
     var pendingUserIDs: Set<UserID> = []
     var actionError: String?
     var confirmation: FriendsConfirmation?
-    let captcha = HumanCaptchaStore.friends()
     /// Sections whose full relationship read was requested on this connection.
     @ObservationIgnored var loadedSections: Set<FriendsSection> = []
 
@@ -111,7 +110,6 @@ final class FriendsState {
     }
 
     func reset() {
-        captcha.cancel()
         isPresented = false
         selectedSection = nil
         presences = [:]
