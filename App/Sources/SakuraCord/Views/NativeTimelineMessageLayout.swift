@@ -836,7 +836,7 @@ extension NativeTimelineRowLayout {
                 if hasRichContent {
                     verticalOffset += InterfaceScale.metric(4)
                 }
-                let sizes = presentedReactions.map(reactionSize)
+                let sizes = presentedReactions.map { reactionSize($0) }
                     + [CGSize(
                         width: ReactionActionMenuPresentation.inline.width,
                         height: MessageReactionMetrics.pillHeight

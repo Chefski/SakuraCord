@@ -713,21 +713,11 @@ extension DiscordRESTProvider {
         existing: ForumPost
     ) -> ForumPost {
         var merged = incoming
-        if let firstMessage = incoming.firstMessage {
-            merged.firstMessage = firstMessage.preservingReactionReactors(
-                from: existing.firstMessage ?? firstMessage
-            )
-        } else if !incoming.isFirstMessageLoaded {
+        if incoming.firstMessage == nil, !incoming.isFirstMessageLoaded {
             merged.firstMessage = existing.firstMessage
             merged.isFirstMessageLoaded = existing.isFirstMessageLoaded
         }
-        if let mostRecentMessage = incoming.mostRecentMessage {
-            merged.mostRecentMessage = mostRecentMessage.preservingReactionReactors(
-                from: existing.mostRecentMessage ?? mostRecentMessage
-            )
-        } else {
-            merged.mostRecentMessage = existing.mostRecentMessage
-        }
+        merged.mostRecentMessage = incoming.mostRecentMessage ?? existing.mostRecentMessage
         merged.thread.lastNonMessageActivityAt = incoming.thread.lastNonMessageActivityAt
             ?? existing.thread.lastNonMessageActivityAt
         merged.owner = incoming.owner ?? existing.owner
@@ -844,18 +834,14 @@ extension DiscordRESTProvider {
                       var post = cachedForumPosts[parentID]?[channelID]
                 else { continue }
                 if let message = try? data.firstMessage?.domain() {
-                    post.firstMessage = message.preservingReactionReactors(
-                        from: post.firstMessage ?? message
-                    )
+                    post.firstMessage = message
                     post.isFirstMessageLoaded = true
                 } else if data.firstMessage == nil {
                     post.firstMessage = nil
                     post.isFirstMessageLoaded = true
                 }
                 if let message = try? data.mostRecentMessage?.domain() {
-                    post.mostRecentMessage = message.preservingReactionReactors(
-                        from: post.mostRecentMessage ?? message
-                    )
+                    post.mostRecentMessage = message
                 }
                 cachedForumPosts[parentID, default: [:]][channelID] = post
                 cacheForumPreviewMessages(post)

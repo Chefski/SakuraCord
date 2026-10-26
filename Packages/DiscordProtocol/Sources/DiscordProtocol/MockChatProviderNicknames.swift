@@ -43,7 +43,18 @@ public extension MockChatProvider {
 
     func sendFriendRequest(username: String, discriminator: Int?, note: String? = nil, captchaHandler: DiscordCaptchaHandler?) async throws {
         let known = snapshot.knownUsers + snapshot.relationships.compactMap(\.user)
-        guard let user = known.first(where: { $0.username == username }), user.id != currentUser.id else {
+        guard let user = known.first(where: { $0.username == username }) else {
+            throw RelationshipActionError.failed("Hm, didn’t work. Double check that the username is correct.")
+        }
+        try sendRequest(to: user, note: note)
+    }
+
+    func sendFriendRequest(to user: User, location: IgnoreActionLocation, captchaHandler: DiscordCaptchaHandler?) async throws {
+        try sendRequest(to: user, note: nil)
+    }
+
+    private func sendRequest(to user: User, note: String?) throws {
+        guard user.id != currentUser.id else {
             throw RelationshipActionError.failed("Hm, didn’t work. Double check that the username is correct.")
         }
         if snapshot.relationships.contains(where: { $0.id == user.id && $0.type == .friend }) {
@@ -63,7 +74,7 @@ public extension MockChatProvider {
         setRelationship(relationship)
     }
 
-    func removeRelationship(with userID: UserID, as removal: RelationshipRemoval) async throws {
+    func removeRelationship(with userID: UserID, as removal: RelationshipRemoval, captchaHandler: DiscordCaptchaHandler?) async throws {
         if var relationship = snapshot.relationships.first(where: { $0.id == userID }), relationship.isUserIgnored {
             relationship.type = .none
             relationship.nickname = nil
@@ -83,7 +94,7 @@ public extension MockChatProvider {
         setRelationship(Relationship(id: userID, type: .blocked, user: user, isUserIgnored: ignored))
     }
 
-    func setUserIgnored(_ userID: UserID, ignored: Bool, location: IgnoreActionLocation) async throws {
+    func setUserIgnored(_ userID: UserID, ignored: Bool, location: IgnoreActionLocation, captchaHandler: DiscordCaptchaHandler?) async throws {
         guard userID != currentUser.id else { throw ChatProviderError.invalidRequest("You can’t ignore yourself.") }
         var relationship = snapshot.relationships.first { $0.id == userID }
             ?? Relationship(id: userID, type: .none, user: snapshot.knownUsers.first { $0.id == userID })

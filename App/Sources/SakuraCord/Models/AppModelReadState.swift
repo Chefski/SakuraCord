@@ -276,7 +276,7 @@ extension AppModel {
         else { return }
         let target = MessageID(timestamp: now)
         readState.markAcknowledgementPending(channelID: channelID, messageID: target)
-        refreshUnreadPresentation()
+        refreshUnreadPresentation(readChangedChannelID: channelID)
         cancelNativeNotifications(channelID: channelID)
         enqueueAcknowledgement(
             channelID: channelID,
@@ -324,7 +324,7 @@ extension AppModel {
         Self.unreadDiagnosticsLogger.info(
             "Read acknowledgement scheduled; channel=\(channelID.rawValue, privacy: .public), target=\(messageID.rawValue, privacy: .public)"
         )
-        refreshUnreadPresentation()
+        refreshUnreadPresentation(readChangedChannelID: channelID)
         cancelNativeNotifications(channelID: channelID)
         let debounce = readAcknowledgementTiming.debounce
         acknowledgementTasks[channelID] = Task { [weak self] in
@@ -341,7 +341,7 @@ extension AppModel {
                 guard !movedAway, !self.isDetachedFromNewest(channelID) else {
                     self.readState.failAcknowledgement(channelID: channelID, messageID: messageID)
                     self.acknowledgementTasks[channelID] = nil
-                    self.refreshUnreadPresentation()
+                    self.refreshUnreadPresentation(readChangedChannelID: channelID)
                     return
                 }
                 self.enqueueAcknowledgement(
@@ -448,7 +448,7 @@ extension AppModel {
         let heldBacklog = readState.holdsAutomaticAcknowledgement(channelID)
         readState.failAcknowledgement(channelID: channelID, messageID: mutation.messageID)
         logReadAcknowledgementFailed(channelID: channelID, mutation: mutation)
-        refreshUnreadPresentation()
+        refreshUnreadPresentation(readChangedChannelID: channelID)
         reconcileInboxReadState()
         if mutation.manual {
             errorMessage = "Discord did not accept the read-state update."
@@ -477,7 +477,7 @@ extension AppModel {
         discardPendingAcknowledgement(for: channelID)
         readState.unblockAutomaticAcknowledgement(channelID: channelID)
         readState.markAcknowledgementPending(channelID: channelID, messageID: target)
-        refreshUnreadPresentation()
+        refreshUnreadPresentation(readChangedChannelID: channelID)
         cancelNativeNotifications(channelID: channelID)
         enqueueAcknowledgement(
             channelID: channelID,

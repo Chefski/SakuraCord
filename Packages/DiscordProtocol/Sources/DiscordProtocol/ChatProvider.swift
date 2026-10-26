@@ -99,13 +99,16 @@ public protocol ChatProvider: Sendable {
     func editGroupDirectMessage(_ channelID: ChannelID, changes: GroupDirectMessageChanges) async throws -> Channel
     /// Leaves a group DM, optionally without notifying the other members.
     func leaveGroupDirectMessage(_ channelID: ChannelID, silently: Bool) async throws
+    /// Closes a 1:1 DM, hiding it from the list without deleting its messages.
+    func closeDirectMessage(_ channelID: ChannelID) async throws
     /// Reads every relationship at most once per Gateway connection.
     func loadRelationships() async throws
-    func setUserIgnored(_ userID: UserID, ignored: Bool, location: IgnoreActionLocation) async throws
+    func setUserIgnored(_ userID: UserID, ignored: Bool, location: IgnoreActionLocation, captchaHandler: DiscordCaptchaHandler?) async throws
     func dismissIgnoredGroupWarning(in channelID: ChannelID) async throws
     func sendFriendRequest(username: String, discriminator: Int?, note: String?, captchaHandler: DiscordCaptchaHandler?) async throws
+    func sendFriendRequest(to user: User, location: IgnoreActionLocation, captchaHandler: DiscordCaptchaHandler?) async throws
     func acceptFriendRequest(from userID: UserID, confirmingStranger: Bool, captchaHandler: DiscordCaptchaHandler?) async throws
-    func removeRelationship(with userID: UserID, as removal: RelationshipRemoval) async throws
+    func removeRelationship(with userID: UserID, as removal: RelationshipRemoval, captchaHandler: DiscordCaptchaHandler?) async throws
     func blockUser(_ userID: UserID, captchaHandler: DiscordCaptchaHandler?) async throws
     func saveProfileChanges(
         _ changes: ProfileEditChanges, in scope: ProfileEditingScope,
@@ -497,13 +500,17 @@ public extension ChatProvider {
         throw ChatProviderError.invalidRequest("Leaving groups is unavailable for this session.")
     }
 
+    func closeDirectMessage(_ channelID: ChannelID) async throws {
+        throw ChatProviderError.invalidRequest("Closing direct messages is unavailable for this session.")
+    }
+
     func loadRelationships() async throws {}
 
     func dismissIgnoredGroupWarning(in channelID: ChannelID) async throws {
         throw ChatProviderError.invalidRequest("Group warning dismissal is unavailable for this session.")
     }
 
-    func setUserIgnored(_ userID: UserID, ignored: Bool, location: IgnoreActionLocation) async throws {
+    func setUserIgnored(_ userID: UserID, ignored: Bool, location: IgnoreActionLocation, captchaHandler: DiscordCaptchaHandler?) async throws {
         throw ChatProviderError.invalidRequest("This provider doesn’t support Ignore.")
     }
 
@@ -511,11 +518,15 @@ public extension ChatProvider {
         throw RelationshipActionError.failed("Friend requests are unavailable for this session.")
     }
 
+    func sendFriendRequest(to user: User, location: IgnoreActionLocation, captchaHandler: DiscordCaptchaHandler?) async throws {
+        throw RelationshipActionError.failed("Friend requests are unavailable for this session.")
+    }
+
     func acceptFriendRequest(from userID: UserID, confirmingStranger: Bool, captchaHandler: DiscordCaptchaHandler?) async throws {
         throw RelationshipActionError.failed("Friend requests are unavailable for this session.")
     }
 
-    func removeRelationship(with userID: UserID, as removal: RelationshipRemoval) async throws {
+    func removeRelationship(with userID: UserID, as removal: RelationshipRemoval, captchaHandler: DiscordCaptchaHandler?) async throws {
         throw RelationshipActionError.failed("Friend management is unavailable for this session.")
     }
 

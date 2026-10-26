@@ -369,7 +369,7 @@ extension AppModel {
             readState.merge(forumPost: incoming)
             let post: ForumPost
             if let index = forumCatalogueIndexByID[incoming.id] {
-                post = forumPostPreservingReactionPresentation(
+                post = forumPostMergingPrevious(
                     incoming,
                     previous: forumCataloguePosts[index]
                 )
@@ -394,7 +394,7 @@ extension AppModel {
             guard let previous = previousByID[incoming.id] else { return incoming }
             // The provider's catalogue carries authoritative membership, so a
             // confirmed leave is not undone by the previous card's settings.
-            return forumPostPreservingReactionPresentation(incoming, previous: previous, preservesMembership: false)
+            return forumPostMergingPrevious(incoming, previous: previous, preservesMembership: false)
         }
         // A page or provider list that omits the open post does not delete it.
         // Deletion closes the post before its catalogue is republished.
@@ -411,27 +411,17 @@ extension AppModel {
         )
     }
 
-    func forumPostPreservingReactionPresentation(
+    func forumPostMergingPrevious(
         _ incoming: ForumPost,
         previous: ForumPost,
         preservesMembership: Bool = true
     ) -> ForumPost {
         var result = incoming
-        if let firstMessage = incoming.firstMessage {
-            result.firstMessage = firstMessage.preservingReactionReactors(
-                from: previous.firstMessage ?? firstMessage
-            )
-        } else if !incoming.isFirstMessageLoaded {
+        if incoming.firstMessage == nil, !incoming.isFirstMessageLoaded {
             result.firstMessage = previous.firstMessage
             result.isFirstMessageLoaded = previous.isFirstMessageLoaded
         }
-        if let mostRecentMessage = incoming.mostRecentMessage {
-            result.mostRecentMessage = mostRecentMessage.preservingReactionReactors(
-                from: previous.mostRecentMessage ?? mostRecentMessage
-            )
-        } else {
-            result.mostRecentMessage = previous.mostRecentMessage
-        }
+        result.mostRecentMessage = incoming.mostRecentMessage ?? previous.mostRecentMessage
         result.owner = incoming.owner ?? previous.owner
         if preservesMembership, result.thread.notificationSettings == nil {
             result.thread.notificationSettings = previous.thread.notificationSettings

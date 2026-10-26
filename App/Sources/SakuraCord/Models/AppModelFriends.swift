@@ -127,12 +127,11 @@ extension AppModel {
 
     func sendFriendRequest() {
         guard !friends.isSendingRequest else { return }
-        guard case let .valid(username, discriminator) = FriendsListPolicy.parseUsername(friends.addFriendText) else {
+        guard case let .valid(tag, username, discriminator) = FriendsListPolicy.parseUsername(friends.addFriendText) else {
             friends.addFriendSuccess = nil
-            friends.addFriendError = "Hm, didn’t work. Double check that the username is correct."
+            friends.addFriendError = FriendsListPolicy.usernameFailureMessage
             return
         }
-        let tag = discriminator.map { "\(username)#\(String(format: "%04d", $0))" } ?? username
         friends.isSendingRequest = true
         friends.addFriendError = nil
         friends.addFriendSuccess = nil
@@ -150,10 +149,27 @@ extension AppModel {
                 model.friends.addFriendNote = ""
                 model.friends.addFriendSuccess = tag
                 model.friends.addFriendFocusRequest &+= 1
+            } catch RelationshipActionError.strangerConfirmationRequired {
+                guard model.isCurrentAccountSession(session) else { return }
+                model.friends.addFriendError = FriendsListPolicy.usernameFailureMessage
             } catch {
                 guard model.isCurrentAccountSession(session), !(error is CancellationError) else { return }
                 DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
                 model.friends.addFriendError = error.localizedDescription
+                model.friends.requestFailure = error.localizedDescription
+            }
+        }
+    }
+
+    /// Profiles, DMs and user menus send by user ID, not by typing a tag.
+    func sendFriendRequest(to user: User, location: IgnoreActionLocation) {
+        performRelationshipAction(on: user.id, failure: \.requestFailure) { model, session in
+            do {
+                try await session.provider.sendFriendRequest(
+                    to: user, location: location, captchaHandler: model.friendsCaptchaHandler(account: session)
+                )
+            } catch RelationshipActionError.strangerConfirmationRequired {
+                // Code 80013 on a send is silent, as in the official client.
             }
         }
     }
@@ -175,8 +191,10 @@ extension AppModel {
     }
 
     func removeRelationship(with user: User, as removal: RelationshipRemoval) {
-        performRelationshipAction(on: user.id) { _, session in
-            try await session.provider.removeRelationship(with: user.id, as: removal)
+        performRelationshipAction(on: user.id) { model, session in
+            try await session.provider.removeRelationship(
+                with: user.id, as: removal, captchaHandler: model.friendsCaptchaHandler(account: session)
+            )
         }
     }
 
@@ -191,8 +209,10 @@ extension AppModel {
         guard userID != currentUser?.id,
               relationships.first(where: { $0.id == userID })?.type != .blocked,
               isUserIgnored(userID) != ignored else { return }
-        performRelationshipAction(on: userID) { _, session in
-            try await session.provider.setUserIgnored(userID, ignored: ignored, location: location)
+        performRelationshipAction(on: userID) { model, session in
+            try await session.provider.setUserIgnored(
+                userID, ignored: ignored, location: location, captchaHandler: model.friendsCaptchaHandler(account: session)
+            )
         }
     }
 
@@ -257,11 +277,11 @@ extension AppModel {
     /// One user-initiated mutation per user at a time. Gateway events, which
     /// can arrive before the response, update the list; responses never do.
     private func performRelationshipAction(
-        on userID: UserID,
+        on userID: UserID, failure: ReferenceWritableKeyPath<FriendsState, String?> = \.actionError,
         _ operation: @escaping @MainActor (AppModel, AppModelAccountSession) async throws -> Void
     ) {
         guard friends.pendingUserIDs.insert(userID).inserted else { return }
-        friends.actionError = nil
+        friends[keyPath: failure] = nil
         let session = accountSession()
         startAccountChildTask(account: session) { model, session in
             defer { if model.isCurrentAccountSession(session) { model.friends.pendingUserIDs.remove(userID) } }
@@ -270,7 +290,7 @@ extension AppModel {
             } catch {
                 guard model.isCurrentAccountSession(session), !(error is CancellationError) else { return }
                 DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
-                model.friends.actionError = error.localizedDescription
+                model.friends[keyPath: failure] = error.localizedDescription
             }
         }
     }
