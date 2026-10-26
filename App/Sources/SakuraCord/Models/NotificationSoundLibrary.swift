@@ -188,9 +188,9 @@ actor BannerSoundStore {
 }
 
 nonisolated extension NotificationSoundLibrary {
-    /// Notification Center ignores sounds of 30 seconds or longer, so the
-    /// banner plays the start of a longer file.
-    private static let bannerMaximumSeconds = 29.0
+    /// Notification Center ignores sounds of 30 seconds or longer, so every
+    /// notification sound, in the app or in a banner, plays only its start.
+    static let maximumSeconds = 29.0
     private static let bannerChunkFrames: AVAudioFrameCount = 32_768
 
     static func convertToLinearPCM(from source: URL, to destination: URL) throws {
@@ -207,7 +207,7 @@ nonisolated extension NotificationSoundLibrary {
             ]
         )
         guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: bannerChunkFrames) else { return }
-        let limit = min(input.length, AVAudioFramePosition(format.sampleRate * bannerMaximumSeconds))
+        let limit = min(input.length, AVAudioFramePosition(format.sampleRate * maximumSeconds))
         while input.framePosition < limit {
             let remaining = AVAudioFrameCount(limit - input.framePosition)
             try input.read(into: buffer, frameCount: min(bannerChunkFrames, remaining))

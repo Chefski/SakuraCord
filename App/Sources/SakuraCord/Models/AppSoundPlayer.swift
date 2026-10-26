@@ -69,6 +69,8 @@ final class MacAppSoundPlayer: AppSoundPlaying {
         /// file even when the player fell back, so a repaired file is picked up.
         var sourceURL: URL
         var sourceStamp: NotificationSoundLibrary.FileStamp?
+        /// A temporary copy holding the first `maximumSeconds` of a longer file.
+        var trimmedURL: URL?
     }
 
     private var players: [AppSoundEffect: AVAudioPlayer] = [:]
@@ -187,16 +189,29 @@ final class MacAppSoundPlayer: AppSoundPlaying {
                 for: kind
             )
         }
-        guard let player else {
+        guard var player else {
             scopedURL?.stopAccessingSecurityScopedResource()
             return nil
+        }
+        var trimmedURL: URL?
+        if player.duration > NotificationSoundLibrary.maximumSeconds {
+            let url = FileManager.default.temporaryDirectory.appending(path: "\(UUID().uuidString).caf")
+            if (try? NotificationSoundLibrary.convertToLinearPCM(from: player.url ?? resolution.url, to: url)) != nil,
+               let trimmed = NotificationSoundLibrary.makePlayer(at: url)
+            {
+                player = trimmed
+                trimmedURL = url
+            } else {
+                try? FileManager.default.removeItem(at: url)
+            }
         }
         notificationSlots[effect] = NotificationSlot(
             choice: choice,
             player: player,
             scopedURL: scopedURL,
             sourceURL: resolution.url,
-            sourceStamp: NotificationSoundLibrary.FileStamp(resolution.url)
+            sourceStamp: NotificationSoundLibrary.FileStamp(resolution.url),
+            trimmedURL: trimmedURL
         )
         return player
     }
@@ -225,6 +240,7 @@ final class MacAppSoundPlayer: AppSoundPlaying {
         guard let slot = notificationSlots.removeValue(forKey: effect) else { return }
         slot.player.stop()
         slot.scopedURL?.stopAccessingSecurityScopedResource()
+        if let trimmedURL = slot.trimmedURL { try? FileManager.default.removeItem(at: trimmedURL) }
     }
 }
 
