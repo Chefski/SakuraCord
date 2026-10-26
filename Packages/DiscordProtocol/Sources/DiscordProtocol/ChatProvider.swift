@@ -47,8 +47,8 @@ public protocol ChatProvider: Sendable {
     func updateGuildChannelSelection(in guildID: GuildID, enabled: Bool?, channels: [ChannelID: Bool]) async throws -> GuildNotificationSettings
 
     func serverInvite(_ reference: ServerInviteReference) async throws -> ServerInvite
-    func acceptServerInvite(_ reference: ServerInviteReference, messageID: MessageID?, captchaHandler: DiscordCaptchaHandler?) async throws -> ServerInviteAcceptance
-    func joinDiscoverableGuild(_ guildID: GuildID, captchaHandler: DiscordCaptchaHandler?) async throws -> Bool
+    func acceptServerInvite(_ reference: ServerInviteReference, messageID: MessageID?) async throws -> ServerInviteAcceptance
+    func joinDiscoverableGuild(_ guildID: GuildID) async throws -> Bool
     func createServerInvite(in channelID: ChannelID, guildID: GuildID, settings: ServerInviteSettings) async throws -> CreatedServerInvite
     func leaveGuild(_ guildID: GuildID) async throws
     func clearLocalSearchCache() async throws
@@ -103,13 +103,13 @@ public protocol ChatProvider: Sendable {
     func closeDirectMessage(_ channelID: ChannelID) async throws
     /// Reads every relationship at most once per Gateway connection.
     func loadRelationships() async throws
-    func setUserIgnored(_ userID: UserID, ignored: Bool, location: IgnoreActionLocation, captchaHandler: DiscordCaptchaHandler?) async throws
+    func setUserIgnored(_ userID: UserID, ignored: Bool, location: IgnoreActionLocation) async throws
     func dismissIgnoredGroupWarning(in channelID: ChannelID) async throws
-    func sendFriendRequest(username: String, discriminator: Int?, note: String?, captchaHandler: DiscordCaptchaHandler?) async throws
-    func sendFriendRequest(to user: User, location: IgnoreActionLocation, captchaHandler: DiscordCaptchaHandler?) async throws
-    func acceptFriendRequest(from userID: UserID, confirmingStranger: Bool, captchaHandler: DiscordCaptchaHandler?) async throws
-    func removeRelationship(with userID: UserID, as removal: RelationshipRemoval, captchaHandler: DiscordCaptchaHandler?) async throws
-    func blockUser(_ userID: UserID, captchaHandler: DiscordCaptchaHandler?) async throws
+    func sendFriendRequest(username: String, discriminator: Int?, note: String?) async throws
+    func sendFriendRequest(to user: User, location: IgnoreActionLocation) async throws
+    func acceptFriendRequest(from userID: UserID, confirmingStranger: Bool) async throws
+    func removeRelationship(with userID: UserID, as removal: RelationshipRemoval) async throws
+    func blockUser(_ userID: UserID) async throws
     func saveProfileChanges(
         _ changes: ProfileEditChanges, in scope: ProfileEditingScope,
         didSave: @Sendable (ProfileSaveConfirmation) async -> Void
@@ -345,6 +345,8 @@ public protocol ChatProvider: Sendable {
     func ringPrivateCall(channelID: ChannelID, recipients: [UserID]?) async throws
     func stopRingingPrivateCall(channelID: ChannelID, recipients: [UserID]) async throws
     func updateClientAppState(isFocused: Bool) async
+    /// The app's human-solving presentation for challenges on any route.
+    func setCaptchaHandler(_ handler: @escaping DiscordCaptchaHandler) async
     func eventStream() async -> AsyncStream<ClientEvent>
     func disconnect() async
 }
@@ -383,14 +385,10 @@ public extension ChatProvider {
     }
 
     func acceptServerInvite(_ reference: ServerInviteReference, messageID: MessageID?) async throws -> ServerInviteAcceptance {
-        try await acceptServerInvite(reference, messageID: messageID, captchaHandler: nil)
-    }
-
-    func acceptServerInvite(_ reference: ServerInviteReference, messageID: MessageID?, captchaHandler: DiscordCaptchaHandler?) async throws -> ServerInviteAcceptance {
         throw ServerInviteError.unsupported("Joining servers is unavailable for this session.")
     }
 
-    func joinDiscoverableGuild(_ guildID: GuildID, captchaHandler: DiscordCaptchaHandler?) async throws -> Bool {
+    func joinDiscoverableGuild(_ guildID: GuildID) async throws -> Bool {
         throw ServerInviteError.unsupported("Joining servers is unavailable for this session.")
     }
 
@@ -510,27 +508,27 @@ public extension ChatProvider {
         throw ChatProviderError.invalidRequest("Group warning dismissal is unavailable for this session.")
     }
 
-    func setUserIgnored(_ userID: UserID, ignored: Bool, location: IgnoreActionLocation, captchaHandler: DiscordCaptchaHandler?) async throws {
+    func setUserIgnored(_ userID: UserID, ignored: Bool, location: IgnoreActionLocation) async throws {
         throw ChatProviderError.invalidRequest("This provider doesn’t support Ignore.")
     }
 
-    func sendFriendRequest(username: String, discriminator: Int?, note: String?, captchaHandler: DiscordCaptchaHandler?) async throws {
+    func sendFriendRequest(username: String, discriminator: Int?, note: String?) async throws {
         throw RelationshipActionError.failed("Friend requests are unavailable for this session.")
     }
 
-    func sendFriendRequest(to user: User, location: IgnoreActionLocation, captchaHandler: DiscordCaptchaHandler?) async throws {
+    func sendFriendRequest(to user: User, location: IgnoreActionLocation) async throws {
         throw RelationshipActionError.failed("Friend requests are unavailable for this session.")
     }
 
-    func acceptFriendRequest(from userID: UserID, confirmingStranger: Bool, captchaHandler: DiscordCaptchaHandler?) async throws {
+    func acceptFriendRequest(from userID: UserID, confirmingStranger: Bool) async throws {
         throw RelationshipActionError.failed("Friend requests are unavailable for this session.")
     }
 
-    func removeRelationship(with userID: UserID, as removal: RelationshipRemoval, captchaHandler: DiscordCaptchaHandler?) async throws {
+    func removeRelationship(with userID: UserID, as removal: RelationshipRemoval) async throws {
         throw RelationshipActionError.failed("Friend management is unavailable for this session.")
     }
 
-    func blockUser(_ userID: UserID, captchaHandler: DiscordCaptchaHandler? = nil) async throws {
+    func blockUser(_ userID: UserID) async throws {
         throw RelationshipActionError.failed("Blocking is unavailable for this session.")
     }
 
@@ -562,6 +560,8 @@ public extension ChatProvider {
     }
 
     func updateClientAppState(isFocused: Bool) async {}
+
+    func setCaptchaHandler(_ handler: @escaping DiscordCaptchaHandler) async {}
 
     func startApplicationStream(
         channelID _: ChannelID,
