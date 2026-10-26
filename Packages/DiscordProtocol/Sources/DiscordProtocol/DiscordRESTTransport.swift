@@ -705,6 +705,23 @@ extension DiscordRESTProvider {
         maximumAttempts requestedMaximumAttempts: Int? = nil,
         statusSave: StatusSettingsSaveContext? = nil
     ) async throws -> (Data, HTTPURLResponse) {
+        try await performAnsweringChallenge(
+            path, method: method, query: query, body: body, headers: headers,
+            maximumAttempts: requestedMaximumAttempts, statusSave: statusSave
+        ).response
+    }
+
+    /// `perform`, also telling whether a challenge went unanswered: the
+    /// person closed it, or it could not be shown, so nothing was replayed.
+    func performAnsweringChallenge(
+        _ path: String,
+        method: String,
+        query: [URLQueryItem],
+        body: [String: JSONValue]?,
+        headers: [String: String] = [:],
+        maximumAttempts requestedMaximumAttempts: Int? = nil,
+        statusSave: StatusSettingsSaveContext? = nil
+    ) async throws -> (response: (Data, HTTPURLResponse), challengeUnanswered: Bool) {
         let account = currentUser?.id
         let response = try await requestPerformance(
             path, method, query, body, headers, requestedMaximumAttempts, statusSave: statusSave
@@ -712,12 +729,15 @@ extension DiscordRESTProvider {
         // Discord can challenge any route. The identical request is replayed
         // once; a dismissed or repeated challenge reaches the route's own
         // failure mapping.
-        guard let challenge = DiscordCaptchaChallenge(data: response.0, status: response.1.statusCode),
-              let solution = try await humanSolution(for: challenge, account: account) else { return response }
-        return try await requestPerformance(
+        guard let challenge = DiscordCaptchaChallenge(data: response.0, status: response.1.statusCode) else {
+            return (response, false)
+        }
+        guard let solution = try await humanSolution(for: challenge, account: account) else { return (response, true) }
+        let replay = try await requestPerformance(
             path, method, query, body, headers.merging(challenge.replayHeaders(solution: solution)) { $1 }, 1,
             statusSave: statusSave
         )
+        return (replay, false)
     }
     @discardableResult
     func reserveRateLimitSlot(

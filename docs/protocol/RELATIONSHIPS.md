@@ -91,8 +91,10 @@ and clear on account teardown.
 
 Send, accept, block, cancel and Ignore are challenged most often and follow the
 shared [Human CAPTCHA](../PROTOCOL_BASELINE.md#human-captcha) contract. The
-replay keeps the request's surface context and note. A dismissed or repeated
-challenge shows that action's usual failure copy.
+replay keeps the request's surface context and note. A repeated challenge
+shows that action's usual failure copy. A dismissed challenge does too, except
+on a friend request send, which ends silently with the form unchanged: its
+usual copy blames the username.
 
 ## Ignore
 
