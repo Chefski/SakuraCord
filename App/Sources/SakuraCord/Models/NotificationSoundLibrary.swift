@@ -20,6 +20,15 @@ nonisolated enum NotificationSoundKind: CaseIterable, Sendable {
         case .call: "Call"
         }
     }
+
+    /// How much of a chosen file plays in the app. A message sound matches
+    /// the banner limit; a ringtone loops a longer stretch.
+    var playbackLimitSeconds: Double {
+        switch self {
+        case .message: NotificationSoundLibrary.bannerLimitSeconds
+        case .call: 300
+        }
+    }
 }
 
 nonisolated enum NotificationSoundKeys {
@@ -161,7 +170,11 @@ actor BannerSoundStore {
         let temporary = FileManager.default.temporaryDirectory.appending(path: name)
         defer { try? FileManager.default.removeItem(at: temporary) }
         do {
-            try NotificationSoundLibrary.convertToLinearPCM(from: resolution.url, to: temporary)
+            try NotificationSoundLibrary.convertToLinearPCM(
+                from: resolution.url,
+                to: temporary,
+                limitSeconds: NotificationSoundLibrary.bannerLimitSeconds
+            )
             try FileManager.default.createDirectory(at: Self.directory, withIntermediateDirectories: true)
             try FileManager.default.moveItem(at: temporary, to: Self.directory.appending(path: name))
         } catch {
@@ -193,12 +206,12 @@ actor BannerSoundStore {
 }
 
 nonisolated extension NotificationSoundLibrary {
-    /// Notification Center ignores sounds of 30 seconds or longer, so every
-    /// notification sound, in the app or in a banner, plays only its start.
-    static let maximumSeconds = 29.0
-    private static let bannerChunkFrames: AVAudioFrameCount = 32_768
+    /// Notification Center ignores sounds of 30 seconds or longer, so a
+    /// banner plays only the start of a longer file.
+    static let bannerLimitSeconds = 29.0
+    private static let conversionChunkFrames: AVAudioFrameCount = 32_768
 
-    static func convertToLinearPCM(from source: URL, to destination: URL) throws {
+    static func convertToLinearPCM(from source: URL, to destination: URL, limitSeconds: Double) throws {
         let input = try AVAudioFile(forReading: source)
         let format = input.processingFormat
         let output = try AVAudioFile(
@@ -211,11 +224,11 @@ nonisolated extension NotificationSoundLibrary {
                 AVLinearPCMIsFloatKey: false,
             ]
         )
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: bannerChunkFrames) else { return }
-        let limit = min(input.length, AVAudioFramePosition(format.sampleRate * maximumSeconds))
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: conversionChunkFrames) else { return }
+        let limit = min(input.length, AVAudioFramePosition(format.sampleRate * limitSeconds))
         while input.framePosition < limit {
             let remaining = AVAudioFrameCount(limit - input.framePosition)
-            try input.read(into: buffer, frameCount: min(bannerChunkFrames, remaining))
+            try input.read(into: buffer, frameCount: min(conversionChunkFrames, remaining))
             guard buffer.frameLength > 0 else { break }
             try output.write(from: buffer)
         }

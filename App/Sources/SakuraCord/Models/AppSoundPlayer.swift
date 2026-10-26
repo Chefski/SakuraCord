@@ -69,7 +69,7 @@ final class MacAppSoundPlayer: AppSoundPlaying {
         /// file even when the player fell back, so a repaired file is picked up.
         var sourceURL: URL
         var sourceStamp: NotificationSoundLibrary.FileStamp?
-        /// A temporary copy holding the first `maximumSeconds` of a longer file.
+        /// A temporary copy holding the first `playbackLimitSeconds` of a longer file.
         var trimmedURL: URL?
         /// The bookmark could not be resolved, for example while its volume
         /// is unmounted, so the slot plays Default until it resolves again.
@@ -194,9 +194,13 @@ final class MacAppSoundPlayer: AppSoundPlaying {
             )
         }
         var trimmedURL: URL?
-        if let long = player, long.duration > NotificationSoundLibrary.maximumSeconds {
+        if let long = player, long.duration > kind.playbackLimitSeconds {
             let url = FileManager.default.temporaryDirectory.appending(path: "\(UUID().uuidString).caf")
-            if (try? NotificationSoundLibrary.convertToLinearPCM(from: resolution.url, to: url)) != nil,
+            if (try? NotificationSoundLibrary.convertToLinearPCM(
+                from: resolution.url,
+                to: url,
+                limitSeconds: kind.playbackLimitSeconds
+            )) != nil,
                let trimmed = NotificationSoundLibrary.makePlayer(at: url)
             {
                 player = trimmed
