@@ -132,10 +132,12 @@ final class ForumBoardCard {
             transition.type = .fade
             transition.duration = 0.2
             transition.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            content.add(transition, forKey: Self.contentsFadeKey)
+            // Core Animation files every transition under `kCATransition`,
+            // whatever key it is given, so that is the key that removes it.
+            content.add(transition, forKey: kCATransition)
         } else {
             // An instant swap also ends a fade still showing older content.
-            content.removeAnimation(forKey: Self.contentsFadeKey)
+            content.removeAnimation(forKey: kCATransition)
         }
         content.contentsScale = scale
         content.contents = image
@@ -143,15 +145,13 @@ final class ForumBoardCard {
         didCommit?()
     }
 
-    private static let contentsFadeKey = "contents-fade"
-
     private func discardContent() {
         // A bitmap still queued for the old content need not be drawn.
         rasterTask?.cancel()
         renderGeneration &+= 1
         pendingScene = nil
         fadesNextCommit = nil
-        content.removeAnimation(forKey: Self.contentsFadeKey)
+        content.removeAnimation(forKey: kCATransition)
         content.contents = nil
         hasContent = false
     }
