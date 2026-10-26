@@ -14,13 +14,6 @@ nonisolated enum NotificationSoundKind: CaseIterable, Sendable {
         }
     }
 
-    var label: String {
-        switch self {
-        case .message: "Message"
-        case .call: "Call"
-        }
-    }
-
     /// How much of a chosen file plays in the app. A message sound matches
     /// the banner limit; a ringtone loops a longer stretch.
     var playbackLimitSeconds: Double {
@@ -128,9 +121,9 @@ nonisolated enum NotificationSoundLibrary {
 }
 
 /// Notification Center plays `UNNotificationSound(named:)` files from the
-/// app's `Library/Sounds`, so a custom choice is exported there as a CAF.
-/// The sandbox links that folder to `~/Library/Sounds`, which the
-/// entitlements make writable.
+/// app's `Library/Sounds`, so the message sound is exported there as a CAF.
+/// Calls ring only in the app and have no banner copy. The sandbox links
+/// that folder to `~/Library/Sounds`, which the entitlements make writable.
 actor BannerSoundStore {
     static let shared = BannerSoundStore()
 
@@ -142,31 +135,32 @@ actor BannerSoundStore {
 
     private static let logger = Logger(subsystem: "dev.sakuracord.SakuraCord", category: "Notifications")
     private static let directory = URL.libraryDirectory.appending(path: "Sounds", directoryHint: .isDirectory)
-    private var exports: [NotificationSoundKind: Export] = [:]
+    private static let prefix = "SakuraCord-message"
+    private var export: Export?
 
     /// The exported copy of `choice`, exported again when the choice or its
     /// file changed. Nil means the banner keeps the bundled sound.
-    func soundName(for choice: NotificationSoundLibrary.Choice, kind: NotificationSoundKind) -> String? {
+    func soundName(for choice: NotificationSoundLibrary.Choice) -> String? {
         guard choice.soundID != NotificationSoundLibrary.bundledID else {
-            replaceExport(kind, with: nil)
+            replaceExport(with: nil)
             return nil
         }
-        let resolution = NotificationSoundLibrary.resolve(choice, kind: kind)
+        let resolution = NotificationSoundLibrary.resolve(choice, kind: .message)
         // An unresolved bookmark keeps Default for now and is retried next time.
         guard choice.soundID != NotificationSoundLibrary.customID || resolution.isSecurityScoped else {
-            replaceExport(kind, with: nil)
+            replaceExport(with: nil)
             return nil
         }
         let isScoped = resolution.isSecurityScoped && resolution.url.startAccessingSecurityScopedResource()
         defer { if isScoped { resolution.url.stopAccessingSecurityScopedResource() } }
         let stamp = NotificationSoundLibrary.FileStamp(resolution.url)
-        if let export = exports[kind], export.choice == choice, export.sourceStamp == stamp,
+        if let export, export.choice == choice, export.sourceStamp == stamp,
            FileManager.default.fileExists(atPath: Self.directory.appending(path: export.name).path)
         {
             return export.name
         }
         // Notification Center caches a sound by name, so each export gets a new one.
-        let name = "\(Self.prefix(kind))-\(UUID().uuidString.prefix(8)).caf"
+        let name = "\(Self.prefix)-\(UUID().uuidString.prefix(8)).caf"
         let temporary = FileManager.default.temporaryDirectory.appending(path: name)
         defer { try? FileManager.default.removeItem(at: temporary) }
         do {
@@ -178,28 +172,21 @@ actor BannerSoundStore {
             try FileManager.default.createDirectory(at: Self.directory, withIntermediateDirectories: true)
             try FileManager.default.moveItem(at: temporary, to: Self.directory.appending(path: name))
         } catch {
-            replaceExport(kind, with: nil)
+            replaceExport(with: nil)
             let nsError = error as NSError
-            Self.logger.error("\(kind.label) banner sound export failed; domain=\(nsError.domain, privacy: .public), code=\(nsError.code)")
+            Self.logger.error("Message banner sound export failed; domain=\(nsError.domain, privacy: .public), code=\(nsError.code)")
             return nil
         }
-        replaceExport(kind, with: Export(choice: choice, sourceStamp: stamp, name: name))
+        replaceExport(with: Export(choice: choice, sourceStamp: stamp, name: name))
         return name
     }
 
-    private static func prefix(_ kind: NotificationSoundKind) -> String {
-        switch kind {
-        case .message: "SakuraCord-message"
-        case .call: "SakuraCord-call"
-        }
-    }
-
-    /// Records `export` and removes every other copy for `kind`, including
-    /// ones left by an earlier launch.
-    private func replaceExport(_ kind: NotificationSoundKind, with export: Export?) {
-        exports[kind] = export
+    /// Records `export` and removes every other copy, including ones left by
+    /// an earlier launch.
+    private func replaceExport(with newExport: Export?) {
+        export = newExport
         let names = (try? FileManager.default.contentsOfDirectory(atPath: Self.directory.path)) ?? []
-        for name in names where name.hasPrefix(Self.prefix(kind)) && name.hasSuffix(".caf") && name != export?.name {
+        for name in names where name.hasPrefix(Self.prefix) && name.hasSuffix(".caf") && name != newExport?.name {
             try? FileManager.default.removeItem(at: Self.directory.appending(path: name))
         }
     }

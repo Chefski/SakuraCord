@@ -525,12 +525,9 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
     }()
     private var center: UNUserNotificationCenter { .current() }
 
-    private static func bannerSound(
-        kind: NotificationSoundKind,
-        preferences: NotificationPreferences
-    ) async -> UNNotificationSound? {
+    private static func bannerSound(preferences: NotificationPreferences) async -> UNNotificationSound? {
         guard preferences.playsSound else { return nil }
-        guard let name = await BannerSoundStore.shared.soundName(for: preferences.soundChoice(for: kind), kind: kind)
+        guard let name = await BannerSoundStore.shared.soundName(for: preferences.soundChoice(for: .message))
         else { return notificationSound }
         return UNNotificationSound(named: UNNotificationSoundName(name))
     }
@@ -644,11 +641,11 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
             }
         }
         // Prepared before the last check, since a custom sound may need exporting.
-        let sound = await Self.bannerSound(kind: .message, preferences: preferences)
+        let sound = await Self.bannerSound(preferences: preferences)
         guard pendingRequests[identifier] == token, !Task.isCancelled,
               preferences.isEnabled, preferences.previewStyle == style
         else { return }
-        await add(content, identifier: identifier, sound: sound, kind: .message, preferences: preferences)
+        await add(content, identifier: identifier, sound: sound, kind: "Message", preferences: preferences)
     }
 
     func cancel(accountID: String, channelID: ChannelID) async {
@@ -673,7 +670,7 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
         _ content: UNNotificationContent,
         identifier: String,
         sound: UNNotificationSound?,
-        kind: NotificationSoundKind,
+        kind: StaticString,
         preferences: NotificationPreferences
     ) async {
         guard deliversNotifications, !isSuppressed, preferences.isEnabled,
@@ -687,7 +684,7 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
         } catch {
             let notificationError = error as NSError
             Self.logger.error(
-                "\(kind.label) notification delivery failed; domain=\(notificationError.domain, privacy: .public), code=\(notificationError.code)"
+                "\(kind) notification delivery failed; domain=\(notificationError.domain, privacy: .public), code=\(notificationError.code)"
             )
         }
     }

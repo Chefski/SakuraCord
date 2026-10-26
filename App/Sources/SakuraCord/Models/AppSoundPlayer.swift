@@ -79,7 +79,7 @@ final class MacAppSoundPlayer: AppSoundPlaying {
     private var players: [AppSoundEffect: AVAudioPlayer] = [:]
     private var notificationSlots: [AppSoundEffect: NotificationSlot] = [:]
     private var previewEffect: AppSoundEffect?
-    private var bannerExports: [NotificationSoundKind: Task<Void, Never>] = [:]
+    private var bannerExport: Task<Void, Never>?
     private let notificationPreferences: NotificationPreferences
 
     init(notificationPreferences: NotificationPreferences) {
@@ -228,8 +228,8 @@ final class MacAppSoundPlayer: AppSoundPlaying {
     }
 
     /// Follows every change to the stored choices, including Reset and
-    /// Import, which only change the preferences: exports them before the
-    /// first banner needs them, removes the copy when a choice returns to
+    /// Import, which only change the preferences: exports the message sound
+    /// before the first banner needs it, removes the copy when it returns to
     /// Default, and switches a ringing call to the new ringtone.
     private func syncBannerSounds() {
         withObservationTracking {
@@ -237,15 +237,12 @@ final class MacAppSoundPlayer: AppSoundPlaying {
         } onChange: { [weak self] in
             Task { @MainActor in self?.syncBannerSounds() }
         }
-        // Calls ring only in the app, so only the message sound has a banner copy.
-        for kind in [NotificationSoundKind.message] {
-            let choice = notificationPreferences.soundChoice(for: kind)
-            let previous = bannerExports[kind]
-            // Waiting keeps a superseded export from finishing after the newer one.
-            bannerExports[kind] = Task(priority: .utility) {
-                await previous?.value
-                _ = await BannerSoundStore.shared.soundName(for: choice, kind: kind)
-            }
+        let choice = notificationPreferences.soundChoice(for: .message)
+        let previous = bannerExport
+        // Waiting keeps a superseded export from finishing after the newer one.
+        bannerExport = Task(priority: .utility) {
+            await previous?.value
+            _ = await BannerSoundStore.shared.soundName(for: choice)
         }
         if existingPlayer(for: .callRinging)?.numberOfLoops == -1 { setLooping(.callRinging, active: true) }
     }
