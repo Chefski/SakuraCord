@@ -35,87 +35,96 @@ final class AccountReadStateModel {
         var activeJoinedThreads: [MessageThreadSummary] = []
     }
 
-    /// Unresolved acknowledgements for one conversation. The entry always
-    /// shows them over the read state Discord last accepted, so resolving one
-    /// only removes it or advances that accepted state.
+    /// Unresolved acknowledgements for one conversation, ordered as issued.
+    /// As on Discord, the most recent action wins: the entry shows the newest
+    /// of the accepted read state and the latest unresolved intent.
     private struct AcknowledgementIntents: Sendable {
-        /// A read boundary with its counts, and the arrivals counted when it
-        /// was captured.
-        struct Boundary: Sendable {
+        /// A read boundary, the counts of messages up to `knownMessageID` it
+        /// leaves unread, and the order in which it was issued or accepted.
+        /// Live messages above both are counted exactly on top.
+        struct State: Sendable {
+            var sequence: Int
             var messageID: MessageID?
             var mentionCount: Int
             var unreadMessageCount: Int
-            var receivedMentionCount: Int
-            var receivedUnreadMessageCount: Int
+            var knownMessageID: MessageID?
         }
 
-        struct Intent: Sendable {
-            var sequence: Int
-            /// Mark Unread or Inbox Undo: shown exactly, not as a floor.
-            var isExact: Bool
-            /// A read that leaves known messages unread keeps the counts below it.
-            var inheritsCounts: Bool
-            var boundary: Boundary
-        }
-
-        var accepted: Boundary
-        var intents: [MessageID: Intent] = [:]
-        var receivedMentionCount = 0
-        var receivedUnreadMessageCount = 0
-        var nextSequence = 0
+        var accepted: State
+        var intents: [State] = []
+        /// Messages received since the first intent, counted above any boundary.
+        var liveMessages: [(id: MessageID, isMention: Bool)] = []
+        var nextSequence = 1
 
         init(entry: Entry) {
-            accepted = Boundary(
+            accepted = State(
+                sequence: 0,
                 messageID: entry.lastAcknowledgedMessageID,
                 mentionCount: entry.mentionCount,
                 unreadMessageCount: entry.unreadMessageCount,
-                receivedMentionCount: 0,
-                receivedUnreadMessageCount: 0
+                knownMessageID: entry.latestKnownMessageID
             )
         }
 
-        mutating func add(
-            _ messageID: MessageID,
-            isExact: Bool,
-            inheritsCounts: Bool,
-            mentionCount: Int,
-            unreadMessageCount: Int
-        ) {
-            intents[messageID] = Intent(
-                sequence: nextSequence,
-                isExact: isExact,
-                inheritsCounts: inheritsCounts,
-                boundary: Boundary(
-                    messageID: messageID,
-                    mentionCount: mentionCount,
-                    unreadMessageCount: unreadMessageCount,
-                    receivedMentionCount: receivedMentionCount,
-                    receivedUnreadMessageCount: receivedUnreadMessageCount
-                )
-            )
+        var shown: State {
+            intents.last.flatMap { $0.sequence > accepted.sequence ? $0 : nil } ?? accepted
+        }
+
+        /// A read covering the shown state's earlier messages leaves none of
+        /// them unread; one below keeps their counts, as which it leaves is
+        /// unknown. Live messages are counted exactly either way.
+        mutating func issueRead(_ messageID: MessageID) {
+            var state = shown
+            if state.knownMessageID.map({ messageID >= $0 }) ?? true {
+                state.mentionCount = 0
+                state.unreadMessageCount = 0
+            }
+            state.messageID = messageID
+            issue(state)
+        }
+
+        mutating func issue(_ state: State) {
+            var state = state
+            state.sequence = nextSequence
+            nextSequence += 1
+            intents.append(state)
+        }
+
+        /// Discord accepted the newest intent for `messageID`: it supersedes
+        /// every earlier one, and becomes the accepted state unless a newer
+        /// state was accepted first.
+        mutating func succeed(_ messageID: MessageID?, as result: State? = nil) -> Bool {
+            guard let index = intents.lastIndex(where: { $0.messageID == messageID }) else { return false }
+            var state = result ?? intents[index]
+            state.sequence = intents[index].sequence
+            if state.sequence > accepted.sequence { accepted = state }
+            intents.removeFirst(index + 1)
+            return true
+        }
+
+        mutating func drop(_ messageID: MessageID) {
+            if let index = intents.lastIndex(where: { $0.messageID == messageID }) {
+                intents.remove(at: index)
+            }
+        }
+
+        /// A read state Discord reports: the echo of an intent, or else a newer
+        /// action than any issued so far.
+        mutating func acceptRemote(_ state: State) {
+            if succeed(state.messageID, as: state) { return }
+            accepted = state
+            accepted.sequence = nextSequence
             nextSequence += 1
         }
 
-        /// The latest Mark Unread shows exactly until a later read passes it;
-        /// a read shows only above the boundary beneath it.
         func present(on entry: inout Entry) {
-            let exact = intents.filter { $0.value.isExact }.max { $0.value.sequence < $1.value.sequence }
-            let read = intents
-                .filter { !$0.value.isExact && $0.value.sequence > (exact?.value.sequence ?? -1) }
-                .max { $0.key < $1.key }
-            var shown = exact?.value.boundary ?? accepted
-            if let read, shown.messageID.map({ read.key > $0 }) ?? true {
-                if read.value.inheritsCounts {
-                    shown.messageID = read.key
-                } else {
-                    shown = read.value.boundary
-                }
-            }
+            let shown = shown
+            let floor = maximum(shown.messageID, shown.knownMessageID)
+            let unseen = liveMessages.filter { message in floor.map { message.id > $0 } ?? true }
             entry.lastAcknowledgedMessageID = shown.messageID
-            entry.mentionCount = shown.mentionCount + receivedMentionCount - shown.receivedMentionCount
-            entry.unreadMessageCount = shown.unreadMessageCount
-                + receivedUnreadMessageCount - shown.receivedUnreadMessageCount
-            entry.pendingAcknowledgementID = read?.key ?? exact?.key
+            entry.mentionCount = shown.mentionCount + unseen.count { $0.isMention }
+            entry.unreadMessageCount = shown.unreadMessageCount + unseen.count
+            entry.pendingAcknowledgementID = intents.last?.messageID
         }
     }
 
@@ -857,14 +866,6 @@ extension AccountReadStateModel {
             $0 > (readStateVersion ?? Int.min)
         } == true
         var entry = entry(for: state.channelID)
-        if let pending = entry.pendingAcknowledgementID,
-           acknowledgementIntents[state.channelID]?.intents[pending]?.isExact == true,
-           state.lastAcknowledgedMessageID != pending {
-            // A preceding read ACK may arrive after a queued Undo. Keep the
-            // local intent until its exact boundary succeeds or rolls back.
-            if let version = state.version { readStateVersion = max(readStateVersion ?? version, version) }
-            return false
-        }
         // A seeded boundary is not an acknowledgement, so any server one replaces it.
         if let existing = entry.trackedAcknowledgedMessageID,
            let incoming = state.lastAcknowledgedMessageID,
@@ -893,17 +894,22 @@ extension AccountReadStateModel {
         entry.unreadMessageCount = entry.isUnread
             ? max(1, entry.unreadMessageCount)
             : 0
-        let confirmsPending = entry.pendingAcknowledgementID.map { pending in
-            entry.lastAcknowledgedMessageID.map { acknowledged in
-                state.isManual || acknowledgementIntents[state.channelID]?.intents[pending]?.isExact == true
-                    ? acknowledged == pending : acknowledged >= pending
-            } ?? false
-        } ?? false
-        if confirmsPending {
-            entry.pendingAcknowledgementID = nil
-            acknowledgementIntents[state.channelID] = nil
+        if var record = acknowledgementIntents[state.channelID] {
+            var remote = entry
+            remote.lastAcknowledgedMessageID = authoritativeBoundary
+                ? state.lastAcknowledgedMessageID
+                : maximum(record.accepted.messageID, state.lastAcknowledgedMessageID)
+            record.acceptRemote(AcknowledgementIntents.State(
+                sequence: 0,
+                messageID: remote.lastAcknowledgedMessageID,
+                mentionCount: entry.mentionCount,
+                unreadMessageCount: remote.isUnread ? max(1, entry.unreadMessageCount) : 0,
+                knownMessageID: entry.latestKnownMessageID
+            ))
+            settle(record, channelID: state.channelID, entry: &entry)
+        } else {
+            self[state.channelID] = entry
         }
-        self[state.channelID] = entry
         if let version = state.version {
             readStateVersion = max(readStateVersion ?? version, version)
         }
@@ -930,11 +936,15 @@ extension AccountReadStateModel {
         remoteReadStateOrderIDs = seenStateIDs
         entries.removeAll(keepingCapacity: true)
         merge(channels: Array(channelByID.values))
+        // The snapshot may predate unresolved intents; they are overlaid below.
+        let intents = acknowledgementIntents
+        acknowledgementIntents = [:]
         for channelID in remoteReadStateOrder {
             if let state = latestStateByChannel[channelID] {
                 applyRemote(state)
             }
         }
+        acknowledgementIntents = intents
         for channelID in Array(entries.keys) {
             guard let previous = previousEntries[channelID] else { continue }
             self[channelID] = reconciledSnapshotEntry(
@@ -1127,22 +1137,14 @@ extension AccountReadStateModel {
         return value
     }
 
+    /// A snapshot settles the intent it echoes. Otherwise it may predate the
+    /// unresolved intents, so they stay shown over their accepted state.
     private func overlayPendingAcknowledgement(
         channelID: ChannelID,
         previous: Entry,
         remote: ChannelReadState?
     ) {
-        guard let pending = previous.pendingAcknowledgementID,
-              let intent = acknowledgementIntents[channelID]?.intents[pending]
-        else { return }
-        let confirmsPending = remote?.lastAcknowledgedMessageID.map { acknowledged in
-            remote?.isManual == true || intent.isExact
-                ? acknowledged == pending : acknowledged >= pending
-        } ?? false
-        if confirmsPending {
-            acknowledgementIntents[channelID] = nil
-            return
-        }
+        guard var record = acknowledgementIntents[channelID] else { return }
         var value = self[channelID] ?? previous
         value.latestKnownMessageID = maximum(
             value.latestKnownMessageID, previous.latestKnownMessageID
@@ -1150,15 +1152,22 @@ extension AccountReadStateModel {
         value.latestUnreadMessageID = maximum(
             value.latestUnreadMessageID, previous.latestUnreadMessageID
         )
-        value.lastAcknowledgedMessageID = previous.lastAcknowledgedMessageID
-        value.mentionCount = previous.mentionCount
-        value.unreadMessageCount = previous.unreadMessageCount
-        value.pendingAcknowledgementID = pending
-        value.flags = previous.flags
-        value.lastViewed = previous.lastViewed
         value.hasAuthoritativeReadState = previous.hasAuthoritativeReadState
             || value.hasAuthoritativeReadState
-        self[channelID] = value
+        if let remote {
+            _ = record.succeed(remote.lastAcknowledgedMessageID, as: AcknowledgementIntents.State(
+                sequence: 0,
+                messageID: remote.lastAcknowledgedMessageID,
+                mentionCount: max(0, remote.mentionCount),
+                unreadMessageCount: value.isUnread ? max(1, value.unreadMessageCount) : 0,
+                knownMessageID: value.latestKnownMessageID
+            ))
+        }
+        if !record.intents.isEmpty {
+            value.flags = previous.flags
+            value.lastViewed = previous.lastViewed
+        }
+        settle(record, channelID: channelID, entry: &value)
     }
 
     func observeLoadedMessages(channelID: ChannelID, messages: [Message]) {
@@ -1229,10 +1238,9 @@ extension AccountReadStateModel {
             }
             entry.mentionCount += 1
         }
-        acknowledgementIntents[message.channelID]?.receivedUnreadMessageCount += 1
-        if mentionKind != .none {
-            acknowledgementIntents[message.channelID]?.receivedMentionCount += 1
-        }
+        acknowledgementIntents[message.channelID]?.liveMessages.append(
+            (id: message.id, isMention: mentionKind != .none)
+        )
         self[message.channelID] = entry
 
         let isMention = mentionKind != .none
@@ -1482,13 +1490,7 @@ extension AccountReadStateModel {
     func markAcknowledgementPending(channelID: ChannelID, messageID: MessageID) {
         var entry = entry(for: channelID)
         var record = acknowledgementIntents[channelID] ?? AcknowledgementIntents(entry: entry)
-        record.add(
-            messageID,
-            isExact: false,
-            inheritsCounts: entry.latestKnownMessageID.map { messageID < $0 } ?? true,
-            mentionCount: 0,
-            unreadMessageCount: 0
-        )
+        record.issueRead(messageID)
         settle(record, channelID: channelID, entry: &entry)
     }
 
@@ -1499,13 +1501,13 @@ extension AccountReadStateModel {
     ) {
         var entry = entry(for: channelID)
         var record = acknowledgementIntents[channelID] ?? AcknowledgementIntents(entry: entry)
-        record.add(
-            messageID,
-            isExact: true,
-            inheritsCounts: false,
+        record.issue(AcknowledgementIntents.State(
+            sequence: 0,
+            messageID: messageID,
             mentionCount: max(0, mentionCount),
-            unreadMessageCount: max(1, entry.unreadMessageCount)
-        )
+            unreadMessageCount: max(1, entry.unreadMessageCount),
+            knownMessageID: entry.latestKnownMessageID
+        ))
         entry.latestUnreadMessageID = maximum(entry.latestUnreadMessageID, entry.latestKnownMessageID)
         settle(record, channelID: channelID, entry: &entry)
         _ = updatePresentation(
@@ -1523,8 +1525,6 @@ extension AccountReadStateModel {
         )
     }
 
-    /// Discord accepted the acknowledgement. A newer boundary, or Mark
-    /// Unread's exact one, becomes the floor any failure rolls back to.
     func completeAcknowledgement(
         channelID: ChannelID,
         messageID: MessageID,
@@ -1535,27 +1535,18 @@ extension AccountReadStateModel {
         // The server now holds this read state, as its later echo confirms;
         // a seeded boundary must not replace it as the tracked acknowledgement.
         entry.hasAuthoritativeReadState = true
-        if var record = acknowledgementIntents[channelID],
-           let intent = record.intents.removeValue(forKey: messageID)
-        {
-            let isNewer = record.accepted.messageID.map { messageID > $0 } ?? true
-            if intent.isExact || isNewer && !intent.inheritsCounts {
-                record.accepted = intent.boundary
-            } else if isNewer {
-                record.accepted.messageID = messageID
-            }
+        if var record = acknowledgementIntents[channelID], record.succeed(messageID) {
             settle(record, channelID: channelID, entry: &entry)
         } else {
             self[channelID] = entry
         }
     }
 
-    /// The acknowledgement failed or was never sent: drop it and show what
-    /// remains over the accepted read state.
+    /// A failed or never-sent acknowledgement is only removed; what remains
+    /// is shown over the accepted state.
     func failAcknowledgement(channelID: ChannelID, messageID: MessageID) {
-        guard var record = acknowledgementIntents[channelID],
-              record.intents.removeValue(forKey: messageID) != nil
-        else { return }
+        guard var record = acknowledgementIntents[channelID] else { return }
+        record.drop(messageID)
         var entry = entry(for: channelID)
         settle(record, channelID: channelID, entry: &entry)
     }

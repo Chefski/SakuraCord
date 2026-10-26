@@ -411,9 +411,7 @@ extension AppModel {
         inbox.pendingReadGroups[channelID] = group
         let metadata = readState.acknowledgementMetadata(channelID: channelID)
         let lastViewed = readState[channelID]?.lastViewed
-        acknowledgementTasks[channelID]?.cancel()
-        acknowledgementTasks[channelID] = nil
-        debouncedAcknowledgementTargets[channelID] = nil
+        discardPendingAcknowledgement(for: channelID)
         readState.markAcknowledgementPending(channelID: channelID, messageID: boundary)
         enqueueAcknowledgement(channelID: channelID, mutation: ReadStateMutation(
             messageID: boundary, manual: false, mentionCount: nil,

@@ -389,23 +389,11 @@ extension AppModel {
                readState[channelID]?.guildID?.description != scope { return }
         #endif
         if let queued = queuedAcknowledgements[channelID] {
-            let sent = mutation.manual
-                ? mutation
-                : queued.manual
-                ? queued
-                : ReadStateMutation(
-                    messageID: max(queued.messageID, mutation.messageID),
-                    manual: false,
-                    mentionCount: nil,
-                    flags: mutation.flags,
-                    lastViewed: mutation.lastViewed,
-                    categoryReadID: mutation.categoryReadID ?? queued.categoryReadID
-                )
+            // The most recent action wins; the unsent one it replaces is dropped.
+            var sent = mutation
+            sent.categoryReadID = mutation.categoryReadID ?? queued.categoryReadID
             queuedAcknowledgements[channelID] = sent
-            // A coalesced intent never reaches Discord on its own.
-            for retired in Set([queued.messageID, mutation.messageID]) where retired != sent.messageID {
-                readState.failAcknowledgement(channelID: channelID, messageID: retired)
-            }
+            readState.failAcknowledgement(channelID: channelID, messageID: queued.messageID)
         } else {
             queuedAcknowledgements[channelID] = mutation
             acknowledgementQueueOrder.append(channelID)

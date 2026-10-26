@@ -40,12 +40,17 @@ viewing acknowledgements without requiring another geometry callback.
 
 A channel ACK posts to `/channels/{channel}/messages/{message}/ack` with applicable
 flags, `last_viewed` and the latest server-issued token. Serialize account requests
-and coalesce per channel. A conversation shows its unresolved intents over the
-read state Discord last accepted: the highest read intent above that boundary,
-or a later Mark Unread exactly. Success advances the accepted boundary when it
-is newer (Mark Unread's always); failure, or dropping an unsent intent, only
-removes the intent, so nothing rolls back below an accepted ACK and live
-messages and mentions since are kept.
+and coalesce per channel, where the most recent action replaces an unsent one.
+As on Discord, the most recent action wins by issue order, not boundary: a
+conversation shows the newer of the read state last accepted and its latest
+unresolved intent. A success becomes the accepted state unless a newer one was
+accepted first, and supersedes every earlier intent; failure, or dropping an
+unsent intent such as a cancelled debounce, removes only that intent, so
+nothing rolls back below an accepted ACK. A Gateway or snapshot read state
+settles the intent it echoes; any other live one is newer than every intent
+issued before it. Mention and unread counts come from each boundary plus the
+live messages received above it, so repeating or replacing an intent neither
+restores cleared mentions nor drops new ones.
 Reconnects overlay pending intent rather than cancelling it. No automatic replay
 follows an ambiguous failure.
 

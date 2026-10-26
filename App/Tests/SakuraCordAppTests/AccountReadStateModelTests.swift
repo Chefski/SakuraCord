@@ -520,7 +520,9 @@ struct AccountReadStateModelTests {
         let model = makeModel(latest: 20, acknowledged: 10, mentions: 2)
         model.markAcknowledgementPending(channelID: channelID, messageID: MessageID(rawValue: 20))
         model.markUnread(channelID: channelID, after: MessageID(rawValue: 10), mentionCount: 0)
-        #expect(!model.applyRemote(ChannelReadState(channelID: channelID, lastAcknowledgedMessageID: MessageID(rawValue: 20), mentionCount: 0, version: 5)))
+        // The earlier read's echo is accepted, but the later Undo stays shown.
+        #expect(model.applyRemote(ChannelReadState(channelID: channelID, lastAcknowledgedMessageID: MessageID(rawValue: 20), mentionCount: 0, version: 5)))
+        #expect(model.entries[channelID]?.lastAcknowledgedMessageID == MessageID(rawValue: 10))
         model.completeAcknowledgement(channelID: channelID, messageID: MessageID(rawValue: 20), token: nil)
         #expect(model.entries[channelID]?.lastAcknowledgedMessageID == MessageID(rawValue: 10))
         #expect(model.entries[channelID]?.pendingAcknowledgementID == MessageID(rawValue: 10))
@@ -639,6 +641,94 @@ struct AccountReadStateModelTests {
         #expect(model.unreadMessageCount(channelID: channelID) == 2)
         #expect(model.unread(channelID: channelID))
         #expect(model.acknowledgementToken == "accepted")
+    }
+
+    // The most recent action wins, as on Discord, whichever request resolves first.
+
+    @Test(arguments: [false, true])
+    func `mark unread after a pending read stays unread`(readSucceeds: Bool) {
+        let model = makeModel(latest: 100, acknowledged: 40)
+        model.markAcknowledgementPending(channelID: channelID, messageID: MessageID(rawValue: 100))
+        model.markUnread(channelID: channelID, after: MessageID(rawValue: 50), mentionCount: 0)
+        model.completeAcknowledgement(channelID: channelID, messageID: MessageID(rawValue: 50), token: nil)
+        #expect(model.entries[channelID]?.lastAcknowledgedMessageID == MessageID(rawValue: 50))
+        if readSucceeds {
+            model.completeAcknowledgement(channelID: channelID, messageID: MessageID(rawValue: 100), token: nil)
+        } else {
+            model.failAcknowledgement(channelID: channelID, messageID: MessageID(rawValue: 100))
+        }
+        #expect(model.entries[channelID]?.lastAcknowledgedMessageID == MessageID(rawValue: 50))
+        #expect(model.entries[channelID]?.pendingAcknowledgementID == nil)
+        #expect(model.unread(channelID: channelID))
+    }
+
+    @Test(arguments: [false, true])
+    func `a read after a pending mark unread stays read`(markUnreadSucceeds: Bool) {
+        let model = makeModel(latest: 12, acknowledged: 12)
+        model.markUnread(channelID: channelID, after: MessageID(rawValue: 5), mentionCount: 1)
+        model.markAcknowledgementPending(channelID: channelID, messageID: MessageID(rawValue: 12))
+        model.completeAcknowledgement(channelID: channelID, messageID: MessageID(rawValue: 12), token: nil)
+        #expect(model.entries[channelID]?.lastAcknowledgedMessageID == MessageID(rawValue: 12))
+        if markUnreadSucceeds {
+            model.completeAcknowledgement(channelID: channelID, messageID: MessageID(rawValue: 5), token: nil)
+        } else {
+            model.failAcknowledgement(channelID: channelID, messageID: MessageID(rawValue: 5))
+        }
+        #expect(model.entries[channelID]?.lastAcknowledgedMessageID == MessageID(rawValue: 12))
+        #expect(model.entries[channelID]?.pendingAcknowledgementID == nil)
+        #expect(!model.unread(channelID: channelID))
+    }
+
+    /// Acknowledging again, at the same or a nearby boundary, neither
+    /// restores mentions the pending read cleared nor drops ones since.
+    @Test(arguments: [UInt64(20), 21])
+    func `acknowledging again recounts only live messages above it`(target: UInt64) {
+        let model = makeModel(latest: 20, acknowledged: 10, mentions: 2)
+        model.markAcknowledgementPending(channelID: channelID, messageID: MessageID(rawValue: 20))
+        for id in [UInt64(21), 22] {
+            _ = model.receive(message(id: id, mentionedUsers: [currentUser]), currentUserID: currentUser.id)
+        }
+        #expect(model.mentions(channelID: channelID) == 2)
+        model.markAcknowledgementPending(channelID: channelID, messageID: MessageID(rawValue: target))
+        #expect(model.mentions(channelID: channelID) == (target == 20 ? 2 : 1))
+        _ = model.receive(message(id: 23, mentionedUsers: [currentUser]), currentUserID: currentUser.id)
+        #expect(model.mentions(channelID: channelID) == (target == 20 ? 3 : 2))
+    }
+
+    /// A read state Discord reports after a local acknowledgement was issued
+    /// is newer; that acknowledgement resolving later must not replace it.
+    @Test(arguments: [false, true])
+    func `an authoritative read state outranks an older pending acknowledgement`(succeeds: Bool) {
+        let model = makeModel(latest: 20, acknowledged: 10, mentions: 2)
+        model.markAcknowledgementPending(channelID: channelID, messageID: MessageID(rawValue: 20))
+        #expect(model.applyRemote(ChannelReadState(
+            channelID: channelID, lastAcknowledgedMessageID: MessageID(rawValue: 15),
+            mentionCount: 1, isManual: true, version: 9
+        )))
+        #expect(model.entries[channelID]?.lastAcknowledgedMessageID == MessageID(rawValue: 15))
+        if succeeds {
+            model.completeAcknowledgement(channelID: channelID, messageID: MessageID(rawValue: 20), token: nil)
+        } else {
+            model.failAcknowledgement(channelID: channelID, messageID: MessageID(rawValue: 20))
+        }
+        #expect(model.entries[channelID]?.lastAcknowledgedMessageID == MessageID(rawValue: 15))
+        #expect(model.entries[channelID]?.pendingAcknowledgementID == nil)
+        #expect(model.mentions(channelID: channelID) == 1)
+    }
+
+    /// An intent a later success supersedes never stays pending, so a later
+    /// Undo cannot re-expose it.
+    @Test func `a superseded acknowledgement does not outlive a later success`() {
+        let model = makeModel(latest: 21, acknowledged: 10)
+        model.markAcknowledgementPending(channelID: channelID, messageID: MessageID(rawValue: 20))
+        model.markAcknowledgementPending(channelID: channelID, messageID: MessageID(rawValue: 21))
+        model.completeAcknowledgement(channelID: channelID, messageID: MessageID(rawValue: 21), token: nil)
+        #expect(model.entries[channelID]?.pendingAcknowledgementID == nil)
+        model.markUnread(channelID: channelID, after: MessageID(rawValue: 15), mentionCount: 0)
+        model.completeAcknowledgement(channelID: channelID, messageID: MessageID(rawValue: 15), token: nil)
+        #expect(model.entries[channelID]?.lastAcknowledgedMessageID == MessageID(rawValue: 15))
+        #expect(model.entries[channelID]?.pendingAcknowledgementID == nil)
+        #expect(model.unread(channelID: channelID))
     }
 
     @Test(arguments: [false, true], [[0, 1, 2], [2, 1, 0], [1, 0, 2]])
