@@ -24,6 +24,7 @@ struct NativeTimelineMessageDrawInput {
     let pressedComponentButton: NativeTimelineComponentButtonTarget?
     let componentButtonPressProgress: CGFloat
     let isForwardedSourceHovered: Bool
+    let threadCardInteraction: NativeTimelineThreadCard.Interaction
     let isEphemeralDismissHovered: Bool
     let isTranslationActionHovered: Bool
     let hidesMessageContent: Bool
@@ -113,6 +114,12 @@ extension NativeTimelineRowPainter {
         }
         if let frame = input.layout.unreadSeparatorFrame {
             newMessagesSeparator(frame: frame)
+        }
+        // While editing, the editor replaces the row's height, so the rule
+        // would sit at the starter's old bottom across later replies.
+        if let frame = input.layout.postStarterDividerFrame, !input.hidesMessageContent {
+            NSColor.labelColor.withAlphaComponent(0.16).setFill()
+            CGRect(x: frame.minX, y: frame.midY, width: frame.width, height: 1).fill()
         }
     }
 
@@ -724,13 +731,13 @@ extension NativeTimelineRowPainter {
                     toX: frame.minX - 4
                 )
             }
-            threadSummary(
+            threadCard(
                 thread,
                 preview: model?.threadPreviewMessages[thread.id],
-                message: message,
                 model: model,
                 in: frame,
-                bubbleRegion: layout.bubbleRegion
+                bubbleRegion: layout.bubbleRegion,
+                interaction: input.threadCardInteraction
             )
         }
         ComponentUnicodeEmojiRenderer.prepareImages(
@@ -743,7 +750,7 @@ extension NativeTimelineRowPainter {
             reaction(
                 region,
                 model: model,
-                isHovered: model?.canUpdateReactions(on: message) != false && hoveredReactionID == region.reaction.id,
+                isHovered: hoveredReactionID == region.reaction.id && model?.canUpdateReactions(on: message) != false,
                 countTransition: reactionCountTransitions[
                     region.reaction.id
                 ],
@@ -1045,7 +1052,7 @@ extension NativeTimelineRowPainter {
             url: author.avatarURL,
             in: avatarFrame
         )
-        let font = ProfileNameFontLoader.shared.resolvedFont(for: author, fallback: NativeTimelineReplyMetrics.authorFont)
+        let font = ProfileNameFontCache.font(id: author.displayNameStyle?.fontID, fallback: NativeTimelineReplyMetrics.authorFont)
         let displayName = showsReplyMention
             ? NativeTimelineReplyMetrics.authorDisplayName(author, in: message)
             : author.displayName
@@ -1153,7 +1160,7 @@ extension NativeTimelineRowPainter {
         text(
             user?.displayName ?? "Someone",
             in: region.userFrame,
-            font: ProfileNameFontLoader.shared.resolvedFont(for: user, fallback: .interfaceSystemFont(
+            font: ProfileNameFontCache.font(id: user?.displayNameStyle?.fontID, fallback: .interfaceSystemFont(
                 ofSize: NSFont.preferredFont(
                     forTextStyle: .caption2
                 ).pointSize,
@@ -1280,7 +1287,7 @@ extension NativeTimelineRowPainter {
             width: labelWidth,
             height: NativeTimelineUnreadSeparatorMetrics.capsuleHeight
         )
-        NSColor.systemRed.setFill()
+        MentionRed.nsColor.setFill()
         CGRect(
             x: frame.minX,
             y: frame.midY,

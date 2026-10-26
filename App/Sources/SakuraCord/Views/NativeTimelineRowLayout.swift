@@ -140,6 +140,8 @@ struct NativeTimelineRowLayout {
     var bubbleRegion: NativeTimelineBubbleRegion?
     var highlightFrame: CGRect?
     var daySeparatorFrame: CGRect?
+    /// The rule closing a forum post's original message off from its replies.
+    var postStarterDividerFrame: CGRect?
     var unreadSeparatorFrame: CGRect?
     var avatarFrame: CGRect?
     var compactTimestampFrame: CGRect?
@@ -201,7 +203,7 @@ struct NativeTimelineRowLayout {
     static func make(
         item: NativeMessageTimelineItem,
         width proposedWidth: CGFloat,
-        model: AppModel? = nil,
+        source: AppModel? = nil,
         metrics: Metrics? = nil
     ) -> Self {
         let width = max(InterfaceScale.metric(220), proposedWidth)
@@ -253,8 +255,8 @@ struct NativeTimelineRowLayout {
                 row: row,
                 isUnreadBoundary: isUnreadBoundary,
                 width: width,
-                model: model,
-                metrics: metrics ?? Metrics(settings: model?.interfaceSettings ?? .defaults)
+                source: source,
+                metrics: metrics ?? Metrics(source: source)
             )
             return builder.make()
         }

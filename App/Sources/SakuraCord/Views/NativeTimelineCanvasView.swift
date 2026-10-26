@@ -209,10 +209,17 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
     var sendTransitions: [NativeTimelineSendTransition] = []
     var transcriptGlide: NativeTimelineTranscriptGlide?
     var transcriptGlideFinishTask: Task<Void, Never>?
+    var unreadDividerFades: [NativeMessageTimelineItem.Identifier: NativeTimelineUnreadDividerFade] = [:]
+    var unreadDividerGap: NativeTimelineUnreadDividerGap?
+    let unreadDividerGapTicker = NativeTimelineDisplayLinkTicker()
     var minimumHeight: CGFloat = 1
     var bottomSpacerHeight: CGFloat = 0
     var maximumDrawDuration = 0.0
     var totalDrawDuration = 0.0
+#if SAKURACORD_MOTION_BENCHMARK
+    /// Like `totalDrawDuration`, but never reset (motion benchmark).
+    var lifetimeDrawDuration = 0.0
+#endif
     var drawCount = 0
     var maximumRowRasterDuration = 0.0
     var maximumRowRasterHeight: CGFloat = 0
@@ -393,6 +400,9 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
         addSubview(beginningSelectionOverlay)
         addSubview(reactionPickerSource)
         mediaViewerHost.frame = .zero
+        // Placed by frame: as autoresizing constraints, its updates reached
+        // the enclosing SwiftUI layouts on every frame of a column's motion.
+        mediaViewerHost.translatesAutoresizingMaskIntoConstraints = false
         addSubview(mediaViewerHost)
         let notificationCenter = NotificationCenter.default
         notificationCenter.addObserver(self, selector: #selector(composerOverlayDidChange(_:)),
@@ -446,6 +456,11 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
             visibleMediaRequestTask?.cancel()
             messageJumpHighlightTask?.cancel()
             transcriptGlideFinishTask?.cancel()
+            unreadDividerGapTicker.stop()
+            for fade in unreadDividerFades.values {
+                fade.finishTask?.cancel()
+                fade.overlay.removeFromSuperview()
+            }
             for transition in sendTransitions {
                 transition.finishTask?.cancel()
                 transition.overlay.removeFromSuperview()
@@ -512,6 +527,7 @@ enum NativeTimelineRowPainter {
             NativeTimelineComponentButtonTarget? = nil,
         componentButtonPressProgress: CGFloat = 0,
         isForwardedSourceHovered: Bool = false,
+        threadCardInteraction: NativeTimelineThreadCard.Interaction = .idle,
         isEphemeralDismissHovered: Bool = false,
         isTranslationActionHovered: Bool = false,
         isSuppressedToggleHovered: Bool = false,
@@ -592,6 +608,7 @@ enum NativeTimelineRowPainter {
                 componentButtonPressProgress:
                     componentButtonPressProgress,
                 isForwardedSourceHovered: isForwardedSourceHovered,
+                threadCardInteraction: threadCardInteraction,
                 isEphemeralDismissHovered: isEphemeralDismissHovered,
                 isTranslationActionHovered: isTranslationActionHovered,
                 hidesMessageContent: hidesMessageContent,
