@@ -195,6 +195,12 @@ final class NotificationPreferences {
         static let replies = "notifications.events.replies"
         static let incomingCalls = "notifications.events.incomingCalls"
         static let serverActivity = "notifications.events.serverActivity"
+        static let messageSound = NotificationSoundKeys.messageSoundID
+        static let messageSoundBookmark = NotificationSoundKeys.messageSoundBookmark
+        static let messageSoundName = NotificationSoundKeys.messageSoundName
+        static let callRingtone = NotificationSoundKeys.callRingtoneID
+        static let callRingtoneBookmark = NotificationSoundKeys.callRingtoneBookmark
+        static let callRingtoneName = NotificationSoundKeys.callRingtoneName
         static let suppressCurrentConversation = "notifications.suppressCurrentConversation"
         static let groupByConversation = "notifications.groupByConversation"
         static let clearWhenRead = "notifications.clearWhenRead"
@@ -226,6 +232,66 @@ final class NotificationPreferences {
     var notifiesServerActivity: Bool {
         didSet { defaults.set(notifiesServerActivity, forKey: Key.serverActivity) }
     }
+    var messageSoundID: String {
+        didSet { defaults.set(messageSoundID, forKey: Key.messageSound) }
+    }
+    var messageSoundName: String {
+        didSet { defaults.set(messageSoundName, forKey: Key.messageSoundName) }
+    }
+    var messageSoundBookmark: Data? {
+        didSet {
+            if let messageSoundBookmark {
+                defaults.set(messageSoundBookmark, forKey: Key.messageSoundBookmark)
+            } else {
+                defaults.removeObject(forKey: Key.messageSoundBookmark)
+            }
+        }
+    }
+    var callRingtoneID: String {
+        didSet { defaults.set(callRingtoneID, forKey: Key.callRingtone) }
+    }
+    var callRingtoneName: String {
+        didSet { defaults.set(callRingtoneName, forKey: Key.callRingtoneName) }
+    }
+    var callRingtoneBookmark: Data? {
+        didSet {
+            if let callRingtoneBookmark {
+                defaults.set(callRingtoneBookmark, forKey: Key.callRingtoneBookmark)
+            } else {
+                defaults.removeObject(forKey: Key.callRingtoneBookmark)
+            }
+        }
+    }
+    func soundChoice(for kind: NotificationSoundKind) -> NotificationSoundLibrary.Choice {
+        switch kind {
+        case .message: .init(soundID: messageSoundID, bookmark: messageSoundBookmark)
+        case .call: .init(soundID: callRingtoneID, bookmark: callRingtoneBookmark)
+        }
+    }
+    func soundName(for kind: NotificationSoundKind) -> String {
+        switch kind {
+        case .message: messageSoundName
+        case .call: callRingtoneName
+        }
+    }
+    func setSoundID(_ soundID: String, for kind: NotificationSoundKind) {
+        switch kind {
+        case .message: messageSoundID = soundID
+        case .call: callRingtoneID = soundID
+        }
+    }
+    func setCustomSound(bookmark: Data, name: String, for kind: NotificationSoundKind) {
+        switch kind {
+        case .message:
+            messageSoundBookmark = bookmark
+            messageSoundName = name
+            messageSoundID = NotificationSoundLibrary.customID
+        case .call:
+            callRingtoneBookmark = bookmark
+            callRingtoneName = name
+            callRingtoneID = NotificationSoundLibrary.customID
+        }
+    }
     var suppressesCurrentConversation: Bool {
         didSet {
             defaults.set(suppressesCurrentConversation, forKey: Key.suppressCurrentConversation)
@@ -251,6 +317,12 @@ final class NotificationPreferences {
         notifiesReplies = true
         notifiesIncomingCalls = true
         notifiesServerActivity = true
+        messageSoundID = NotificationSoundLibrary.bundledID
+        messageSoundName = ""
+        messageSoundBookmark = nil
+        callRingtoneID = NotificationSoundLibrary.bundledID
+        callRingtoneName = ""
+        callRingtoneBookmark = nil
         suppressesCurrentConversation = true
         groupsByConversation = true
         clearsWhenRead = true
@@ -277,6 +349,28 @@ final class NotificationPreferences {
         notifiesReplies = bool(Key.replies, default: true)
         notifiesIncomingCalls = bool(Key.incomingCalls, default: true)
         notifiesServerActivity = bool(Key.serverActivity, default: true)
+        messageSoundID = defaults.string(forKey: Key.messageSound) ?? NotificationSoundLibrary.bundledID
+        messageSoundName = defaults.string(forKey: Key.messageSoundName) ?? ""
+        messageSoundBookmark = defaults.data(forKey: Key.messageSoundBookmark)
+        callRingtoneID = defaults.string(forKey: Key.callRingtone) ?? NotificationSoundLibrary.bundledID
+        callRingtoneName = defaults.string(forKey: Key.callRingtoneName) ?? ""
+        callRingtoneBookmark = defaults.data(forKey: Key.callRingtoneBookmark)
+        // Reset and Import only touch the sound IDs, so drop a custom file
+        // the ID no longer points at, and treat "custom" without one as default.
+        if messageSoundID != NotificationSoundLibrary.customID {
+            if messageSoundBookmark != nil { messageSoundBookmark = nil }
+            if !messageSoundName.isEmpty { messageSoundName = "" }
+        } else if messageSoundBookmark == nil {
+            messageSoundID = NotificationSoundLibrary.bundledID
+            messageSoundName = ""
+        }
+        if callRingtoneID != NotificationSoundLibrary.customID {
+            if callRingtoneBookmark != nil { callRingtoneBookmark = nil }
+            if !callRingtoneName.isEmpty { callRingtoneName = "" }
+        } else if callRingtoneBookmark == nil {
+            callRingtoneID = NotificationSoundLibrary.bundledID
+            callRingtoneName = ""
+        }
         suppressesCurrentConversation = bool(Key.suppressCurrentConversation, default: true)
         groupsByConversation = bool(Key.groupByConversation, default: true)
         clearsWhenRead = bool(Key.clearWhenRead, default: true)
@@ -431,6 +525,13 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
     }()
     private var center: UNUserNotificationCenter { .current() }
 
+    private static func bannerSound(preferences: NotificationPreferences) async -> UNNotificationSound? {
+        guard preferences.playsSound else { return nil }
+        guard let name = await BannerSoundStore.shared.soundName(for: preferences.soundChoice(for: .message))
+        else { return notificationSound }
+        return UNNotificationSound(named: UNNotificationSoundName(name))
+    }
+
     // Offline demos use real system permissions without publishing fixture alerts.
     private let deliversNotifications: Bool
     private let preparePreviewImage: @MainActor (URL?, Int) async -> Data?
@@ -539,10 +640,12 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
                 Self.logger.debug("Notification image attachment could not be prepared")
             }
         }
+        // Prepared before the last check, since a custom sound may need exporting.
+        let sound = await Self.bannerSound(preferences: preferences)
         guard pendingRequests[identifier] == token, !Task.isCancelled,
               preferences.isEnabled, preferences.previewStyle == style
         else { return }
-        await add(content, identifier: identifier, kind: "Message", preferences: preferences)
+        await add(content, identifier: identifier, sound: sound, kind: "Message", preferences: preferences)
     }
 
     func cancel(accountID: String, channelID: ChannelID) async {
@@ -566,13 +669,14 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
     private func add(
         _ content: UNNotificationContent,
         identifier: String,
+        sound: UNNotificationSound?,
         kind: StaticString,
         preferences: NotificationPreferences
     ) async {
         guard deliversNotifications, !isSuppressed, preferences.isEnabled,
               let content = content.mutableCopy() as? UNMutableNotificationContent
         else { return }
-        content.sound = preferences.playsSound ? Self.notificationSound : nil
+        content.sound = preferences.playsSound ? sound : nil
         do {
             try await submitRequest(
                 UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
