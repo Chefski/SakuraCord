@@ -223,6 +223,7 @@ extension AppModel {
         accessReplacingChannelIDs: Set<ChannelID>? = nil,
         accessAffectedChannels: [Channel]? = nil
     ) {
+        reconcileInboxReadState()
         let interval = AppPerformanceSignposts.signposter.beginInterval(
             "UnreadPresentationRefreshRequest"
         )

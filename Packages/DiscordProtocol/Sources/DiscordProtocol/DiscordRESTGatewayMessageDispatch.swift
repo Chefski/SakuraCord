@@ -230,7 +230,12 @@ extension DiscordRESTProvider {
         for (parentID, posts) in cachedForumPosts {
             guard var post = posts[channelID] else { continue }
             var changed = false
-            if post.firstMessage?.id == messageID { post.firstMessage = nil; changed = true }
+            // A forum starter shares its post's ID.
+            if messageID.rawValue == channelID.rawValue || post.firstMessage?.id == messageID {
+                post.firstMessage = nil
+                post.isFirstMessageLoaded = true
+                changed = true
+            }
             if post.mostRecentMessage?.id == messageID { post.mostRecentMessage = nil; changed = true }
             guard changed else { continue }
             cachedForumPosts[parentID]?[channelID] = post

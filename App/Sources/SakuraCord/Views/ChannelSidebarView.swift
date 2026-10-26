@@ -1409,7 +1409,7 @@ private struct ChannelRow: View {
                     .font(.interface(.caption))
                     .foregroundStyle(.green)
             }
-            if channel.kind == .forum, showsUnread {
+            if showsNewPostCount {
                 Text("\(channel.unreadCount) New")
                     .font(.interface(.caption).weight(.semibold))
                     .foregroundStyle(Color(hex: 0x5865F2))
@@ -1432,7 +1432,9 @@ private struct ChannelRow: View {
         .overlay {
             ChannelContextMenuBridge(
                 isSelected: isSelected,
-                isUnread: channel.unreadCount > 0,
+                isUnread: channel.kind == .forum
+                    ? model.canMarkConversationRead(channelID: channel.id)
+                    : channel.unreadCount > 0,
                 isMutationPending:
                     model.isChannelNotificationMutationPending(channel.id),
                 allowsMutations: !isChecking,
@@ -1498,6 +1500,14 @@ private struct ChannelRow: View {
         !isChecking && channel.unreadCount > 0
     }
 
+    /// Discord hides a forum's count behind a mention badge and unless the
+    /// unmuted forum resolves to All Messages unreads.
+    private var showsNewPostCount: Bool {
+        channel.kind == .forum && showsUnread && !isMuted
+            && channel.mentionCount == 0
+            && model.usesAllMessagesUnreadSetting(channel)
+    }
+
     private var channelIconForegroundStyle: Color {
         if isSelected { return .primary }
         if isMuted { return .primary.opacity(0.32) }
@@ -1513,7 +1523,7 @@ private struct ChannelRow: View {
     private var accessibilityValue: String {
         if isChecking { return "Checking access" }
         var values: [String] = []
-        if channel.kind == .forum, channel.unreadCount > 0 {
+        if showsNewPostCount {
             values.append(
                 channel.unreadCount == 1
                     ? "1 new post"

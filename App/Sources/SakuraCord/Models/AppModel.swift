@@ -128,11 +128,8 @@ final class AppModel {
 
     struct ReadStateMutation: Sendable {
         var messageID: MessageID
-        var manual: Bool
-        var mentionCount: Int?
         var flags: UInt64?
         var lastViewed: Int?
-        var wireManual: Bool?
     }
 
     struct CategoryCollapseMutationState {
@@ -167,6 +164,7 @@ final class AppModel {
         ServerRailPresentationStore()
     @ObservationIgnored let onboarding = GuildOnboardingStore()
     @ObservationIgnored let serverInvites = ServerInvitePresentationStore()
+    @ObservationIgnored let captcha = HumanCaptchaStore()
     @ObservationIgnored let friends = FriendsState()
     @ObservationIgnored let ignoredUsers = IgnoredUsersState()
     @ObservationIgnored let serverTagCards = ServerTagCardStore()
@@ -338,7 +336,6 @@ final class AppModel {
             guard oldValue != currentStatus else { return }
             notificationService.setSuppressed(currentStatus == .dnd)
             reconcilePrivateCallSounds()
-            if oldValue == .dnd { resumeDNDSuppressedIncomingCalls() }
         }
     }
     var connectionState: ConnectionState = .disconnected
@@ -542,7 +539,6 @@ final class AppModel {
         }
     }
     var privateCallsByChannel: [ChannelID: PrivateCall] = [:]
-    @ObservationIgnored var dndSuppressedIncomingCallChannelIDs: Set<ChannelID> = []
     var privateCallActionChannelIDs: Set<ChannelID> = []
     var mediaDevices: MediaDeviceSnapshot = .empty
     var emojisByGuild: [GuildID: [DiscordEmoji]] = [:] {
@@ -946,7 +942,9 @@ final class AppModel {
                 }
                 lastTypingRequestAt[oldValue] = nil
                 _ = readState.updatePresentation(channelID: oldValue, isPresented: false)
-                readState.endForumVisit(channelID: oldValue)
+                if readState.endForumVisit(channelID: oldValue) {
+                    refreshUnreadPresentation()
+                }
             }
             selectedChannel =
                 snapshot?.channels.first { $0.id == selectedChannelID }
@@ -1167,17 +1165,13 @@ final class AppModel {
     @ObservationIgnored var didAttemptDiscordEmojiSettings = false
     @ObservationIgnored var acknowledgementTasks: [ChannelID: Task<Void, Never>] = [:]
     /// The target each debounced acknowledgement task will send.
-    @ObservationIgnored var debouncedAcknowledgementTargets: [ChannelID: MessageID] = [:]
-    @ObservationIgnored var queuedAcknowledgements: [ChannelID: ReadStateMutation] = [:]
-    @ObservationIgnored var acknowledgementQueueOrder: [ChannelID] = []
+    @ObservationIgnored var queuedAcknowledgements: [(channelID: ChannelID, mutation: ReadStateMutation)] = []
     @ObservationIgnored var acknowledgementProcessorTask: Task<Void, Never>?
     @ObservationIgnored var acknowledgementGeneration = 0
     var isMarkingAllServersRead = false
     @ObservationIgnored var allServersReadTask: Task<Void, Never>?
     @ObservationIgnored var guildAcknowledgementTasks:
         [GuildID: Task<Void, Never>] = [:]
-    @ObservationIgnored var categoryAcknowledgementTasks:
-        [ChannelID: Task<Void, Never>] = [:]
     @ObservationIgnored var guildNotificationMutationTasks: [GuildID: Task<Void, Never>] = [:]
     @ObservationIgnored var guildNotificationSettingsRevisions: [GuildID: UInt64] = [:]
     @ObservationIgnored var channelNotificationMutationTasks: [ChannelID: Task<Void, Never>] = [:]
@@ -1191,6 +1185,9 @@ final class AppModel {
     @ObservationIgnored var forumNotificationMutationGeneration = 0
     @ObservationIgnored var mainWindowIsActive = false
     @ObservationIgnored var applicationIsActive = false
+    /// The Dock bounce requested for a call ringing in the background.
+    @ObservationIgnored var incomingCallAttentionRequest: Int?
+    @ObservationIgnored var ringingMuteExpiryTask: Task<Void, Never>?
     @ObservationIgnored var clientAppStateUpdateTask: Task<Void, Never>?
     var emojiEligibilityRevision: UInt64 = 0
     @ObservationIgnored var currentUserRoleIDsByGuild: [GuildID: Set<RoleID>] = [:] {

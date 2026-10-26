@@ -375,8 +375,11 @@ final class ForumPostPreviewTextRenderer {
             bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height, bitsPerSample: 8,
             samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
             bytesPerRow: 0, bitsPerPixel: 0
-        ), let graphics = NSGraphicsContext(bitmapImageRep: representation) else { return image }
+        ) else { return image }
+        // Before the context exists: it takes its scale from the size, and
+        // would otherwise draw in pixels, shrinking the image on Retina.
         representation.size = size
+        guard let graphics = NSGraphicsContext(bitmapImageRep: representation) else { return image }
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = graphics
         image.draw(in: CGRect(origin: .zero, size: size), from: .zero, operation: .copy, fraction: 1)

@@ -123,6 +123,7 @@ extension AppModel {
             authenticatedProviderFactory(handle, installationID)
         }
         await nextProvider.updateClientAppState(isFocused: applicationIsActive)
+        await nextProvider.setCaptchaHandler { [weak self] in await self?.solveCaptcha($0) }
         do {
             // Enumerating Keychain item attributes reveals the account handle
             // without necessarily authorizing access to its secret. Preparing
@@ -294,7 +295,7 @@ extension AppModel {
         didAttemptDiscordEmojiSettings = false
         voiceStates = [:]
         privateCallsByChannel = [:]
-        dndSuppressedIncomingCallChannelIDs = []
+        reconcilePrivateCallSounds()
         visibleChannels = []
         unreadCategoryIDsByGuild = [:]
         selectedChannel = nil

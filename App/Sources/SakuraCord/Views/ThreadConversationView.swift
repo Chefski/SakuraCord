@@ -292,11 +292,15 @@ private struct ThreadConversationComposer: View {
     let model: AppModel
     let thread: MessageThreadSummary
     let onEditMessage: (MessageID) -> Void
+    @Environment(\.isLeavingWorkspace) private var isLeaving
+    /// The access shown before the pane began to leave. A closed thread's
+    /// access is unknown, which showed the permissions check as it slid away.
+    @State private var shownAccess: ConversationAccess?
 
     var body: some View {
         VStack(spacing: 0) {
             ConversationComposerSlot(
-                access: model.openThreadAccess,
+                access: isLeaving ? shownAccess ?? model.openThreadAccess : model.openThreadAccess,
                 timeoutUntil: model.guildTimeoutUntil(in: thread.id, guildID: thread.guildID),
                 appearance: model.appearanceSettings.composerBarAppearance,
                 checkingMessage: "Checking thread permissions…",
@@ -311,6 +315,11 @@ private struct ThreadConversationComposer: View {
                     onEditMessage: onEditMessage
                 )
             }
+        }
+        // Kept current while the pane is in place, including when it returns
+        // before leaving finished.
+        .onChange(of: isLeaving ? nil : model.openThreadAccess, initial: true) { _, access in
+            if let access { shownAccess = access }
         }
     }
 }
@@ -394,10 +403,22 @@ private struct ThreadMessageTimelineView: View {
     @State private var latestScrollState = TimelineScrollState(isNearTop: false, isNearBottom: false)
     @State private var highlightedMessageID: MessageID?
     @State private var scrollRequest: MessageTimelineScrollRequest?
+    @Environment(\.isLeavingWorkspace) private var isLeaving
+    /// The overlays shown before the pane began to leave. The closed thread
+    /// has neither, and they vanished as it slid away.
+    @State private var shownOverlays = Overlays()
+
+    /// The unread banner, and the way back to newest if it shows.
+    private struct Overlays: Equatable {
+        var unreadSummary: AccountReadStateModel.TimelineUnreadSummary?
+        var showsNewestButton = false
+    }
 
     var body: some View {
         let conversationID = model.openThread?.id
         let unread = unreadPresentation
+        let liveOverlays = overlays(unread)
+        let overlays = isLeaving ? shownOverlays : liveOverlays
         NativeMessageTimelineView(
             model: model,
             conversation: .thread(conversationID),
@@ -454,34 +475,25 @@ private struct ThreadMessageTimelineView: View {
             }
         }
         .overlay(alignment: .top) {
-            if let threadID = model.openThread?.id,
-               let summary = unread.summary
-            {
+            if let summary = overlays.unreadSummary {
                 UnreadMessagesBanner(
                     summary: summary,
                     isLoadingHistory: model.isLoadingThread || model.isLoadingEarlierThread,
                     jumpToUnread: {
-                        model.jumpToUnreadBoundary(channelID: threadID)
+                        if let conversationID { model.jumpToUnreadBoundary(channelID: conversationID) }
                     },
                     markRead: {
-                        model.markConversationRead(channelID: threadID)
+                        if let conversationID { model.markConversationRead(channelID: conversationID) }
                     }
                 )
                 .padding(InterfaceScale.metric(8))
             }
         }
         .overlay(alignment: .bottom) {
-            if ThreadTimelinePresentationPolicy.showsNewRepliesButton(
-                isNearBottom: isNearBottom,
-                hasUnreadReplies: unread.summary != nil,
-                isDetachedFromNewest: model.isThreadWindowAwayFromNewest,
-                messageCount: model.threadMessages.count
-            ), hasEstablishedInitialPosition
-                || (model.isThreadWindowAwayFromNewest && model.hasCompletedInitialThreadLoad)
-            {
+            if overlays.showsNewestButton {
                 TimelineNewestButton(
-                    title: unread.summary != nil ? "New replies" : "Scroll to bottom",
-                    hasUnread: unread.summary != nil,
+                    title: overlays.unreadSummary != nil ? "New replies" : "Scroll to bottom",
+                    hasUnread: overlays.unreadSummary != nil,
                     bottomContentInset: bottomContentInset,
                     accessibilityHint: "Scrolls to the latest reply"
                 ) {
@@ -493,6 +505,9 @@ private struct ThreadMessageTimelineView: View {
                     }
                 }
             }
+        }
+        .onChange(of: isLeaving ? nil : liveOverlays, initial: true) { _, overlays in
+            if let overlays { shownOverlays = overlays }
         }
         .onChange(of: model.openThread?.id) { oldID, _ in
             if let oldID {
@@ -598,6 +613,20 @@ private struct ThreadMessageTimelineView: View {
             return
         }
         requestScroll(.message(messageID, anchor: .center), glides: true)
+    }
+
+    private func overlays(_ unread: TimelineUnreadPresentation) -> Overlays {
+        let showsNewestButton = ThreadTimelinePresentationPolicy.showsNewRepliesButton(
+            isNearBottom: isNearBottom,
+            hasUnreadReplies: unread.summary != nil,
+            isDetachedFromNewest: model.isThreadWindowAwayFromNewest,
+            messageCount: model.threadMessages.count
+        ) && (hasEstablishedInitialPosition
+            || model.isThreadWindowAwayFromNewest && model.hasCompletedInitialThreadLoad)
+        return Overlays(
+            unreadSummary: model.openThread == nil ? nil : unread.summary,
+            showsNewestButton: showsNewestButton
+        )
     }
 
     private var unreadPresentation: TimelineUnreadPresentation {

@@ -70,11 +70,10 @@ struct ServerRailContainer: View {
             }
         }
         .windowModal(isPresented: $invites.showsJoinDialog, cornerRadius: InterfaceScale.metric(32), cornerStyle: .circular,
-                     isConcealed: { model.serverInvites.captcha.challenge != nil }, content: { JoinServerView(model: model) })
+                     isConcealed: { model.captcha.challenge != nil }, content: { JoinServerView(model: model) })
         .windowModal(item: Bindable(invites.creation).presentation, cornerRadius: InterfaceScale.metric(32), cornerStyle: .circular) {
             ServerInviteCreationView(model: model, presentation: $0)
         }
-        .modifier(HumanCaptchaPresentation(store: invites.captcha))
         .alert("Mark All Servers as Read?",
                isPresented: Binding(get: { readAllConfirmationSession != nil },
                                     set: { if !$0 { readAllConfirmationSession = nil } }),

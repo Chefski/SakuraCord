@@ -417,7 +417,10 @@ extension AppModel {
         preservesMembership: Bool = true
     ) -> ForumPost {
         var result = incoming
-        result.firstMessage = incoming.firstMessage ?? previous.firstMessage
+        if incoming.firstMessage == nil, !incoming.isFirstMessageLoaded {
+            result.firstMessage = previous.firstMessage
+            result.isFirstMessageLoaded = previous.isFirstMessageLoaded
+        }
         result.mostRecentMessage = incoming.mostRecentMessage ?? previous.mostRecentMessage
         result.owner = incoming.owner ?? previous.owner
         if preservesMembership, result.thread.notificationSettings == nil {

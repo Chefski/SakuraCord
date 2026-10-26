@@ -20,7 +20,7 @@ extension AppModel {
         let channel = channelID.rawValue
         let message = mutation.messageID.rawValue
         Self.unreadDiagnosticsLogger.info(
-            "Read ack send c=\(channel, privacy: .public) m=\(message, privacy: .public) manual=\(mutation.manual, privacy: .public)"
+            "Read ack send c=\(channel, privacy: .public) m=\(message, privacy: .public)"
         )
     }
 
@@ -42,24 +42,13 @@ extension AppModel {
         let channel = channelID.rawValue
         let message = mutation.messageID.rawValue
         Self.unreadDiagnosticsLogger.error(
-            "Read ack failed c=\(channel, privacy: .public) m=\(message, privacy: .public) manual=\(mutation.manual, privacy: .public)"
+            "Read ack failed c=\(channel, privacy: .public) m=\(message, privacy: .public)"
         )
     }
 
-    func readStateMutation(
-        channelID: ChannelID,
-        messageID: MessageID,
-        manual: Bool,
-        mentionCount: Int?
-    ) -> ReadStateMutation {
+    func readStateMutation(channelID: ChannelID, messageID: MessageID) -> ReadStateMutation {
         let metadata = readState.acknowledgementMetadata(channelID: channelID)
-        return ReadStateMutation(
-            messageID: messageID,
-            manual: manual,
-            mentionCount: mentionCount,
-            flags: metadata.flags,
-            lastViewed: metadata.lastViewed
-        )
+        return ReadStateMutation(messageID: messageID, flags: metadata.flags, lastViewed: metadata.lastViewed)
     }
 
     func resetAcknowledgementWork() {
@@ -69,15 +58,11 @@ extension AppModel {
         isMarkingAllServersRead = false
         acknowledgementTasks.values.forEach { $0.cancel() }
         acknowledgementTasks.removeAll()
-        debouncedAcknowledgementTargets.removeAll()
         acknowledgementProcessorTask?.cancel()
         acknowledgementProcessorTask = nil
         guildAcknowledgementTasks.values.forEach { $0.cancel() }
         guildAcknowledgementTasks.removeAll()
-        categoryAcknowledgementTasks.values.forEach { $0.cancel() }
-        categoryAcknowledgementTasks.removeAll()
         queuedAcknowledgements.removeAll()
-        acknowledgementQueueOrder.removeAll()
     }
 
     func resetChannelNotificationMutations() {
@@ -286,12 +271,10 @@ extension AppModel {
             removeInboxMessage(messageID, mentionsOnly: false)
         case .channelPinsInvalidated(let channelID):
             invalidatePinnedMessages(in: channelID)
-        case .readStateSnapshot(let states, let version):
-            consumeReadStateSnapshot(states, version: version)
-            reconcileInboxReadState()
+        case .readStateSnapshot(let states, _):
+            consumeReadStateSnapshot(states)
         case .readStateChanged(let state):
             consumeReadStateChange(state)
-            reconcileInboxReadState()
         default:
             consumeWorkspaceEvent(
                 event,
@@ -572,6 +555,12 @@ extension AppModel {
         guard let currentUserID = snapshot?.currentUser.id else { return }
         let disposition = readState.receive(message, currentUserID: currentUserID)
         guard disposition.accepted else { return }
+        // Discord's own-message acknowledgement (MESSAGE_CREATE, build 649389)
+        // clears the unsent debounced read.
+        if disposition.acknowledgesOwnMessage {
+            cancelDebouncedAcknowledgement(for: message.channelID)
+            cancelNativeNotifications(channelID: message.channelID)
+        }
         if message.author.id != currentUserID, !isMessageSuppressed(message),
            accessibilitySettings.announcesNewMessages
         {
@@ -663,16 +652,9 @@ extension AppModel {
         }
     }
 
-    func consumeReadStateSnapshot(_ states: [ChannelReadState], version: Int?) {
-        let incomingVersion = version ?? states.compactMap(\.version).max()
-        let incomingVersionDescription = incomingVersion.map(String.init) ?? "none"
-        let pendingCount = readState.entries.values.count {
-            $0.pendingAcknowledgementID != nil
-        }
-        Self.unreadDiagnosticsLogger.info(
-            "Read-state snapshot received; states=\(states.count), version=\(incomingVersionDescription, privacy: .public), pending=\(pendingCount)"
-        )
-        readState.replaceReadStates(states, version: incomingVersion)
+    func consumeReadStateSnapshot(_ states: [ChannelReadState]) {
+        Self.unreadDiagnosticsLogger.info("Read-state snapshot received; states=\(states.count)")
+        for channelID in readState.replaceReadStates(states) { cancelNativeNotifications(channelID: channelID) }
         if let selectedChannelID {
             _ = readState.updatePresentation(
                 channelID: selectedChannelID,
@@ -695,22 +677,36 @@ extension AppModel {
     }
 
     func consumeReadStateChange(_ state: ChannelReadState) {
-        let heldBacklog = readState.holdsAutomaticAcknowledgement(state.channelID)
-        if readState.applyRemote(state) {
-            refreshUnreadPresentation()
-            if heldBacklog, !readState.holdsAutomaticAcknowledgement(state.channelID) {
-                acknowledgeIfEligible(channelID: state.channelID)
+        let channelID = state.channelID
+        if state.isManual {
+            // Discord's manual MESSAGE_ACK (E5, E11) clears the unsent debounced
+            // read and stops the selected conversation acknowledging
+            // automatically until the selection changes.
+            cancelDebouncedAcknowledgement(for: channelID)
+            if channelID == selectedChannelID || channelID == openThread?.id {
+                readState.holdUntilSelectionChange(channelID: channelID)
+                unreadDividerMessageIDs[channelID] = nil
             }
-            if !readState.unread(channelID: state.channelID) {
-                cancelNativeNotifications(channelID: state.channelID)
-            }
-        } else {
+        }
+        // Only a held backlog resumes at once; Discord's released Mark Unread
+        // hold waits for the next viewing acknowledgement.
+        let heldBacklog = readState.holdsAutomaticAcknowledgement(channelID)
+            && readState.presentations[channelID]?.isHeldUntilSelectionChange != true
+        let changed = readState.applyRemote(state)
+        if !readState.unread(channelID: channelID) {
+            cancelNativeNotifications(channelID: channelID)
+        }
+        guard changed else {
             let messageID = state.lastAcknowledgedMessageID?.rawValue ?? 0
-            let channelID = state.channelID.rawValue
-            let versionDescription = state.version.map(String.init) ?? "none"
             Self.unreadDiagnosticsLogger.info(
-                "Read event ignored c=\(channelID, privacy: .public) m=\(messageID, privacy: .public) v=\(versionDescription, privacy: .public)"
+                "Read event ignored c=\(channelID.rawValue, privacy: .public) m=\(messageID, privacy: .public)"
             )
+            return
+        }
+        if state.isManual { preserveUnreadDividerIfNeeded(channelID: channelID) }
+        refreshUnreadPresentation()
+        if heldBacklog, !readState.holdsAutomaticAcknowledgement(channelID) {
+            acknowledgeIfEligible(channelID: channelID)
         }
     }
 
@@ -867,11 +863,7 @@ extension AppModel {
     }
 
     func consumePrivateCallChanged(_ call: inout PrivateCall) {
-        let previousCall = privateCallsByChannel[call.channelID]
         let currentUserID = snapshot?.currentUser.id
-        let wasRingingCurrentUser = currentUserID.map {
-            previousCall?.isRinging($0) == true
-        } ?? false
         if call.voiceStates == nil {
             call.voiceStates = privateCallsByChannel[call.channelID]?.voiceStates
         }
@@ -884,12 +876,6 @@ extension AppModel {
             endLocalOutgoingPrivateCallRing(channelID: call.channelID)
         } else {
             reconcilePrivateCallSounds()
-        }
-        let isRingingCurrentUser = currentUserID.map(call.isRinging) ?? false
-        if !wasRingingCurrentUser, isRingingCurrentUser {
-            deliverIncomingCallNotification(call)
-        } else if wasRingingCurrentUser, !isRingingCurrentUser {
-            cancelIncomingCallNotification(channelID: call.channelID)
         }
     }
 
@@ -912,7 +898,6 @@ extension AppModel {
             }
         }
         endLocalOutgoingPrivateCallRing(channelID: channelID)
-        cancelIncomingCallNotification(channelID: channelID)
     }
 
     func consumeSnapshotChanged(_ value: BootstrapSnapshot) {
@@ -946,7 +931,7 @@ extension AppModel {
         for guildID in guildNotificationMutationTasks.keys {
             guildNotificationSettingsRevisions[guildID, default: 0] &+= 1
         }
-        readState.replaceSnapshot(value)
+        for channelID in readState.replaceSnapshot(value) { cancelNativeNotifications(channelID: channelID) }
         reloadThreadBrowserAfterReady()
         // READY lists the joined active threads; an open private thread it
         // does not list has unknown access until it is resolved again.

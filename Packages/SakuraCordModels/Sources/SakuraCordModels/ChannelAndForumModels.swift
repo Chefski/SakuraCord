@@ -259,6 +259,9 @@ public struct ForumPost: Identifiable, Codable, Hashable, Sendable {
     private var storedFirstMessage: StoredMessage?
     private var storedMostRecentMessage: StoredMessage?
     public var isUnread: Bool
+    /// Whether Discord has answered for the starter, so a missing
+    /// `firstMessage` means it was deleted rather than not yet loaded.
+    public var isFirstMessageLoaded = false
 
     // Most bootstrap thread entries have no messages. Immutable boxes keep
     // absent messages compact and preserve independent mutation after a copy.
@@ -457,6 +460,8 @@ public enum ThreadMembershipLocation: String, Hashable, Sendable {
     case fullViewMenu = "Toolbar Overflow"
     /// The forum post header Follow toggle.
     case forumToolbar = "Forum Toolbar"
+    /// Mark Unread in a thread the account has not joined.
+    case markUnread = "Mark Unread"
 }
 
 public struct ForumPostAttachment: Equatable, Identifiable, Sendable {
@@ -554,19 +559,24 @@ public struct CreateThreadDraft: Equatable, Sendable {
     /// The parent-channel message the thread starts from. The thread takes
     /// the message's ID; message threads are always public.
     public var starterMessageID: MessageID?
+    /// Reported as the request location: the Threads browser's create button
+    /// differs from the composer's Plus Button.
+    public var isFromThreadBrowser: Bool
 
     public init(
         channelID: ChannelID,
         name: String,
         isPrivate: Bool = false,
         autoArchiveDuration: Int = 4_320,
-        starterMessageID: MessageID? = nil
+        starterMessageID: MessageID? = nil,
+        isFromThreadBrowser: Bool = false
     ) {
         self.channelID = channelID
         self.name = name
         self.isPrivate = isPrivate
         self.autoArchiveDuration = autoArchiveDuration
         self.starterMessageID = starterMessageID
+        self.isFromThreadBrowser = isFromThreadBrowser
     }
 
     /// Starting from `message` with the parent's default inactivity period.
