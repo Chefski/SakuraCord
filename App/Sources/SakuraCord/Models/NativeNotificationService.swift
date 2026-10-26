@@ -570,6 +570,7 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
         kind: NotificationSoundKind,
         preferences: NotificationPreferences
     ) async -> UNNotificationSound? {
+        guard preferences.playsSound else { return nil }
         guard let name = await BannerSoundStore.shared.soundName(for: preferences.soundChoice(for: kind), kind: kind)
         else { return notificationSound }
         return UNNotificationSound(named: UNNotificationSoundName(name))
@@ -683,10 +684,12 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
                 Self.logger.debug("Notification image attachment could not be prepared")
             }
         }
+        // Prepared before the last check, since a custom sound may need exporting.
+        let sound = await Self.bannerSound(kind: .message, preferences: preferences)
         guard pendingRequests[identifier] == token, !Task.isCancelled,
               preferences.isEnabled, preferences.previewStyle == style
         else { return }
-        await add(content, identifier: identifier, token: token, kind: .message, preferences: preferences)
+        await add(content, identifier: identifier, sound: sound, kind: .message, preferences: preferences)
     }
 
     func deliverIncomingCall(
@@ -725,10 +728,12 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
             channelID: call.channelID,
             messageID: call.messageID
         ).userInfo
+        // Prepared before the last check, since a custom sound may need exporting.
+        let sound = await Self.bannerSound(kind: .call, preferences: preferences)
         guard pendingRequests[identifier] == token, !Task.isCancelled,
               preferences.isEnabled, preferences.previewStyle == style
         else { return }
-        await add(content, identifier: identifier, token: token, kind: .call, preferences: preferences)
+        await add(content, identifier: identifier, sound: sound, kind: .call, preferences: preferences)
     }
 
     func cancel(accountID: String, channelID: ChannelID) async {
@@ -763,16 +768,12 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
     private func add(
         _ content: UNNotificationContent,
         identifier: String,
-        token: UUID,
+        sound: UNNotificationSound?,
         kind: NotificationSoundKind,
         preferences: NotificationPreferences
     ) async {
         guard deliversNotifications, !isSuppressed, preferences.isEnabled,
               let content = content.mutableCopy() as? UNMutableNotificationContent
-        else { return }
-        let sound = preferences.playsSound ? await Self.bannerSound(kind: kind, preferences: preferences) : nil
-        // The request can be withdrawn, or settings changed, while a custom sound exports.
-        guard pendingRequests[identifier] == token, !Task.isCancelled, !isSuppressed, preferences.isEnabled
         else { return }
         content.sound = preferences.playsSound ? sound : nil
         do {
