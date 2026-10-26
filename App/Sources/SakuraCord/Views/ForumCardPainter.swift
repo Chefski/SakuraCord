@@ -312,7 +312,12 @@ enum ForumCardPainter {
             let drawnLines = max(1, Int((regions.titleFrame.height / metrics.titleLineHeight).rounded()))
             drawTitle(presentation, in: regions.titleFrame, maximumLines: min(input.titleLines, drawnLines), metrics: metrics, on: canvas)
             if let excerptFrame = regions.excerptFrame {
-                drawExcerpt(presentation, in: excerptFrame, renderer: input.excerpt, metrics: metrics, on: canvas)
+                // A line with a mention or emoji is taller than body text, and
+                // the slot cut a second such line off. The excerpt draws no
+                // more than its lines, so it may run down to the footer.
+                var clip = excerptFrame
+                clip.size.height = max(clip.height, regions.footerFrame.minY - clip.minY)
+                drawExcerpt(presentation, in: excerptFrame, clip: clip, renderer: input.excerpt, metrics: metrics, on: canvas)
             }
             if let thumbnail = presentation.thumbnail, let frame = regions.thumbnailFrame {
                 drawMedia(
@@ -524,6 +529,7 @@ enum ForumCardPainter {
     private static func drawExcerpt(
         _ presentation: ForumCardPresentation,
         in frame: CGRect,
+        clip: CGRect,
         renderer: ForumPostPreviewTextRenderer?,
         metrics: ForumBoardMetrics,
         on canvas: ForumCardCanvas
@@ -540,8 +546,7 @@ enum ForumCardPainter {
                 color: .tertiaryLabelColor
             )
         case .message:
-            // Markdown lines can be taller than body text; the slot clips.
-            drawExcerptText(renderer, at: frame.origin, clip: frame, on: canvas)
+            drawExcerptText(renderer, at: frame.origin, clip: clip, on: canvas)
         }
     }
 
