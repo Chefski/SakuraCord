@@ -686,7 +686,7 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
         guard pendingRequests[identifier] == token, !Task.isCancelled,
               preferences.isEnabled, preferences.previewStyle == style
         else { return }
-        await add(content, identifier: identifier, kind: .message, preferences: preferences)
+        await add(content, identifier: identifier, token: token, kind: .message, preferences: preferences)
     }
 
     func deliverIncomingCall(
@@ -728,7 +728,7 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
         guard pendingRequests[identifier] == token, !Task.isCancelled,
               preferences.isEnabled, preferences.previewStyle == style
         else { return }
-        await add(content, identifier: identifier, kind: .call, preferences: preferences)
+        await add(content, identifier: identifier, token: token, kind: .call, preferences: preferences)
     }
 
     func cancel(accountID: String, channelID: ChannelID) async {
@@ -763,6 +763,7 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
     private func add(
         _ content: UNNotificationContent,
         identifier: String,
+        token: UUID,
         kind: NotificationSoundKind,
         preferences: NotificationPreferences
     ) async {
@@ -770,8 +771,9 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
               let content = content.mutableCopy() as? UNMutableNotificationContent
         else { return }
         let sound = preferences.playsSound ? await Self.bannerSound(kind: kind, preferences: preferences) : nil
-        // Settings can change while a custom sound exports.
-        guard !isSuppressed, preferences.isEnabled else { return }
+        // The request can be withdrawn, or settings changed, while a custom sound exports.
+        guard pendingRequests[identifier] == token, !Task.isCancelled, !isSuppressed, preferences.isEnabled
+        else { return }
         content.sound = preferences.playsSound ? sound : nil
         do {
             try await submitRequest(
