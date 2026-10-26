@@ -28,8 +28,9 @@ struct NotificationSoundSettingsSection: View {
             if !playsSound { stopPreview() }
         }
         .onDisappear { stopPreview() }
-        .onChange(of: preferences.messageSoundID) { syncSelection(.message) }
-        .onChange(of: preferences.callRingtoneID) { syncSelection(.call) }
+        // Covers Reset and Import as well as the pickers.
+        .onChange(of: preferences.soundChoice(for: .message)) { choiceChanged(.message) }
+        .onChange(of: preferences.soundChoice(for: .call)) { choiceChanged(.call) }
         .alert(
             "Can’t Use “\(unplayableFileName ?? "")”",
             isPresented: Binding(
@@ -52,7 +53,6 @@ struct NotificationSoundSettingsSection: View {
         let selection = Binding(
             get: { selections[kind] ?? NotificationSoundLibrary.bundledID },
             set: { newValue in
-                if previewingEffect == kind.defaultEffect { stopPreview() }
                 selections[kind] = newValue
                 if newValue == NotificationSoundLibrary.chooseFileID {
                     chooseFile(for: kind)
@@ -108,6 +108,11 @@ struct NotificationSoundSettingsSection: View {
         previewResetTask?.cancel()
         soundPlayer.stopPreview()
         previewingEffect = nil
+    }
+
+    private func choiceChanged(_ kind: NotificationSoundKind) {
+        if previewingEffect == kind.defaultEffect { stopPreview() }
+        syncSelection(kind)
     }
 
     /// Points the picker at the stored choice, or Default when the picker has no row for it.

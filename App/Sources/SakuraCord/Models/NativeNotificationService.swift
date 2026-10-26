@@ -569,11 +569,10 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
     private static func bannerSound(
         kind: NotificationSoundKind,
         preferences: NotificationPreferences
-    ) -> UNNotificationSound? {
-        guard preferences.soundChoice(for: kind).soundID != NotificationSoundLibrary.bundledID,
-              FileManager.default.fileExists(atPath: NotificationSoundLibrary.bannerSoundURL(kind: kind).path)
+    ) async -> UNNotificationSound? {
+        guard let name = await BannerSoundStore.shared.soundName(for: preferences.soundChoice(for: kind), kind: kind)
         else { return notificationSound }
-        return UNNotificationSound(named: UNNotificationSoundName(NotificationSoundLibrary.bannerSoundName(kind: kind)))
+        return UNNotificationSound(named: UNNotificationSoundName(name))
     }
 
     // Offline demos use real system permissions without publishing fixture alerts.
@@ -770,7 +769,7 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
         guard deliversNotifications, !isSuppressed, preferences.isEnabled,
               let content = content.mutableCopy() as? UNMutableNotificationContent
         else { return }
-        content.sound = preferences.playsSound ? Self.bannerSound(kind: kind, preferences: preferences) : nil
+        content.sound = preferences.playsSound ? await Self.bannerSound(kind: kind, preferences: preferences) : nil
         do {
             try await submitRequest(
                 UNNotificationRequest(identifier: identifier, content: content, trigger: nil)

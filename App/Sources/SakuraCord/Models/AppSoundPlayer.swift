@@ -65,8 +65,10 @@ final class MacAppSoundPlayer: AppSoundPlaying {
         var player: AVAudioPlayer
         var scopedURL: URL?
         /// A player keeps reading its file with the format it opened, so a
-        /// file replaced in place needs a new player.
-        var fileStamp: NotificationSoundLibrary.FileStamp?
+        /// file replaced in place needs a new player. Stamped from the chosen
+        /// file even when the player fell back, so a repaired file is picked up.
+        var sourceURL: URL
+        var sourceStamp: NotificationSoundLibrary.FileStamp?
     }
 
     private var players: [AppSoundEffect: AVAudioPlayer] = [:]
@@ -157,7 +159,7 @@ final class MacAppSoundPlayer: AppSoundPlaying {
     private func notificationPlayer(for effect: AppSoundEffect, kind: NotificationSoundKind) -> AVAudioPlayer? {
         var choice = notificationPreferences.soundChoice(for: kind)
         if let slot = notificationSlots[effect], slot.choice == choice,
-           slot.fileStamp == NotificationSoundLibrary.FileStamp(slot.player.url)
+           slot.sourceStamp == NotificationSoundLibrary.FileStamp(slot.sourceURL)
         {
             return slot.player
         }
@@ -170,8 +172,6 @@ final class MacAppSoundPlayer: AppSoundPlaying {
         }
         var player = NotificationSoundLibrary.makePlayer(at: resolution.url)
         if player == nil {
-            scopedURL?.stopAccessingSecurityScopedResource()
-            scopedURL = nil
             player = NotificationSoundLibrary.makePlayer(at: NotificationSoundLibrary.defaultURL(kind: kind))
         } else if resolution.isStaleBookmark, scopedURL != nil,
                   let refreshed = try? resolution.url.bookmarkData(
@@ -195,13 +195,15 @@ final class MacAppSoundPlayer: AppSoundPlaying {
             choice: choice,
             player: player,
             scopedURL: scopedURL,
-            fileStamp: NotificationSoundLibrary.FileStamp(player.url)
+            sourceURL: resolution.url,
+            sourceStamp: NotificationSoundLibrary.FileStamp(resolution.url)
         )
         return player
     }
 
-    /// Keeps the Notification Center copies in step with the stored choices,
-    /// including Reset and Import, which only change the preferences.
+    /// Exports the stored choices before the first banner needs them, and
+    /// removes the copy when a choice returns to Default, including after
+    /// Reset and Import, which only change the preferences.
     private func syncBannerSounds() {
         withObservationTracking {
             for kind in NotificationSoundKind.allCases { _ = notificationPreferences.soundChoice(for: kind) }
@@ -211,11 +213,10 @@ final class MacAppSoundPlayer: AppSoundPlaying {
         for kind in NotificationSoundKind.allCases {
             let choice = notificationPreferences.soundChoice(for: kind)
             let previous = bannerExports[kind]
-            previous?.cancel()
             // Waiting keeps a superseded export from finishing after the newer one.
-            bannerExports[kind] = Task.detached(priority: .utility) {
+            bannerExports[kind] = Task(priority: .utility) {
                 await previous?.value
-                NotificationSoundLibrary.exportBannerSound(choice, kind: kind)
+                _ = await BannerSoundStore.shared.soundName(for: choice, kind: kind)
             }
         }
     }
