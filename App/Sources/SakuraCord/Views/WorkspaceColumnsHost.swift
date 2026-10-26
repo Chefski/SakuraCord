@@ -315,9 +315,12 @@ final class WorkspaceColumnsView: NSView {
         // A column marked leaving before the change stays, behind the rest:
         // updates within the change can run before it is listed as
         // departing, and removing it then rebuilt its content from nothing.
+        // Whether the motion runs comes from its phase, not its clock: a
+        // change that builds a new pane can take longer than the spring, and
+        // the column it replaced vanished before the pane came in.
+        let isMoving = WorkspaceMotionPhase.shared.isMoving
         var updated = islands.filter { island in
-            !ids.contains(island.column.id) && !island.column.isFullWidth && island.host.isLeaving
-                && WorkspaceLayoutMotion.isMoving
+            !ids.contains(island.column.id) && !island.column.isFullWidth && island.host.isLeaving && isMoving
         }.map { island in
             var island = island
             island.column.isDeparting = true
@@ -341,7 +344,7 @@ final class WorkspaceColumnsView: NSView {
                 // A column marked leaving before the change stays so until
                 // it comes back in or the motion settles: updates within the
                 // change can run before the column is listed as departing.
-                let isLeaving = column.isDeparting || island.host.isLeaving && WorkspaceLayoutMotion.isMoving
+                let isLeaving = column.isDeparting || island.host.isLeaving && isMoving
                 island.host.setContent(root, isLeaving: isLeaving)
                 if island.column.isDeparting != column.isDeparting
                     || island.column.isFullWidth != column.isFullWidth
@@ -525,17 +528,22 @@ final class WorkspaceColumnsView: NSView {
     /// The conversation's width at `time`, on the pixel grid, as
     /// `layoutColumns` will place it.
     private func conversationWidth(at time: CFTimeInterval, provisionalStart: CFTimeInterval) -> CGFloat {
-        var covered: CGFloat = 0
-        if islands.contains(where: \.column.isFullWidth) {
-            covered = max(paneWidth, ChatChromeMetrics.sideConversationMinimumWidth)
-        } else {
-            for island in islands {
-                let shown = width(of: island.column) * island.reveal.value(at: time, provisionalStart: provisionalStart)
-                covered = max(covered, shown)
-            }
-        }
+        let covered = islands.contains(where: \.column.isFullWidth)
+            ? max(paneWidth, ChatChromeMetrics.sideConversationMinimumWidth)
+            : trailingCoverage(at: time, provisionalStart: provisionalStart)
         let frame = CGRect(x: 0, y: 0, width: max(0, bounds.width - covered), height: bounds.height)
         return backingAlignedRect(frame, options: .alignAllEdgesNearest).width
+    }
+
+    /// How much of the trailing edge the columns beside the conversation
+    /// cover at `time`. As one column takes another's place, their reveals
+    /// add up to one, so this moves steadily from the leaving column's width
+    /// to the arriving one's. The wider of the two narrowed midway, and the
+    /// conversation widened and narrowed again, re-wrapping its text.
+    private func trailingCoverage(at time: CFTimeInterval, provisionalStart: CFTimeInterval?) -> CGFloat {
+        islands.lazy.filter { !$0.column.isFullWidth }.reduce(0) { covered, island in
+            covered + width(of: island.column) * island.reveal.value(at: time, provisionalStart: provisionalStart)
+        }
     }
 
     /// Lets a timeline that a column slides over follow the column.
@@ -560,14 +568,17 @@ final class WorkspaceColumnsView: NSView {
         // How much of the trailing edge the columns cover, which the
         // conversation gives up, and how much of it inspectors cover, which
         // a full-width side chat gives up.
-        var covered: CGFloat = 0
+        var covered = trailingCoverage(at: time, provisionalStart: nil)
         var inspectorCovered: CGFloat = 0
         for island in islands where !island.column.isFullWidth {
             let width = width(of: island.column)
             let shown = width * island.reveal.value(at: time)
-            covered = max(covered, shown)
             if !island.column.isSideConversation { inspectorCovered = max(inspectorCovered, shown) }
-            setFrame(of: island.view, CGRect(x: bounds.maxX - shown, y: 0, width: width, height: bounds.height))
+            // A column leaving as another arrives stays against the
+            // conversation, beneath the arriving one, so nothing opens
+            // between them.
+            let minX = bounds.maxX - (island.column.isDeparting ? covered : shown)
+            setFrame(of: island.view, CGRect(x: minX, y: 0, width: width, height: bounds.height))
         }
         // Columns are translucent, so a column that leaves beneath one that
         // arrives fades as the arriving one comes in, rather than showing

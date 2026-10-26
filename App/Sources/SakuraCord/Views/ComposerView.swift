@@ -21,6 +21,11 @@ struct ComposerView: View {
     @State private var showEmojiPicker = false
     @State private var isFocused = false
     @Environment(\.columnPresentation) private var columnPresentation
+    @Environment(\.isLeavingWorkspace) private var isLeaving
+    /// Whether voice messages could be sent before the composer's pane began
+    /// to leave. A closed thread allows none, and the voice button turned
+    /// into the send button as the pane slid away.
+    @State private var couldSendVoiceMessages = false
     @State private var focusedColumnPresentation = 0
     @State private var isComposing = false
     @State private var draftSelection: NSRange?
@@ -338,6 +343,7 @@ struct ComposerView: View {
             chrome
                 .animation(.smooth(duration: 0.42, extraBounce: 0.08), value: voiceMessagePhaseKey)
                 .animation(.smooth(duration: 0.3), value: showsVoiceMessageButton)
+                .onChange(of: model.canSendVoiceMessages(in: conversation), initial: true, holdVoiceMessageAvailability)
                 .animation(animatesChromeResize ? ComposerResizeMotion.animation : nil, value: chromeKey)
                 // Another conversation's composer appears in place, as the
                 // timeline does.
@@ -1399,10 +1405,14 @@ extension ComposerView {
     }
 
     /// With nothing to send, the send button records a voice message instead.
+    private func holdVoiceMessageAvailability(_: Bool, _ canSend: Bool) {
+        if !isLeaving { couldSendVoiceMessages = canSend }
+    }
+
     private var showsVoiceMessageButton: Bool {
         draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && attachments.isEmpty && !hasActiveCommand && !isCreatingThread
-            && model.canSendVoiceMessages(in: conversation)
+            && (isLeaving ? couldSendVoiceMessages : model.canSendVoiceMessages(in: conversation))
     }
 
     private var sendSlotMode: ComposerSendSlot.Mode {
