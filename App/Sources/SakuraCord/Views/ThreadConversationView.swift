@@ -316,8 +316,10 @@ private struct ThreadConversationComposer: View {
                 )
             }
         }
-        .onChange(of: model.openThreadAccess, initial: true) { _, access in
-            if !isLeaving { shownAccess = access }
+        // Kept current while the pane is in place, including when it returns
+        // before leaving finished.
+        .onChange(of: isLeaving ? nil : model.openThreadAccess, initial: true) { _, access in
+            if let access { shownAccess = access }
         }
     }
 }
@@ -504,8 +506,8 @@ private struct ThreadMessageTimelineView: View {
                 }
             }
         }
-        .onChange(of: liveOverlays, initial: true) { _, overlays in
-            if !isLeaving { shownOverlays = overlays }
+        .onChange(of: isLeaving ? nil : liveOverlays, initial: true) { _, overlays in
+            if let overlays { shownOverlays = overlays }
         }
         .onChange(of: model.openThread?.id) { oldID, _ in
             if let oldID {

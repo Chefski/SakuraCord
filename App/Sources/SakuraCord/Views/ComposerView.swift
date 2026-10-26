@@ -22,10 +22,10 @@ struct ComposerView: View {
     @State private var isFocused = false
     @Environment(\.columnPresentation) private var columnPresentation
     @Environment(\.isLeavingWorkspace) private var isLeaving
-    /// Whether the voice button showed before the composer's pane began to
-    /// leave. Closing a thread clears its draft and allows no voice
+    /// The send button's mode before the composer's pane began to leave.
+    /// Closing a thread clears its draft and recording and allows no voice
     /// messages, and the button changed as the pane slid away.
-    @State private var showedVoiceMessageButton = false
+    @State private var showedSendSlotMode = ComposerSendSlot.Mode.send
     @State private var focusedColumnPresentation = 0
     @State private var isComposing = false
     @State private var draftSelection: NSRange?
@@ -343,7 +343,7 @@ struct ComposerView: View {
             chrome
                 .animation(.smooth(duration: 0.42, extraBounce: 0.08), value: voiceMessagePhaseKey)
                 .animation(.smooth(duration: 0.3), value: showsVoiceMessageButton)
-                .onChange(of: showsLiveVoiceMessageButton, initial: true, holdVoiceMessageButton)
+                .onChange(of: isLeaving ? nil : liveSendSlotMode, initial: true, holdSendSlotMode)
                 .animation(animatesChromeResize ? ComposerResizeMotion.animation : nil, value: chromeKey)
                 // Another conversation's composer appears in place, as the
                 // timeline does.
@@ -1404,22 +1404,25 @@ extension ComposerView {
         }
     }
 
+    /// Keeps the mode current while the pane is in place, including when it
+    /// returns before leaving finished. A leaving composer also gives up the
+    /// keyboard: typing would land in the closed thread's draft.
+    private func holdSendSlotMode(_: ComposerSendSlot.Mode?, _ mode: ComposerSendSlot.Mode?) {
+        if let mode { showedSendSlotMode = mode } else { isFocused = false }
+    }
+
     /// With nothing to send, the send button records a voice message instead.
-    private func holdVoiceMessageButton(_: Bool, _ shows: Bool) {
-        if !isLeaving { showedVoiceMessageButton = shows }
-    }
-
     private var showsVoiceMessageButton: Bool {
-        isLeaving ? showedVoiceMessageButton : showsLiveVoiceMessageButton
-    }
-
-    private var showsLiveVoiceMessageButton: Bool {
         draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && attachments.isEmpty && !hasActiveCommand && !isCreatingThread
             && model.canSendVoiceMessages(in: conversation)
     }
 
     private var sendSlotMode: ComposerSendSlot.Mode {
+        isLeaving ? showedSendSlotMode : liveSendSlotMode
+    }
+
+    private var liveSendSlotMode: ComposerSendSlot.Mode {
         switch voiceMessage.phase {
         case .idle: showsVoiceMessageButton ? .voice : .send
         case .starting, .recording, .finishing: .stop
