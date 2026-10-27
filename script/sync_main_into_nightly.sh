@@ -15,6 +15,17 @@ git -C "$ROOT_DIR" fetch --no-tags "$REMOTE" \
   "+refs/heads/main:$MAIN_REF" \
   "+refs/heads/nightly:$NIGHTLY_REF"
 
+# Without a GitHub token, gh or a successful run, nightly counts as unvalidated.
+nightly_ci_passed() {
+  [[ -n "${GITHUB_REPOSITORY:-}" ]] && command -v gh >/dev/null || return 1
+  local commit runs
+  commit="$(git -C "$ROOT_DIR" rev-parse "$NIGHTLY_REF")"
+  runs="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml \
+    --commit "$commit" --status success --limit 1 \
+    --json databaseId --jq length 2>/dev/null || true)"
+  [[ "$runs" == 1 ]]
+}
+
 if git -C "$ROOT_DIR" merge-base --is-ancestor "$MAIN_REF" "$NIGHTLY_REF"; then
   echo "Nightly already contains main."
   exit 0
@@ -29,9 +40,11 @@ if git -C "$ROOT_DIR" merge-base --is-ancestor "$NIGHTLY_REF" "$MAIN_REF"; then
 else
   git -C "$ROOT_DIR" merge --no-edit "$MAIN_REF"
   # A main commit whose changes nightly already has, such as a hotfix copied
-  # from nightly, leaves nightly's validated tree unchanged.
+  # from nightly, leaves nightly's tree unchanged; that tree needs no second
+  # validation once CI has passed for nightly's exact commit.
   if [[ "$(git -C "$ROOT_DIR" rev-parse 'HEAD^{tree}')" != \
-    "$(git -C "$ROOT_DIR" rev-parse "$NIGHTLY_REF^{tree}")" ]]; then
+    "$(git -C "$ROOT_DIR" rev-parse "$NIGHTLY_REF^{tree}")" ]] \
+    || ! nightly_ci_passed; then
     "$ROOT_DIR/script/ci.sh"
   fi
 fi
