@@ -87,11 +87,10 @@ extension AppModel {
             && threadWindow.revision == request.windowRevision
     }
 
-    /// Ends a whole-window request and runs a revalidation a reconnect
-    /// deferred while it was in flight.
+    /// Ends a whole-window request and runs a revalidation deferred while it,
+    /// or a superseded read still holding the loading state, was in flight.
     func endThreadWindowRequest(_ request: ThreadWindowRequest) {
-        guard threadWindow.activeRevision == request.windowRevision else { return }
-        threadWindow.activeRevision = nil
+        if threadWindow.activeRevision == request.windowRevision { threadWindow.activeRevision = nil }
         resumePendingThreadRevalidation()
     }
 
@@ -406,9 +405,6 @@ extension AppModel {
             {
                 isLoadingThread = false
                 threadWindow.newestReadRevision = nil
-                // A revalidation queued behind this read's loading state,
-                // even once a later request superseded the read, may run now.
-                resumePendingThreadRevalidation()
             }
             endThreadWindowRequest(request)
         }
