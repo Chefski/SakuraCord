@@ -28,7 +28,12 @@ if git -C "$ROOT_DIR" merge-base --is-ancestor "$NIGHTLY_REF" "$MAIN_REF"; then
   git -C "$ROOT_DIR" merge --ff-only "$MAIN_REF"
 else
   git -C "$ROOT_DIR" merge --no-edit "$MAIN_REF"
-  "$ROOT_DIR/script/ci.sh"
+  # A main commit whose changes nightly already has, such as a hotfix copied
+  # from nightly, leaves nightly's validated tree unchanged.
+  if [[ "$(git -C "$ROOT_DIR" rev-parse 'HEAD^{tree}')" != \
+    "$(git -C "$ROOT_DIR" rev-parse "$NIGHTLY_REF^{tree}")" ]]; then
+    "$ROOT_DIR/script/ci.sh"
+  fi
 fi
 
 if ! git -C "$ROOT_DIR" merge-base --is-ancestor "$MAIN_REF" HEAD; then
