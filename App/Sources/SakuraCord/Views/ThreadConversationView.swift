@@ -545,9 +545,10 @@ private struct ThreadMessageTimelineView: View {
             requestScroll(.bottom)
             model.completeConversationNewestRequest(requestID: request.requestID)
         }
-        .onChange(of: model.threadReplyingTo?.id) { _, messageID in
-            guard let messageID else { return }
+        .onChange(of: model.replyRevealDestination) { _, destination in
+            guard destination == .thread, let messageID = model.threadReplyingTo?.id else { return }
             requestScroll(.message(messageID, anchor: .center), glides: true)
+            model.replyRevealDestination = nil
         }
         .onDisappear {
             if let conversationID {

@@ -104,6 +104,7 @@ extension AppModel {
             return true
         }
         reply(to: availableMessages[nextIndex])
+        replyRevealDestination = destination
         return true
     }
 

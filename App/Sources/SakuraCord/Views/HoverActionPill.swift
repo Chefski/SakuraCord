@@ -124,6 +124,7 @@ struct HoverActionControlLabel<Content: View>: View {
             .contentShape(Circle())
             .background(backgroundColor, in: Circle())
             .contentShape(Circle())
+            .pointerStyle(.link)
             .onModalHover {
                 isHovering = $0
                 onHoverChanged?($0)

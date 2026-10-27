@@ -613,6 +613,7 @@ private struct ReactionActionMenu: View {
         .contentShape(
             ConcentricRectangle(cornerRadius: cornerRadius, style: .continuous)
         )
+        .pointerStyle(.link)
         .onModalHover { isHovering = $0 }
         .help("Add reaction")
         .background {

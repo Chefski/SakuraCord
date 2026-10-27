@@ -245,6 +245,10 @@ final class AppModel {
     @ObservationIgnored var selectedReplyMessageIDsByTarget:
         [MessageID: Set<MessageID>] = [:]
     var messageNavigationRequest: MessageNavigationRequest?
+    /// Keyboard reply navigation asks the timeline to scroll to the reply
+    /// target; choosing a message with the pointer does not, since it is
+    /// already on screen.
+    var replyRevealDestination: MessageComposerDestination?
     var conversationNewestRequest: ConversationNewestRequest?
     var presentedProfileGame: ProfileGame?
     var mediaViewerPresentation: NativeTimelineMediaViewerPresentation?

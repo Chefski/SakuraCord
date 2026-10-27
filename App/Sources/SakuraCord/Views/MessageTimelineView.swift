@@ -175,9 +175,10 @@ struct MessageTimelineView: View {
             requestScroll(.bottom)
             model.completeConversationNewestRequest(requestID: request.requestID)
         }
-        .onChange(of: model.replyingTo?.id) { _, messageID in
-            guard let messageID else { return }
+        .onChange(of: model.replyRevealDestination) { _, destination in
+            guard destination == .channel, let messageID = model.replyingTo?.id else { return }
             requestScroll(.message(messageID, anchor: .center), glides: true)
+            model.replyRevealDestination = nil
         }
         .task(id: model.selectedChannelID) {
             allowsAutomaticHistoryLoading = false
