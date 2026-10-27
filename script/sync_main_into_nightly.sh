@@ -39,8 +39,11 @@ if git -C "$ROOT_DIR" merge-base --is-ancestor "$NIGHTLY_REF" "$MAIN_REF"; then
 else
   git -C "$ROOT_DIR" merge --no-edit "$MAIN_REF"
   # A hotfix copied from nightly leaves nightly's tree unchanged, and that tree
-  # needs no second run once CI has passed for nightly's commit.
-  if ! git -C "$ROOT_DIR" diff --quiet "$NIGHTLY_REF" HEAD || ! nightly_ci_passed; then
+  # needs no second run once CI has passed for nightly's commit. Tree IDs,
+  # unlike git diff, cannot be masked by attribute or textconv configuration.
+  if [[ "$(git -C "$ROOT_DIR" rev-parse 'HEAD^{tree}')" != \
+    "$(git -C "$ROOT_DIR" rev-parse "$NIGHTLY_REF^{tree}")" ]] \
+    || ! nightly_ci_passed; then
     "$ROOT_DIR/script/ci.sh"
   fi
 fi
