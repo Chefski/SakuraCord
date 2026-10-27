@@ -4649,8 +4649,8 @@ func `gateway mutations keep exact indexes after repeated history prepends`(
         author: try #require(model.snapshot?.currentUser),
         content: "This must not bridge the unloaded history gap."
     )
-    await provider.emit(.messageCreated(liveMessage))
-    try await Task.sleep(for: .milliseconds(20))
+    // Delivered before the newest read starts, which would otherwise replay it.
+    model.consumeImmediately(.messageCreated(liveMessage))
     #expect(!model.messages.contains(where: { $0.id == liveMessage.id }))
 
     #expect(await model.loadNewestMessageWindow())
@@ -4968,6 +4968,38 @@ private func historyParityDetachedModel() async -> (AppModel, ChannelLoadTestPro
     #expect(failed.nonce == "failed-send")
     #expect(failed.outboxState == .failed)
     #expect(model.messages.filter { $0.nonce == "failed-send" }.count == 1)
+}
+
+@MainActor
+@Test(arguments: [false, true])
+func `a gateway deletion during a jump or jump to present is not undone by its read`(toPresent: Bool) async {
+    let channelID = historyParityChannelID
+    let provider = ChannelLoadTestProvider(paginatedThreadID: channelID, paginatedThreadMessageCount: 300)
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    #expect(await until { model.selectedChannelID == channelID && model.hasCompletedInitialMessageLoad })
+    if toPresent {
+        model.navigate(to: nil, channelID: channelID, messageID: historyParityMessageID(100))
+        #expect(await until { model.hasMoreLaterMessages })
+    }
+
+    let deleted = toPresent ? historyParityMessageID(295) : historyParityMessageID(101)
+    await provider.blockNextPaginatedRequest(toPresent ? .newest : .around)
+    let read = Task {
+        if toPresent {
+            _ = await model.loadNewestMessageWindow()
+        } else {
+            _ = await model.loadSelectedMessageWindow(
+                around: historyParityMessageID(100), channelID: channelID, session: model.accountSession()
+            )
+        }
+    }
+    await provider.waitForBlockedPaginatedRequest()
+    model.consumeImmediately(.messageDeleted(channelID: channelID, messageID: deleted))
+    await provider.releaseBlockedPaginatedRequest()
+    await read.value
+
+    #expect(!model.messages.contains { $0.id == deleted })
 }
 
 @MainActor

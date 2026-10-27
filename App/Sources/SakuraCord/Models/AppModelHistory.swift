@@ -752,6 +752,8 @@ extension AppModel {
         messageLoadError = nil
         messageLoadErrorIsEarlierPage = false
         messageLoadErrorIsLaterPage = false
+        let refreshRevision = beginScopedConversationRefresh(in: channelID)
+        defer { endScopedConversationRefresh(refreshRevision) }
         do {
             let page = try await session.provider.messages(
                 in: channelID,
@@ -764,7 +766,11 @@ extension AppModel {
             else { return false }
             replaceSelectedMessages(with: Self.merging(
                 current: messages.filter { $0.outboxState != .confirmed },
-                fresh: page.messages
+                fresh: Self.applyingConversationRefreshMutations(
+                    scopedConversationRefreshMutations(refreshRevision),
+                    to: page.messages,
+                    within: MessageHistorySpan(page: page)
+                )
             ))
             hasMoreMessages = page.hasMoreBefore
             hasMoreLaterMessages = false

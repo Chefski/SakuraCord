@@ -559,6 +559,10 @@ extension AppModel {
         channelID: ChannelID,
         session: AppModelAccountSession
     ) async -> Bool {
+        // Gateway edits and deletions that land while the read is in flight
+        // are replayed onto its older response.
+        let refreshRevision = beginScopedConversationRefresh(in: channelID)
+        defer { endScopedConversationRefresh(refreshRevision) }
         do {
             let page = try await session.provider.messages(
                 in: channelID,
@@ -573,7 +577,11 @@ extension AppModel {
             // awaiting Retry or Discard, whichever window is presented.
             replaceSelectedMessages(with: Self.merging(
                 current: messages.filter { $0.outboxState != .confirmed },
-                fresh: page.messages
+                fresh: Self.applyingConversationRefreshMutations(
+                    scopedConversationRefreshMutations(refreshRevision),
+                    to: page.messages,
+                    within: MessageHistorySpan(page: page)
+                )
             ))
             hasMoreMessages = page.hasMoreBefore
             hasMoreLaterMessages = page.hasMoreAfter
