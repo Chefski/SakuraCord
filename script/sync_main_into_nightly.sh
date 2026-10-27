@@ -15,17 +15,14 @@ git -C "$ROOT_DIR" fetch --no-tags "$REMOTE" \
   "+refs/heads/main:$MAIN_REF" \
   "+refs/heads/nightly:$NIGHTLY_REF"
 
-# Only a successful push run checks out and validates this exact commit; a
-# dispatched run can carry its SHA while building a release tag. Without a
-# GitHub token, gh or such a run, nightly counts as unvalidated.
+# Whether a push-triggered CI run succeeded for nightly's exact commit. A
+# dispatched run can carry that SHA while building a release tag instead.
 nightly_ci_passed() {
-  [[ -n "${GITHUB_REPOSITORY:-}" ]] && command -v gh >/dev/null || return 1
-  local commit runs
-  commit="$(git -C "$ROOT_DIR" rev-parse "$NIGHTLY_REF")"
-  runs="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml \
-    --commit "$commit" --event push --status success --limit 1 \
-    --json databaseId --jq length 2>/dev/null || true)"
-  [[ "$runs" == 1 ]]
+  [[ -n "${GITHUB_REPOSITORY:-}" ]] || return 1
+  [[ "$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml \
+    --commit "$(git -C "$ROOT_DIR" rev-parse "$NIGHTLY_REF")" \
+    --event push --status success --limit 1 \
+    --json databaseId --jq length 2>/dev/null)" == 1 ]]
 }
 
 if git -C "$ROOT_DIR" merge-base --is-ancestor "$MAIN_REF" "$NIGHTLY_REF"; then
@@ -41,12 +38,9 @@ if git -C "$ROOT_DIR" merge-base --is-ancestor "$NIGHTLY_REF" "$MAIN_REF"; then
   git -C "$ROOT_DIR" merge --ff-only "$MAIN_REF"
 else
   git -C "$ROOT_DIR" merge --no-edit "$MAIN_REF"
-  # A main commit whose changes nightly already has, such as a hotfix copied
-  # from nightly, leaves nightly's tree unchanged; that tree needs no second
-  # validation once CI has passed for nightly's exact commit.
-  if [[ "$(git -C "$ROOT_DIR" rev-parse 'HEAD^{tree}')" != \
-    "$(git -C "$ROOT_DIR" rev-parse "$NIGHTLY_REF^{tree}")" ]] \
-    || ! nightly_ci_passed; then
+  # A hotfix copied from nightly leaves nightly's tree unchanged, and that tree
+  # needs no second run once CI has passed for nightly's commit.
+  if ! git -C "$ROOT_DIR" diff --quiet "$NIGHTLY_REF" HEAD || ! nightly_ci_passed; then
     "$ROOT_DIR/script/ci.sh"
   fi
 fi
