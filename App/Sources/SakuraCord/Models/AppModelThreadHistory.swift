@@ -479,12 +479,14 @@ extension AppModel {
         _ direction: TimelineHistoryDirection,
         ignoringLoading: Bool = false
     ) -> MessageID? {
+        // One page is in flight at a time, whichever edge it continues.
+        guard ignoringLoading || !(isLoadingEarlierThread || isLoadingLaterThread) else { return nil }
         switch direction {
         case .earlier:
-            guard hasMoreThreadMessages, ignoringLoading || !isLoadingEarlierThread else { return nil }
+            guard hasMoreThreadMessages else { return nil }
             return threadWindow.lowerCursor
         case .later:
-            guard hasMoreLaterThreadMessages, ignoringLoading || !isLoadingLaterThread else { return nil }
+            guard hasMoreLaterThreadMessages else { return nil }
             return threadWindow.upperCursor
         }
     }

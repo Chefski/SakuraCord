@@ -1815,10 +1815,13 @@ extension NativeMessageTimelineCoordinator {
             case .earlier: hasIssuedEarlierHistoryRequest
             case .later: hasIssuedLaterHistoryRequest
             }
+            // The model keeps one page in flight across both edges; a request
+            // it would refuse must not count as issued.
             guard isNearBoundary,
                   hasIntent,
                   hasMoreHistory(direction),
-                  !isLoadingHistory(direction),
+                  !isLoadingHistory(.earlier),
+                  !isLoadingHistory(.later),
                   !hasIssuedRequest
             else { return }
             switch direction {

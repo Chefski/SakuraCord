@@ -4948,6 +4948,181 @@ private func historyParityDetachedModel() async -> (AppModel, ChannelLoadTestPro
     #expect(model.messages.filter { $0.outboxState == .confirmed }.map(\.id) == (85 ..< 135).map(historyParityMessageID))
 }
 
+private func historyParityMessages(_ offsets: Range<Int>) -> [Message] {
+    offsets.map {
+        Message(
+            id: historyParityMessageID($0),
+            channelID: historyParityChannelID,
+            author: historyParityAuthor,
+            content: "message \($0)",
+            timestamp: Date(timeIntervalSince1970: 1_700_000_000 + TimeInterval($0))
+        )
+    }
+}
+
+@MainActor
+@Test func `a history page for an edge the window no longer has is not merged`() async {
+    let channelID = historyParityChannelID
+    let provider = ChannelLoadTestProvider(paginatedThreadID: channelID, paginatedThreadMessageCount: 300)
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    #expect(await until { model.selectedChannelID == channelID && model.hasCompletedInitialMessageLoad })
+    let newestIDs = model.messages.map(\.id)
+    let staleEdge = MessageHistoryAnchor.before(historyParityMessageID(1_000))
+    let staleLaterEdge = MessageHistoryAnchor.after(historyParityMessageID(1))
+
+    #expect(await !model.prependSelectedMessages(
+        historyParityMessages(270 ..< 290), channelID: channelID, continuing: staleEdge
+    ))
+    #expect(await !model.appendSelectedHistoryMessages(
+        historyParityMessages(300 ..< 310), channelID: channelID, continuing: staleLaterEdge
+    ))
+    #expect(model.messages.map(\.id) == newestIDs)
+
+    let currentEdge = MessageHistoryAnchor.before(historyParityMessageID(290))
+    #expect(model.selectedMessageHistoryEdge(.earlier) == currentEdge)
+    #expect(await model.prependSelectedMessages(
+        historyParityMessages(270 ..< 290), channelID: channelID, continuing: currentEdge
+    ))
+    #expect(model.messages.map(\.id) == (270 ..< 300).map(historyParityMessageID))
+}
+
+@MainActor
+@Test(arguments: [TimelineHistoryDirection.earlier, .later])
+func `a channel window loads one history page at a time across both edges`(
+    heldDirection: TimelineHistoryDirection
+) async {
+    let channelID = historyParityChannelID
+    let (model, provider) = await historyParityDetachedModel()
+    let requestCount = await provider.requests(for: channelID).count
+
+    await provider.blockNextPaginatedRequest(heldDirection == .earlier ? .before : .after)
+    let held = Task {
+        if heldDirection == .earlier { await model.loadEarlier() } else { await model.loadLater() }
+    }
+    await provider.waitForBlockedPaginatedRequest()
+    await model.loadEarlier()
+    await model.loadLater()
+    #expect(await provider.requests(for: channelID).count == requestCount + 1)
+
+    await provider.releaseBlockedPaginatedRequest()
+    await held.value
+    await model.loadEarlier()
+    await model.loadLater()
+    #expect(await provider.requests(for: channelID).count == requestCount + 3)
+}
+
+@MainActor
+@Test(arguments: [TimelineHistoryDirection.earlier, .later])
+func `a thread window loads one history page at a time across both edges`(
+    heldDirection: TimelineHistoryDirection
+) async {
+    let threadID = ChannelID(rawValue: 95_899)
+    let provider = ChannelLoadTestProvider(paginatedThreadID: threadID, paginatedThreadMessageCount: 300)
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    model.open(MessageThreadSummary(id: threadID, parentID: ChannelID(rawValue: 91_001), name: "One at a time"))
+    await model.threadLoadTask?.value
+    #expect(await model.loadThreadWindow(
+        around: MessageID(rawValue: threadID.rawValue + 100), session: model.accountSession()
+    ))
+    let requestCount = await provider.requests(for: threadID).count
+
+    await provider.blockNextPaginatedRequest(heldDirection == .earlier ? .before : .after)
+    let held = Task {
+        if heldDirection == .earlier { await model.loadEarlierThread() } else { await model.loadLaterThread() }
+    }
+    await provider.waitForBlockedPaginatedRequest()
+    await model.loadEarlierThread()
+    await model.loadLaterThread()
+    #expect(await provider.requests(for: threadID).count == requestCount + 1)
+
+    await provider.releaseBlockedPaginatedRequest()
+    await held.value
+    await model.loadEarlierThread()
+    await model.loadLaterThread()
+    #expect(await provider.requests(for: threadID).count == requestCount + 3)
+}
+
+@MainActor
+@Test func `a detached cache spends its message budget around the reading position`() {
+    let messages = historyParityMessages(0 ..< 400) + [historyParityUnsentMessage("pending", state: .sending)]
+    func reading(_ offset: Int) -> MessageTimelineScrollRequest.Target {
+        .readingPosition(historyParityMessageID(offset), offsetFromViewportTop: 8)
+    }
+
+    let nearStart = AppModel.retainedDetachedMessages(messages, around: reading(100))
+    #expect(nearStart.count == 250)
+    #expect(nearStart.filter { $0.outboxState == .confirmed }.map(\.id) == (0 ..< 249).map(historyParityMessageID))
+    #expect(nearStart.last?.nonce == "pending")
+
+    let centred = AppModel.retainedDetachedMessages(messages, around: reading(200))
+    #expect(centred.filter { $0.outboxState == .confirmed }.map(\.id) == (76 ..< 325).map(historyParityMessageID))
+    #expect(centred.last?.nonce == "pending")
+
+    let nearEnd = AppModel.retainedDetachedMessages(messages, around: reading(390))
+    #expect(nearEnd.filter { $0.outboxState == .confirmed }.map(\.id) == (151 ..< 400).map(historyParityMessageID))
+
+    #expect(AppModel.retainedDetachedMessages(messages, around: nil) == messages)
+    #expect(AppModel.retainedDetachedMessages(Array(messages.prefix(100)), around: reading(50)) == Array(messages.prefix(100)))
+}
+
+@MainActor
+@Test func `returning to a detached window larger than the cache restores the reading position`() async {
+    let channelID = historyParityChannelID
+    let provider = ChannelLoadTestProvider(paginatedThreadID: channelID, paginatedThreadMessageCount: 300)
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    #expect(await until { model.selectedChannelID == channelID && model.hasCompletedInitialMessageLoad })
+    model.navigate(to: nil, channelID: channelID, messageID: historyParityMessageID(150))
+    #expect(await until { model.messageNavigationRequest != nil })
+    for _ in 0 ..< 8 { await model.loadEarlier() }
+    for _ in 0 ..< 6 { await model.loadLater() }
+    #expect(model.messages.count == 285)
+    #expect(!model.hasMoreMessages)
+    #expect(model.hasMoreLaterMessages)
+    let reading = MessageTimelineScrollRequest.Target.readingPosition(
+        historyParityMessageID(250), offsetFromViewportTop: 12
+    )
+    model.channelTimelinePosition.reading = reading
+    let requestCount = await provider.requests(for: channelID).count
+
+    model.selectedChannelID = ChannelID(rawValue: 91_002)
+    #expect(await until { model.hasCompletedInitialMessageLoad && !model.isLoadingMessages })
+    model.selectedChannelID = channelID
+    await model.channelLoadTask?.value
+
+    #expect(model.messages.count == 250)
+    #expect(model.messages.contains { $0.id == historyParityMessageID(250) })
+    #expect(model.hasMoreMessages)
+    #expect(model.hasMoreLaterMessages)
+    #expect(model.channelTimelinePosition.restore == reading)
+    #expect(await provider.requests(for: channelID).count == requestCount)
+}
+
+@MainActor
+@Test func `a detached window with only a failed send left reloads the newest messages and keeps it`() async {
+    let channelID = historyParityChannelID
+    let (model, provider) = await historyParityDetachedModel()
+    let detachedIDs = model.messages.map(\.id)
+    model.appendOutgoingMessage(historyParityUnsentMessage("failed-send", state: .failed))
+    let requestCount = await provider.requests(for: channelID).count
+
+    model.selectedChannelID = ChannelID(rawValue: 91_002)
+    #expect(await until { model.hasCompletedInitialMessageLoad && !model.isLoadingMessages })
+    for id in detachedIDs {
+        model.consumeImmediately(.messageDeleted(channelID: channelID, messageID: id))
+    }
+    model.selectedChannelID = channelID
+    await model.channelLoadTask?.value
+
+    #expect(!model.hasMoreLaterMessages)
+    #expect(Array(await provider.requests(for: channelID).dropFirst(requestCount)) == [.init(anchor: .newest, limit: 10)])
+    let failed = model.messages.filter { $0.nonce == "failed-send" }
+    #expect(failed.count == 1)
+    #expect(failed.first?.outboxState == .failed)
+    #expect(model.messages.filter { $0.outboxState == .confirmed }.map(\.id) == (290 ..< 300).map(historyParityMessageID))
+}
+
 @MainActor
 @Test(arguments: [false, true])
 func `interrupted thread history reloads after navigation`(switchesDirectly: Bool) async throws {

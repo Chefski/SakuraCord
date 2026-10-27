@@ -2,7 +2,7 @@ import DiscordProtocol
 import Foundation
 import SakuraCordModels
 
-private enum SelectedMessageHistoryDirection: String, Sendable {
+enum SelectedMessageHistoryDirection: String, Sendable {
     case earlier
     case later
 }
@@ -61,7 +61,7 @@ extension AppModel {
             guard !Task.isCancelled,
                   isCurrentAccountSession(session),
                   selectedChannelID == request.channelID,
-                  selectedMessageHistoryRequestEdge(direction) == request.anchor
+                  selectedMessageHistoryEdge(direction) == request.anchor
             else { return }
             let reconcileStart = ProcessInfo.processInfo.systemUptime
             let inserted = AppPerformanceSignposts.measureSync(
@@ -78,7 +78,7 @@ extension AppModel {
                 await commitSelectedMessageHistory(
                     inserted,
                     direction: direction,
-                    channelID: request.channelID
+                    request: request
                 )
             }
             guard committed else { return }
@@ -110,7 +110,7 @@ extension AppModel {
         }
     }
 
-    private func selectedMessageHistoryRequestEdge(
+    func selectedMessageHistoryEdge(
         _ direction: SelectedMessageHistoryDirection
     ) -> MessageHistoryAnchor? {
         // Unconfirmed sends sort last and carry local IDs, so the REST edges
@@ -121,17 +121,25 @@ extension AppModel {
         }
     }
 
+    /// The window still ends at the edge a page was requested from.
+    func windowContinues(from edge: MessageHistoryAnchor?, _ direction: SelectedMessageHistoryDirection) -> Bool {
+        edge.map { selectedMessageHistoryEdge(direction) == $0 } ?? true
+    }
+
     private func selectedMessageHistoryRequest(
         _ direction: SelectedMessageHistoryDirection
     ) -> SelectedMessageHistoryRequest? {
         guard let channelID = selectedChannelID,
-              let anchor = selectedMessageHistoryRequestEdge(direction)
+              let anchor = selectedMessageHistoryEdge(direction)
         else { return nil }
+        // Like the official scroller, one page is in flight at a time, even
+        // when a short detached window is near both edges.
+        guard !isLoadingEarlier, !isLoadingLater else { return nil }
         switch direction {
         case .earlier:
-            guard hasMoreMessages, !isLoadingEarlier else { return nil }
+            guard hasMoreMessages else { return nil }
         case .later:
-            guard hasMoreLaterMessages, !isLoadingLater else { return nil }
+            guard hasMoreLaterMessages else { return nil }
         }
         return SelectedMessageHistoryRequest(channelID: channelID, anchor: anchor)
     }
@@ -155,19 +163,21 @@ extension AppModel {
     private func commitSelectedMessageHistory(
         _ inserted: [Message],
         direction: SelectedMessageHistoryDirection,
-        channelID: ChannelID
+        request: SelectedMessageHistoryRequest
     ) async -> Bool {
         guard !inserted.isEmpty else { return true }
         switch direction {
         case .earlier:
             return await prependSelectedMessages(
                 inserted,
-                channelID: channelID
+                channelID: request.channelID,
+                continuing: request.anchor
             )
         case .later:
             return await appendSelectedHistoryMessages(
                 inserted,
-                channelID: channelID
+                channelID: request.channelID,
+                continuing: request.anchor
             )
         }
     }

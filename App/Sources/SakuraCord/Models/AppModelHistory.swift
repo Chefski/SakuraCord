@@ -142,16 +142,36 @@ extension AppModel {
             return
         }
         guard detachedWindowEpoch == historyEpoch else {
-            discardCachedMessages(for: channelID)
+            cacheOnlyUnconfirmedSends(messages, for: channelID)
             return
         }
-        hasMoreCache[channelID] = hasMoreMessages
-        storeCachedMessages(messages, for: channelID)
+        let reading = channelTimelinePosition.reading
+        let retained = Self.retainedDetachedMessages(messages, around: reading)
+        hasMoreCache[channelID] = hasMoreMessages || retained.first?.id != messages.first?.id
+        storeCachedMessages(retained, for: channelID)
         storeCachedMessageRows(messageRows, for: channelID)
         detachedMessageWindows[channelID] = DetachedMessageWindow(
             historyEpoch: historyEpoch,
-            readingPosition: channelTimelinePosition.reading
+            readingPosition: reading
         )
+    }
+
+    /// The cache's message budget, spent around the reading position rather
+    /// than at the newest end, which a detached window does not reach.
+    /// Unconfirmed sends are always kept.
+    static func retainedDetachedMessages(
+        _ messages: [Message],
+        around reading: MessageTimelineScrollRequest.Target?
+    ) -> [Message] {
+        let pending = messages.filter { $0.outboxState != .confirmed }
+        let confirmed = messages.filter { $0.outboxState == .confirmed }
+        let limit = max(1, ChannelMessageCachePolicy.maximumMessageCountPerChannel - pending.count)
+        guard confirmed.count > limit,
+              case let .readingPosition(id, _)? = reading,
+              let index = confirmed.firstIndex(where: { $0.id >= id })
+        else { return messages }
+        let start = min(max(0, index - limit / 2), confirmed.count - limit)
+        return Array(confirmed[start ..< start + limit]) + pending
     }
 
     private func discardCachedMessages(for channelID: ChannelID) {
@@ -162,17 +182,27 @@ extension AppModel {
         hasMoreCache[channelID] = nil
     }
 
+    /// Drops a detached window but keeps its unconfirmed sends, including
+    /// failed ones awaiting Retry or Discard, for the cold load that follows.
+    private func cacheOnlyUnconfirmedSends(_ messages: [Message], for channelID: ChannelID) {
+        discardCachedMessages(for: channelID)
+        let pending = messages.filter { $0.outboxState != .confirmed }
+        guard !pending.isEmpty else { return }
+        messageCache[channelID] = pending
+        messageCacheOrder.append(channelID)
+    }
+
     /// The detached window cached for `channelID`, unless a Gateway gap
-    /// crossed it while it was cached or deletions emptied it, leaving no
-    /// edge to page from; such a window is dropped.
+    /// crossed it while it was cached or deletions left it no confirmed
+    /// message to page from; such a window is dropped.
     private func takeDetachedMessageWindow(for channelID: ChannelID) -> DetachedMessageWindow? {
         guard let window = detachedMessageWindows.removeValue(forKey: channelID) else { return nil }
         if window.historyEpoch == historyEpoch, hasMoreCache[channelID] != nil,
-           messageCache[channelID]?.isEmpty == false
+           messageCache[channelID]?.contains(where: { $0.outboxState == .confirmed }) == true
         {
             return window
         }
-        discardCachedMessages(for: channelID)
+        cacheOnlyUnconfirmedSends(messageCache[channelID] ?? [], for: channelID)
         return nil
     }
 

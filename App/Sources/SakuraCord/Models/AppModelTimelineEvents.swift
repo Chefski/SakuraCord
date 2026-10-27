@@ -1,3 +1,4 @@
+import DiscordProtocol
 import Foundation
 import SakuraCordModels
 
@@ -495,7 +496,8 @@ extension AppModel {
 
     func prependSelectedMessages(
         _ earlier: [Message],
-        channelID: ChannelID
+        channelID: ChannelID,
+        continuing edge: MessageHistoryAnchor? = nil
     ) async -> Bool {
         guard !earlier.isEmpty else { return true }
         // History preparation performs Markdown/CoreText setup for an entire
@@ -516,7 +518,7 @@ extension AppModel {
                 priority: preparationPriority
             )
         }
-        guard !Task.isCancelled, selectedChannelID == channelID else { return false }
+        guard !Task.isCancelled, selectedChannelID == channelID, windowContinues(from: edge, .earlier) else { return false }
         // The timeline can change while rows are prepared off the main actor.
         // Revalidate the insertion against the current window, not the IDs
         // that pagination filtered before awaiting preparation.
@@ -697,7 +699,8 @@ extension AppModel {
 
     func appendSelectedHistoryMessages(
         _ later: [Message],
-        channelID: ChannelID
+        channelID: ChannelID,
+        continuing edge: MessageHistoryAnchor? = nil
     ) async -> Bool {
         guard !later.isEmpty else { return true }
         let preparationPriority: TaskPriority = AppScrollWorkGate.isActive
@@ -711,7 +714,7 @@ extension AppModel {
                 priority: preparationPriority
             )
         }
-        guard !Task.isCancelled, selectedChannelID == channelID else { return false }
+        guard !Task.isCancelled, selectedChannelID == channelID, windowContinues(from: edge, .later) else { return false }
         guard later.allSatisfy({ message in
             !selectedMessageIDs.contains(message.id)
                 && (messages.last.map { Self.messagePrecedes($0, message) } ?? true)
