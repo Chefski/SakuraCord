@@ -612,8 +612,7 @@ enum NativeTimelineEmbedLayout {
         /// A video previews the poster it loads, falling back to its own hash.
         private var mediaPlaceholder: NativeTimelineMediaPlaceholder? {
             let poster = embed.video == nil ? nil : embed.thumbnail ?? embed.image
-            return NativeTimelineMediaPlaceholder(hash: poster?.placeholder, version: poster?.placeholderVersion)
-                ?? NativeTimelineMediaPlaceholder(hash: mainMedia?.placeholder, version: mainMedia?.placeholderVersion)
+            return NativeTimelineMediaPlaceholder(poster) ?? NativeTimelineMediaPlaceholder(mainMedia)
         }
 
         var region: NativeTimelineRowLayout.EmbedRegion? {
@@ -827,7 +826,8 @@ enum NativeTimelineEmbedLayout {
                             url: iconURL,
                             cornerRadius: InterfaceScale.metric(10),
                             fallbackSystemImage: "person.crop.circle",
-                            maximumPixelDimension: 64
+                            maximumPixelDimension: 64,
+                            placeholder: nil
                         )
                     )
                     let authorHeight = measuredHeight(
@@ -887,10 +887,7 @@ enum NativeTimelineEmbedLayout {
                         cornerRadius: InterfaceScale.metric(6),
                         fallbackSystemImage: "photo",
                         maximumPixelDimension: 256,
-                        placeholder: .init(
-                            hash: embed.thumbnail?.placeholder,
-                            version: embed.thumbnail?.placeholderVersion
-                        )
+                        placeholder: .init(embed.thumbnail)
                     )
                 )
             }
@@ -951,7 +948,8 @@ enum NativeTimelineEmbedLayout {
                             url: footerIconURL,
                             cornerRadius: InterfaceScale.metric(9),
                             fallbackSystemImage: "photo.circle",
-                            maximumPixelDimension: 64
+                            maximumPixelDimension: 64,
+                            placeholder: nil
                         )
                     )
                 }

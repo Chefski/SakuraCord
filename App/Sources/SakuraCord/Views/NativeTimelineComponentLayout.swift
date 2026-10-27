@@ -1246,7 +1246,7 @@ private enum NodeBuilder {
                 height: media.height ?? attachment.height,
                 isSpoiler: media.isSpoiler || attachment.isSpoiler,
                 isVideo: attachment.mediaKind == .video,
-                placeholder: .init(hash: attachment.placeholder, version: attachment.placeholderVersion)
+                placeholder: .init(attachment)
             )
         }
         guard let openURL = media.url else { return nil }
@@ -1268,7 +1268,7 @@ private enum NodeBuilder {
             height: media.height,
             isSpoiler: media.isSpoiler,
             isVideo: isVideo,
-            placeholder: .init(hash: media.placeholder, version: media.placeholderVersion)
+            placeholder: .init(media)
         )
     }
 

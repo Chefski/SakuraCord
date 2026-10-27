@@ -21,7 +21,8 @@ struct NativeTimelineRowLayout {
         /// The still image drawn in the region: the image itself, or a
         /// video's poster frame.
         let previewKey: NativeTimelineMediaKey?
-        let placeholder: NativeTimelineMediaPlaceholder?
+
+        var placeholder: NativeTimelineMediaPlaceholder? { .init(attachment) }
     }
 
     struct ReactionRegion {
@@ -62,7 +63,7 @@ struct NativeTimelineRowLayout {
             let cornerRadius: CGFloat
             let fallbackSystemImage: String
             let maximumPixelDimension: Int
-            var placeholder: NativeTimelineMediaPlaceholder?
+            let placeholder: NativeTimelineMediaPlaceholder?
         }
 
         let embedID: String

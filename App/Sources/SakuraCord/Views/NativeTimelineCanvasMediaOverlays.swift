@@ -915,7 +915,7 @@ extension NativeTimelineCanvasView {
                 inlineVideoOverlays[key] = overlay
             }
             overlay.frame = frame
-            overlay.placeholder = item.placeholder.flatMap(NativeTimelineRowPainter.mediaPlaceholderImage(for:))
+            overlay.placeholder = item.placeholder?.image
             overlay.display(key.url, plays: plays)
         }
     }

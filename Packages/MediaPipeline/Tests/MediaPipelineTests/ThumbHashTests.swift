@@ -21,5 +21,6 @@ struct ThumbHashTests {
     func decodesReferenceOutputAndRejectsMalformedHashes(base64: String, expected: [Int]) {
         let bitmap = Data(base64Encoded: base64).flatMap { ThumbHash.bitmap(hash: [UInt8]($0)) }
         #expect(bitmap.map { [$0.height, $0.width] + $0.pixels.prefix(4).map(Int.init) } == (expected.isEmpty ? nil : expected))
+        #expect((ThumbHash.image(base64: base64) != nil) == !expected.isEmpty)
     }
 }

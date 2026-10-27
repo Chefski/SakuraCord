@@ -8,7 +8,7 @@ public enum ThumbHash {
     /// The `placeholder_version` whose layout this decoder reads.
     public static let supportedVersion = 1
 
-    struct Bitmap: Equatable {
+    struct Bitmap {
         let width: Int
         let height: Int
         /// Straight (non-premultiplied) RGBA.
@@ -18,15 +18,8 @@ public enum ThumbHash {
     /// A preview of at most 32×32 pixels, or nil when the hash is malformed.
     public static func image(base64: String) -> CGImage? {
         guard let data = Data(base64Encoded: base64),
-              var bitmap = bitmap(hash: [UInt8](data))
-        else { return nil }
-        for index in stride(from: 0, to: bitmap.pixels.count, by: 4) where bitmap.pixels[index + 3] < 255 {
-            let alpha = UInt16(bitmap.pixels[index + 3])
-            for channel in 0 ..< 3 {
-                bitmap.pixels[index + channel] = UInt8(UInt16(bitmap.pixels[index + channel]) * alpha / 255)
-            }
-        }
-        guard let provider = CGDataProvider(data: Data(bitmap.pixels) as CFData) else { return nil }
+              let bitmap = bitmap(hash: [UInt8](data)),
+              let provider = CGDataProvider(data: Data(bitmap.pixels) as CFData) else { return nil }
         return CGImage(
             width: bitmap.width,
             height: bitmap.height,
@@ -34,7 +27,7 @@ public enum ThumbHash {
             bitsPerPixel: 32,
             bytesPerRow: bitmap.width * 4,
             space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue),
             provider: provider,
             decode: nil,
             shouldInterpolate: true,
