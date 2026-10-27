@@ -2607,7 +2607,7 @@ func `authoritative thread deletion removes open cached and resource conversatio
         Data("failed-session-credential-value".utf8)
     )
     let provider = SuspendedBootstrapTestProvider(
-        bootstrapError: "fixture pending bootstrap stopped",
+        bootstrapError: .invalidRequest("fixture pending bootstrap stopped"),
         pendingCredential: pending
     )
     let credentials = PendingCredentialRecordingStore()
@@ -2717,6 +2717,12 @@ private actor SavedAccountStoreSpy: SavedAccountStoring {
         preferredID = account.accountID
     }
 
+    func markSignInRequired(accountID: String) {
+        var account = accountsByID[accountID] ?? SavedAccount(accountID: accountID)
+        account.signInRequiredAt = .now
+        accountsByID[accountID] = account
+    }
+
     func remove(accountID: String) {
         accountsByID.removeValue(forKey: accountID)
         if preferredID == accountID {
@@ -2755,6 +2761,8 @@ private actor SuspendedSavedAccountStore: SavedAccountStoring {
         }
         preferredID = account.accountID
     }
+
+    func markSignInRequired(accountID: String) {}
 
     func remove(accountID: String) {}
 
@@ -2828,7 +2836,7 @@ private actor FailingRemovalCredentialStore: CredentialStore {
 
 @MainActor
 @Test func `interactive sign in failure stays signed out and exposes bootstrap error`() async {
-    let provider = SuspendedBootstrapTestProvider(bootstrapError: "fixture bootstrap stopped")
+    let provider = SuspendedBootstrapTestProvider(bootstrapError: .invalidRequest("fixture bootstrap stopped"))
     let notifications = PermissionRecordingNotificationService()
     let model = AppModel(
         launchMode: .normal,
@@ -2860,6 +2868,36 @@ private actor FailingRemovalCredentialStore: CredentialStore {
     #expect(model.database == nil)
     #expect(await provider.disconnectCount == 1)
     #expect(notifications.authorizationRequestCount == 0)
+}
+
+@MainActor
+@Test func `rejected saved session requires sign in and keeps the account`() async {
+    let provider = SuspendedBootstrapTestProvider(bootstrapError: .unauthenticated)
+    let credentials = MultiAccountCredentialStore(accountIDs: ["93000"])
+    let savedAccounts = SavedAccountStoreSpy()
+    let model = AppModel(
+        launchMode: .normal,
+        discordNetworkDisabledOverride: false,
+        restoresStoredSession: false,
+        credentialStore: credentials,
+        savedAccountStore: savedAccounts,
+        authenticatedProviderFactory: { _, _ in provider },
+        accountDatabaseFactory: { _ in nil }
+    )
+    await model.start()
+    await model.refreshSavedAccounts()
+    #expect(model.savedAccounts.map(\.requiresSignIn) == [false])
+
+    let connection = Task { await model.switchAccount(to: "93000") }
+    await provider.waitUntilBootstrapStarts()
+    await provider.releaseBootstrap()
+    #expect(await !(connection.value))
+    #expect(model.sessionState == .signedOut)
+    #expect(model.savedAccounts.map(\.requiresSignIn) == [true])
+    let stored = await savedAccounts.accounts(matching: [CredentialHandle(accountID: "93000")])
+    #expect(stored.map(\.requiresSignIn) == [true])
+    #expect(await credentials.accountIDs == ["93000"])
+    #expect(await credentials.removedAccountIDs.isEmpty)
 }
 
 @MainActor
@@ -3001,7 +3039,7 @@ private extension DiscordRESTProvider {
 @MainActor
 @Test func `failed bootstrap never presents or authenticates a workspace`() async throws {
     let provider = SuspendedBootstrapTestProvider(
-        bootstrapError: "fixture bootstrap stopped"
+        bootstrapError: .invalidRequest("fixture bootstrap stopped")
     )
     let database = try SakuraCordDatabase(inMemory: true)
     let notifications = PermissionRecordingNotificationService()
@@ -8120,7 +8158,7 @@ private actor SuspendedBootstrapTestProvider: PendingCredentialChatProvider {
     private var bootstrapStarted = false
     private var startWaiters: [CheckedContinuation<Void, Never>] = []
     private var bootstrapContinuation: CheckedContinuation<Void, Never>?
-    private let bootstrapError: String?
+    private let bootstrapError: ChatProviderError?
     private let pendingCredential: PendingDiscordCredential?
     private let suspendsAuthentication: Bool
     private var authenticationStarted = false
@@ -8138,7 +8176,7 @@ private actor SuspendedBootstrapTestProvider: PendingCredentialChatProvider {
     private(set) var disconnectCount = 0
 
     init(
-        bootstrapError: String? = nil,
+        bootstrapError: ChatProviderError? = nil,
         pendingCredential: PendingDiscordCredential? = nil,
         capabilities: Set<ChatCapability> = [],
         suspendsAuthentication: Bool = false,
@@ -8205,7 +8243,7 @@ private actor SuspendedBootstrapTestProvider: PendingCredentialChatProvider {
         startWaiters.removeAll()
         await withCheckedContinuation { bootstrapContinuation = $0 }
         if let bootstrapError {
-            throw ChatProviderError.invalidRequest(bootstrapError)
+            throw bootstrapError
         }
         return BootstrapSnapshot(currentUser: user, guilds: [], channels: [channel], members: [])
     }

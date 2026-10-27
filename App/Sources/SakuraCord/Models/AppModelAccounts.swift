@@ -62,6 +62,15 @@ extension AppModel {
         }
     }
 
+    func markSavedAccountSignInRequired(_ accountID: String) async {
+        await savedAccountStore.markSignInRequired(accountID: accountID)
+        if let index = savedAccounts.firstIndex(where: { $0.accountID == accountID }),
+           !savedAccounts[index].requiresSignIn
+        {
+            savedAccounts[index].signInRequiredAt = .now
+        }
+    }
+
     func switchAccount(to accountID: String) async -> Bool {
         guard accountID != activeAccountID else { return true }
         let preservesWorkspace = sessionState == .workspace
