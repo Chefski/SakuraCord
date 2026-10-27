@@ -493,7 +493,11 @@ extension AppModel {
         startConversationNavigation(target: target) { [weak self] _, session in
             guard let self else { return }
             if selectedGuildID != guildID {
+                // The server may reopen at this very channel; that selection
+                // then reads only the window around the target.
+                pendingChannelJumpTarget = (channelID, messageID)
                 await activateGuild(guildID, account: session)
+                pendingChannelJumpTarget = nil
             }
             guard !Task.isCancelled, isCurrentAccountSession(session) else { return }
             guard let channel = knownRootChannel(channelID) else {
@@ -516,6 +520,7 @@ extension AppModel {
                 pendingChannelJumpTarget = (channel.id, messageID)
                 selectedChannelID = channel.id
             }
+            pendingChannelJumpTarget = nil
             await channelLoadTask?.value
             guard !Task.isCancelled,
                   isCurrentAccountSession(session),
@@ -523,13 +528,11 @@ extension AppModel {
             else { return }
 
             if !messages.contains(where: { $0.id == messageID }) {
-                let loaded = await loadSelectedMessageWindow(
+                guard await loadSelectedMessageWindow(
                     around: messageID,
                     channelID: channel.id,
                     session: session
-                )
-                finishJumpSelectedChannelLoad(channelID: channel.id, loaded: loaded, session: session)
-                guard loaded else { return }
+                ) else { return }
             }
 
             guard isCurrentAccountSession(session),

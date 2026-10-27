@@ -4801,6 +4801,64 @@ func `returning to a detached channel window restores it without a request unles
 }
 
 @MainActor
+@Test func `a cancelled jump into a channel with nothing loaded still finishes its load`() async {
+    let channelID = historyParityChannelID
+    let provider = ChannelLoadTestProvider(paginatedThreadID: channelID, paginatedThreadMessageCount: 300)
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    #expect(await until { model.selectedChannelID == channelID && model.hasCompletedInitialMessageLoad })
+    model.selectedChannelID = ChannelID(rawValue: 91_002)
+    #expect(await until { model.hasCompletedInitialMessageLoad && !model.isLoadingMessages })
+    model.messageCache[channelID] = nil
+    model.messageCacheOrder.removeAll { $0 == channelID }
+    model.hasMoreCache[channelID] = nil
+
+    model.navigate(to: nil, channelID: channelID, messageID: historyParityMessageID(100))
+    #expect(await until { model.selectedChannelID == channelID })
+    // Reselecting the open channel, as the Quick Switcher does, cancels the
+    // navigation without starting another load.
+    model.cancelConversationNavigation()
+    await model.channelLoadTask?.value
+
+    #expect(!model.isLoadingMessages)
+    #expect(model.hasCompletedInitialMessageLoad)
+    #expect(model.messages.contains { $0.id == historyParityMessageID(100) })
+}
+
+@MainActor
+@Test func `jumping to a live-only message in a channel with nothing loaded finishes its load`() async {
+    let channelID = historyParityChannelID
+    let provider = ChannelLoadTestProvider(paginatedThreadID: channelID, paginatedThreadMessageCount: 300)
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    #expect(await until { model.selectedChannelID == channelID && model.hasCompletedInitialMessageLoad })
+    model.selectedChannelID = ChannelID(rawValue: 91_002)
+    #expect(await until { model.hasCompletedInitialMessageLoad && !model.isLoadingMessages })
+    model.messageCache[channelID] = nil
+    model.messageCacheOrder.removeAll { $0 == channelID }
+    model.hasMoreCache[channelID] = nil
+    // Only the Gateway has delivered the target, as for a notification.
+    let target = Message(
+        id: historyParityMessageID(150),
+        channelID: channelID,
+        author: User(id: UserID(rawValue: 91_000), username: "tester", displayName: "Tester"),
+        content: "live"
+    )
+    model.consumeImmediately(.messageCreated(target))
+    let requestCount = await provider.requests(for: channelID).count
+
+    model.navigate(to: nil, channelID: channelID, messageID: target.id)
+    #expect(await until { model.messageNavigationRequest?.messageID == target.id })
+    await model.channelLoadTask?.value
+
+    #expect(!model.isLoadingMessages)
+    #expect(model.hasMoreMessages)
+    #expect(Array(await provider.requests(for: channelID).dropFirst(requestCount)) == [
+        .init(anchor: .around(target.id), limit: 30),
+    ])
+}
+
+@MainActor
 @Test func `a detached channel window emptied by deletions reloads on return`() async {
     let channelID = historyParityChannelID
     let provider = ChannelLoadTestProvider(paginatedThreadID: channelID, paginatedThreadMessageCount: 300)
