@@ -419,6 +419,10 @@ private struct ThreadMessageTimelineView: View {
         let unread = unreadPresentation
         let liveOverlays = overlays(unread)
         let overlays = isLeaving ? shownOverlays : liveOverlays
+        let showsLoadingSkeleton = MessageTimelineLoadingPolicy.showsInitialPlaceholder(
+            isLoading: model.isLoadingThread,
+            messageCount: model.loadedThreadHistoryCount
+        )
         NativeMessageTimelineView(
             model: model,
             conversation: .thread(conversationID),
@@ -464,11 +468,11 @@ private struct ThreadMessageTimelineView: View {
         )
         .scrollEdgeEffectStyle(.soft, for: .top)
         .ignoresSafeArea(.container, edges: .top)
+        .opacity(showsLoadingSkeleton ? 0 : 1)
+        .allowsHitTesting(!showsLoadingSkeleton)
+        .accessibilityHidden(showsLoadingSkeleton)
         .overlay {
-            if MessageTimelineLoadingPolicy.showsInitialPlaceholder(
-                isLoading: model.isLoadingThread,
-                messageCount: model.threadMessages.count
-            ) {
+            if showsLoadingSkeleton {
                 MessageTimelineLoadingSkeleton(
                     bottomContentInset: bottomContentInset
                 )
