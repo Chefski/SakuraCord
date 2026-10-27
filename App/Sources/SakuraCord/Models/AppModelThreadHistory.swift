@@ -357,6 +357,9 @@ extension AppModel {
             guard isCurrentAccountSession(session), isCurrentThreadWindow(request) else { return false }
             DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             errorMessage = error.localizedDescription
+            // The jump superseded any revalidation in flight, which is still
+            // owed until a current read establishes the newest edge.
+            if threadWindow.isNewestUnverified { threadWindow.revalidationPending = true }
             return false
         }
     }
