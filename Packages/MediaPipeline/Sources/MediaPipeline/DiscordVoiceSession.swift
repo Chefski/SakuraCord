@@ -751,6 +751,9 @@ public actor DiscordVoiceSession: DaveSessionDelegate {
             if audioEngineStartTask == startTask { audioEngineStartTask = nil }
         }
         try await startTask.value
+        // disconnect() can run after the start finishes but before this resumes;
+        // it already tore the engine down, so the session must not report connected.
+        guard state != .disconnecting, state != .disconnected else { throw CancellationError() }
         voiceMediaLogger.info("Voice audio engine started")
         connectTimeoutTask?.cancel()
         connectContinuation?.resume()

@@ -136,8 +136,13 @@ extension AppModel {
             let activeInputID = await session.activeInputDeviceID()
             let returnsToRequestedInput = inputResolution.requestedDeviceID != nil
                 && activeInputID != inputResolution.requestedDeviceID
-            if inputResolution.requiresSwitch || returnsToRequestedInput {
+            if inputResolution.requiresSwitch {
                 try await session.selectInputDevice(inputResolution.requestedDeviceID)
+            } else if returnsToRequestedInput {
+                // Opportunistic: if the requested microphone still cannot take the
+                // route, capture keeps the working fallback and the speaker and
+                // camera below are still restored.
+                try? await session.selectInputDevice(inputResolution.requestedDeviceID)
             }
             if outputResolution.requiresSwitch {
                 try await session.selectOutputDevice(outputResolution.requestedDeviceID)
