@@ -474,6 +474,8 @@ extension NativeTimelineRowPainter {
                         cornerRadius: attachmentCornerRadius,
                         fillsFrame: attachmentFillsFrame
                     )
+                } else if let placeholder = region.placeholder.flatMap(mediaPlaceholderImage(for:)) {
+                    drawImage(placeholder, in: region.frame, cornerRadius: attachmentCornerRadius, fillsFrame: true)
                 } else if isVideo {
                     systemSymbol("film", in: region.frame, color: .secondaryLabelColor, inset: InterfaceScale.metric(30))
                 }
@@ -583,6 +585,8 @@ extension NativeTimelineRowPainter {
                     cornerRadius: imageRegion.cornerRadius,
                     fillsFrame: false
                 )
+            } else if let placeholder = imageRegion.placeholder.flatMap(mediaPlaceholderImage(for:)) {
+                drawImage(placeholder, in: imageRegion.frame, cornerRadius: imageRegion.cornerRadius, fillsFrame: false)
             } else {
                 systemSymbol(
                     imageRegion.fallbackSystemImage,
@@ -606,11 +610,12 @@ extension NativeTimelineRowPainter {
                 image, in: frame, cornerRadius: InterfaceScale.metric(8),
                 fillsFrame: region.mediaPosterFillsFrame
             )
-            if region.mediaIsVideo { mediaPlayGlyph(in: frame) }
+        } else if let placeholder = region.mediaPlaceholder.flatMap(mediaPlaceholderImage(for:)) {
+            drawImage(placeholder, in: frame, cornerRadius: InterfaceScale.metric(8), fillsFrame: true)
         } else if region.mediaIsVideo {
             systemSymbol("film", in: frame, color: .secondaryLabelColor, inset: InterfaceScale.metric(30))
-            mediaPlayGlyph(in: frame)
         }
+        if region.mediaIsVideo { mediaPlayGlyph(in: frame) }
     }
 
     private static func drawMessageComponentsAndStickers(

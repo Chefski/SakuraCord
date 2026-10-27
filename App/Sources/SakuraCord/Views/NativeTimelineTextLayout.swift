@@ -609,6 +609,10 @@ enum NativeTimelineEmbedLayout {
             )
         }
 
+        private var mediaPlaceholder: NativeTimelineMediaPlaceholder? {
+            .init(hash: mainMedia?.placeholder, version: mainMedia?.placeholderVersion)
+        }
+
         var region: NativeTimelineRowLayout.EmbedRegion? {
         let isYouTube = embed.video?.url.flatMap(YouTubeEmbedPlayback.init(url:)) != nil
         let maximumWidth = min(self.maximumWidth, isYouTube ? InterfaceScale.metric(432) : self.maximumWidth)
@@ -634,6 +638,7 @@ enum NativeTimelineEmbedLayout {
                 mediaFrame: frame,
                 mediaURL: url,
                 mediaPreviewURL: mediaPreviewURL,
+                mediaPlaceholder: mediaPlaceholder,
                 mediaIsVideo: embed.video != nil,
                 mediaAutoplaysInline: embed.type?.lowercased() == "gifv",
                 mediaPosterFillsFrame: mediaPosterFillsFrame,
@@ -878,7 +883,11 @@ enum NativeTimelineEmbedLayout {
                         url: thumbnailURL,
                         cornerRadius: InterfaceScale.metric(6),
                         fallbackSystemImage: "photo",
-                        maximumPixelDimension: 256
+                        maximumPixelDimension: 256,
+                        placeholder: .init(
+                            hash: embed.thumbnail?.placeholder,
+                            version: embed.thumbnail?.placeholderVersion
+                        )
                     )
                 )
             }
@@ -975,6 +984,7 @@ enum NativeTimelineEmbedLayout {
                 mediaFrame: mediaFrame,
                 mediaURL: mediaURL,
                 mediaPreviewURL: mediaPreviewURL,
+                mediaPlaceholder: mediaPlaceholder,
                 mediaIsVideo: embed.video != nil,
                 mediaAutoplaysInline: false,
                 mediaPosterFillsFrame: mediaPosterFillsFrame,

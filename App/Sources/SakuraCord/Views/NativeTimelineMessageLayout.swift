@@ -598,7 +598,8 @@ extension NativeTimelineRowLayout {
                         attachment: attachment,
                         previewKey: attachment.mediaKind == .video
                             ? .videoPoster(attachment)
-                            : .attachment(attachment)
+                            : .attachment(attachment),
+                        placeholder: .init(hash: attachment.placeholder, version: attachment.placeholderVersion)
                     )
                 }
                 verticalOffset += galleryFrames.map(\.maxY).max() ?? 0

@@ -559,6 +559,8 @@ extension NativeTimelineRowPainter {
                     cornerRadius: region.cornerRadius,
                     fillsFrame: false
                 )
+            } else if let placeholder = region.placeholder.flatMap(mediaPlaceholderImage(for:)) {
+                drawImage(placeholder, in: region.frame, cornerRadius: region.cornerRadius, fillsFrame: false)
             } else {
                 systemSymbol("photo", in: region.frame, color: .secondaryLabelColor, inset: InterfaceScale.metric(22))
             }
@@ -588,6 +590,8 @@ extension NativeTimelineRowPainter {
                let image = mediaImage(for: .media(previewURL))
             {
                 drawImage(image, in: region.frame, cornerRadius: InterfaceScale.metric(8), fillsFrame: true)
+            } else if let placeholder = region.placeholder.flatMap(mediaPlaceholderImage(for:)) {
+                drawImage(placeholder, in: region.frame, cornerRadius: InterfaceScale.metric(8), fillsFrame: true)
             } else if region.isVideo {
                 systemSymbol("film", in: region.frame, color: .secondaryLabelColor, inset: InterfaceScale.metric(30))
             }
