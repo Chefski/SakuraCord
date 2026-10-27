@@ -16,7 +16,7 @@ protocol VoiceMicrophoneTesting: AnyObject, Sendable {
         inputDeviceID: AudioDeviceID?,
         outputDeviceID: AudioDeviceID?,
         onCapturedFrame: @escaping @Sendable (CapturedOpusFrame) -> Void
-    ) async throws
+    ) throws
     func selectInputDevice(_ deviceID: AudioDeviceID?) async throws
     func selectOutputDevice(_ deviceID: AudioDeviceID?) async throws
     func play(opusPacket: Data, from userID: String) throws
@@ -127,14 +127,13 @@ final class VoiceVideoTestController {
             microphoneLevelContinuation = levels.continuation
             microphoneFrameContinuation = frames.continuation
             engine.inputLevelHandler = { level in levels.continuation.yield(level) }
-            try await engine.startMicrophoneTest(
+            try engine.startMicrophoneTest(
                 inputDeviceID: microphoneInputDeviceID,
                 outputDeviceID: microphoneOutputDeviceID,
                 onCapturedFrame: { frame in
                     frames.continuation.yield(MicrophoneTestFrame(packet: frame.data, capturedAt: .now))
                 }
             )
-            guard generation == microphoneGeneration else { return }
             isMicrophoneTestRunning = true
             errorMessage = nil
             microphoneLevelTask = Task { @MainActor [weak self] in
@@ -170,8 +169,6 @@ final class VoiceVideoTestController {
                 }
             }
         } catch {
-            // Stopping the test while capture was still configuring is not a failure.
-            guard generation == microphoneGeneration else { return }
             stopMicrophoneTest()
             preparedMicrophoneEngine = nil
             errorMessage = error.localizedDescription
