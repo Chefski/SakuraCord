@@ -609,6 +609,12 @@ enum NativeTimelineEmbedLayout {
             )
         }
 
+        /// A video previews the poster it loads, falling back to its own hash.
+        private var mediaPlaceholder: NativeTimelineMediaPlaceholder? {
+            let poster = embed.video == nil ? nil : embed.thumbnail ?? embed.image
+            return NativeTimelineMediaPlaceholder(poster) ?? NativeTimelineMediaPlaceholder(mainMedia)
+        }
+
         var region: NativeTimelineRowLayout.EmbedRegion? {
         let isYouTube = embed.video?.url.flatMap(YouTubeEmbedPlayback.init(url:)) != nil
         let maximumWidth = min(self.maximumWidth, isYouTube ? InterfaceScale.metric(432) : self.maximumWidth)
@@ -634,6 +640,7 @@ enum NativeTimelineEmbedLayout {
                 mediaFrame: frame,
                 mediaURL: url,
                 mediaPreviewURL: mediaPreviewURL,
+                mediaPlaceholder: mediaPlaceholder,
                 mediaIsVideo: embed.video != nil,
                 mediaAutoplaysInline: embed.type?.lowercased() == "gifv",
                 mediaPosterFillsFrame: mediaPosterFillsFrame,
@@ -819,7 +826,8 @@ enum NativeTimelineEmbedLayout {
                             url: iconURL,
                             cornerRadius: InterfaceScale.metric(10),
                             fallbackSystemImage: "person.crop.circle",
-                            maximumPixelDimension: 64
+                            maximumPixelDimension: 64,
+                            placeholder: nil
                         )
                     )
                     let authorHeight = measuredHeight(
@@ -878,7 +886,8 @@ enum NativeTimelineEmbedLayout {
                         url: thumbnailURL,
                         cornerRadius: InterfaceScale.metric(6),
                         fallbackSystemImage: "photo",
-                        maximumPixelDimension: 256
+                        maximumPixelDimension: 256,
+                        placeholder: .init(embed.thumbnail)
                     )
                 )
             }
@@ -939,7 +948,8 @@ enum NativeTimelineEmbedLayout {
                             url: footerIconURL,
                             cornerRadius: InterfaceScale.metric(9),
                             fallbackSystemImage: "photo.circle",
-                            maximumPixelDimension: 64
+                            maximumPixelDimension: 64,
+                            placeholder: nil
                         )
                     )
                 }
@@ -975,6 +985,7 @@ enum NativeTimelineEmbedLayout {
                 mediaFrame: mediaFrame,
                 mediaURL: mediaURL,
                 mediaPreviewURL: mediaPreviewURL,
+                mediaPlaceholder: mediaPlaceholder,
                 mediaIsVideo: embed.video != nil,
                 mediaAutoplaysInline: false,
                 mediaPosterFillsFrame: mediaPosterFillsFrame,

@@ -98,6 +98,7 @@ struct NativeTimelineComponentLayout {
         let isSpoiler: Bool
         let cornerRadius: CGFloat
         let maximumPixelDimension: Int
+        let placeholder: NativeTimelineMediaPlaceholder?
     }
 
     struct MediaRegion {
@@ -111,6 +112,7 @@ struct NativeTimelineComponentLayout {
         let description: String
         let isSpoiler: Bool
         let isVideo: Bool
+        let placeholder: NativeTimelineMediaPlaceholder?
     }
 
     struct FileRegion {
@@ -319,7 +321,8 @@ private struct Node {
                 description: $0.description,
                 isSpoiler: $0.isSpoiler,
                 cornerRadius: $0.cornerRadius,
-                maximumPixelDimension: $0.maximumPixelDimension
+                maximumPixelDimension: $0.maximumPixelDimension,
+                placeholder: $0.placeholder
             )
         }
         result.media = media.map {
@@ -331,7 +334,8 @@ private struct Node {
                 openURL: $0.openURL,
                 description: $0.description,
                 isSpoiler: $0.isSpoiler,
-                isVideo: $0.isVideo
+                isVideo: $0.isVideo,
+                placeholder: $0.placeholder
             )
         }
         result.files = files.map {
@@ -384,6 +388,7 @@ private enum NodeBuilder {
         let height: Int?
         let isSpoiler: Bool
         let isVideo: Bool
+        let placeholder: NativeTimelineMediaPlaceholder?
     }
 
     static func node(
@@ -468,7 +473,8 @@ private enum NodeBuilder {
                             item.description ?? item.title,
                         isSpoiler: item.isSpoiler,
                         cornerRadius: InterfaceScale.metric(8),
-                        maximumPixelDimension: 256
+                        maximumPixelDimension: 256,
+                        placeholder: item.placeholder
                     )
                 ]
             )
@@ -917,7 +923,8 @@ private enum NodeBuilder {
                         description:
                             media.description ?? media.title,
                         isSpoiler: media.isSpoiler,
-                        isVideo: media.isVideo
+                        isVideo: media.isVideo,
+                        placeholder: media.placeholder
                     )
                 }
             )
@@ -1238,7 +1245,8 @@ private enum NodeBuilder {
                 width: media.width ?? attachment.width,
                 height: media.height ?? attachment.height,
                 isSpoiler: media.isSpoiler || attachment.isSpoiler,
-                isVideo: attachment.mediaKind == .video
+                isVideo: attachment.mediaKind == .video,
+                placeholder: .init(attachment)
             )
         }
         guard let openURL = media.url else { return nil }
@@ -1259,7 +1267,8 @@ private enum NodeBuilder {
             width: media.width,
             height: media.height,
             isSpoiler: media.isSpoiler,
-            isVideo: isVideo
+            isVideo: isVideo,
+            placeholder: .init(media)
         )
     }
 
