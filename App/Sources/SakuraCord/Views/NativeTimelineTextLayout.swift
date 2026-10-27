@@ -609,8 +609,11 @@ enum NativeTimelineEmbedLayout {
             )
         }
 
+        /// A video previews the poster it loads, falling back to its own hash.
         private var mediaPlaceholder: NativeTimelineMediaPlaceholder? {
-            .init(hash: mainMedia?.placeholder, version: mainMedia?.placeholderVersion)
+            let poster = embed.video == nil ? nil : embed.thumbnail ?? embed.image
+            return NativeTimelineMediaPlaceholder(hash: poster?.placeholder, version: poster?.placeholderVersion)
+                ?? NativeTimelineMediaPlaceholder(hash: mainMedia?.placeholder, version: mainMedia?.placeholderVersion)
         }
 
         var region: NativeTimelineRowLayout.EmbedRegion? {

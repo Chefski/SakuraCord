@@ -48,8 +48,13 @@ public enum ThumbHash {
         let header16 = Int(hash[3]) | Int(hash[4]) << 8
         let hasAlpha = header24 >> 23 != 0
         let isLandscape = header16 >> 15 != 0
-        let lx = max(3, isLandscape ? (hasAlpha ? 5 : 7) : header16 & 7)
-        let ly = max(3, isLandscape ? header16 & 7 : (hasAlpha ? 5 : 7))
+        let headerLX = isLandscape ? (hasAlpha ? 5 : 7) : header16 & 7
+        let headerLY = isLandscape ? header16 & 7 : (hasAlpha ? 5 : 7)
+        // A zero dimension has no aspect ratio; encoders never write one.
+        guard headerLX > 0, headerLY > 0 else { return nil }
+        // Coefficients decode from at least 3×3; the aspect ratio does not.
+        let lx = max(3, headerLX)
+        let ly = max(3, headerLY)
         let acStart = hasAlpha ? 6 : 5
         let counts = (luma: acCount(lx, ly), chroma: acCount(3, 3), alpha: hasAlpha ? acCount(5, 5) : 0)
         let nibbles = counts.luma + 2 * counts.chroma + counts.alpha
@@ -72,7 +77,7 @@ public enum ThumbHash {
         let qAC = channel(counts.chroma, scale: Double(header16 >> 9 & 63) / 63 * 1.25)
         let alphaAC = hasAlpha ? channel(counts.alpha, scale: Double(hash[5] >> 4) / 15) : []
 
-        let ratio = Double(lx) / Double(ly)
+        let ratio = Double(headerLX) / Double(headerLY)
         let width = Int((ratio > 1 ? 32 : 32 * ratio).rounded())
         let height = Int((ratio > 1 ? 32 / ratio : 32).rounded())
         let columns = cosines(count: width, terms: max(lx, hasAlpha ? 5 : 3))

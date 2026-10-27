@@ -840,8 +840,14 @@ extension NativeTimelineCanvasView {
 
     static let maximumInlineVideoOverlayCount = 4
 
+    struct DesiredInlineVideoOverlay {
+        let key: InlineVideoOverlayKey
+        let frame: CGRect
+        let placeholder: NativeTimelineMediaPlaceholder?
+    }
+
     func reconcileInlineVideoOverlays(plays: Bool) {
-        var desired: [(InlineVideoOverlayKey, CGRect)] = []
+        var desired: [DesiredInlineVideoOverlay] = []
         desired.reserveCapacity(Self.maximumInlineVideoOverlayCount)
 
         guard var index = rowIndex(at: max(0, visibleRect.minY)) else {
@@ -862,16 +868,17 @@ extension NativeTimelineCanvasView {
                           urls.contains(url),
                           let frame = region.mediaFrame
                     else { continue }
-                    desired.append((
-                        InlineVideoOverlayKey(
+                    desired.append(DesiredInlineVideoOverlay(
+                        key: InlineVideoOverlayKey(
                             row: identifier,
                             embedID: region.embedID,
                             url: url
                         ),
-                        frame.offsetBy(
+                        frame: frame.offsetBy(
                             dx: 0,
                             dy: displayedRowOrigin(at: index)
-                        )
+                        ),
+                        placeholder: region.mediaPlaceholder
                     ))
                     if desired.count == Self.maximumInlineVideoOverlayCount {
                         break
@@ -884,7 +891,7 @@ extension NativeTimelineCanvasView {
             index += 1
         }
 
-        let desiredKeys = Set(desired.map(\.0))
+        let desiredKeys = Set(desired.map(\.key))
         for key in Array(inlineVideoOverlays.keys)
         where !desiredKeys.contains(key) {
             guard let overlay = inlineVideoOverlays.removeValue(forKey: key)
@@ -892,7 +899,9 @@ extension NativeTimelineCanvasView {
             overlay.stop()
             overlay.removeFromSuperview()
         }
-        for (key, frame) in desired {
+        for item in desired {
+            let key = item.key
+            let frame = item.frame
             let overlay: NativeTimelineInlineVideoOverlay
             if let existing = inlineVideoOverlays[key] {
                 overlay = existing
@@ -906,6 +915,7 @@ extension NativeTimelineCanvasView {
                 inlineVideoOverlays[key] = overlay
             }
             overlay.frame = frame
+            overlay.placeholder = item.placeholder.flatMap(NativeTimelineRowPainter.mediaPlaceholderImage(for:))
             overlay.display(key.url, plays: plays)
         }
     }

@@ -9,11 +9,14 @@ struct ThumbHashTests {
     @Test(arguments: [
         ("XwgSNJqAeIeEh4iIiHd/gAj4hw==", [18, 32, 66, 54, 44, 255]),
         ("msiJJRApUHljeIh4d41QF/WKj4iHiHeIeA==", [32, 32, 32, 44, 42, 243]),
+        ("3/cBAYBre22nt2NfTycDdUU=", [5, 32, 122, 126, 128, 255]),
         ("", []),
         ("XwgS", []),
         ("XwgSNJqAeIeEh4iI", []),
         ("msiJJRApUHljeIh4d41Q", []),
-        ("not base64!", [])
+        ("not base64!", []),
+        ("XwgSMJqAeIeEh4iIiHd/gAj4hw==", []),
+        ("XwgSMBqAeIeEh4iIiHd/gAj4hw==", [])
     ] as [(String, [Int])])
     func decodesReferenceOutputAndRejectsMalformedHashes(base64: String, expected: [Int]) {
         let bitmap = Data(base64Encoded: base64).flatMap { ThumbHash.bitmap(hash: [UInt8]($0)) }
