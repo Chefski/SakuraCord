@@ -5,10 +5,10 @@ import Testing
 struct ThumbHashTests {
     // Placeholders arrive from the network and are decoded while rows draw, so
     // a short or truncated hash must yield nil instead of trapping, and a
-    // valid one must match the reference decoder's output.
+    // valid one must match the official client's decoder output.
     @Test(arguments: [
-        ("XwgSNJqAeIeEh4iIiHd/gAj4hw==", [18, 32, 66, 54, 44, 255]),
-        ("msiJJRApUHljeIh4d41QF/WKj4iHiHeIeA==", [32, 32, 32, 44, 42, 243]),
+        ("XwgSNJqAeIeEh4iIiHd/gAj4hw==", [18, 32, 90, 79, 68, 255]),
+        ("msiJJRApUHljeIh4d41QF/WKj4iHiHeIeA==", [32, 32, 68, 82, 76, 243]),
         ("3/cBAYBre22nt2NfTycDdUU=", [5, 32, 122, 126, 128, 255]),
         ("", []),
         ("XwgS", []),

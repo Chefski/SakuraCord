@@ -65,9 +65,12 @@ public enum ThumbHash {
         let pDC = Double(header24 >> 6 & 63) / 31.5 - 1
         let qDC = Double(header24 >> 12 & 63) / 31.5 - 1
         let alphaDC = hasAlpha ? Double(hash[5] & 15) / 15 : 1
-        let lumaAC = channel(counts.luma, scale: Double(header24 >> 18 & 31) / 31)
-        let pAC = channel(counts.chroma, scale: Double(header16 >> 3 & 63) / 63 * 1.25)
-        let qAC = channel(counts.chroma, scale: Double(header16 >> 9 & 63) / 63 * 1.25)
+        // Discord's client softens the reference decoder: half-strength luma
+        // detail, chroma scaled by 1.1 instead of 1.25, and only the lowest luma
+        // frequencies summed below (its worker's `detail: 1, pop: 1.1`).
+        let lumaAC = channel(counts.luma, scale: Double(header24 >> 18 & 31) / 31 / 2)
+        let pAC = channel(counts.chroma, scale: Double(header16 >> 3 & 63) / 63 * 1.1)
+        let qAC = channel(counts.chroma, scale: Double(header16 >> 9 & 63) / 63 * 1.1)
         let alphaAC = hasAlpha ? channel(counts.alpha, scale: Double(hash[5] >> 4) / 15) : []
 
         let ratio = Double(headerLX) / Double(headerLY)
@@ -84,7 +87,7 @@ public enum ThumbHash {
                     let fy = rows[row][cy] * 2
                     var cx = cy == 0 ? 1 : 0
                     while cx * ly < lx * (ly - cy) {
-                        luma += lumaAC[index] * columns[column][cx] * fy
+                        if cx <= 1, cy <= 1 { luma += lumaAC[index] * columns[column][cx] * fy }
                         cx += 1
                         index += 1
                     }
