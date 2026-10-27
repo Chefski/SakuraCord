@@ -15,13 +15,15 @@ git -C "$ROOT_DIR" fetch --no-tags "$REMOTE" \
   "+refs/heads/main:$MAIN_REF" \
   "+refs/heads/nightly:$NIGHTLY_REF"
 
-# Without a GitHub token, gh or a successful run, nightly counts as unvalidated.
+# Only a successful push run checks out and validates this exact commit; a
+# dispatched run can carry its SHA while building a release tag. Without a
+# GitHub token, gh or such a run, nightly counts as unvalidated.
 nightly_ci_passed() {
   [[ -n "${GITHUB_REPOSITORY:-}" ]] && command -v gh >/dev/null || return 1
   local commit runs
   commit="$(git -C "$ROOT_DIR" rev-parse "$NIGHTLY_REF")"
   runs="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml \
-    --commit "$commit" --status success --limit 1 \
+    --commit "$commit" --event push --status success --limit 1 \
     --json databaseId --jq length 2>/dev/null || true)"
   [[ "$runs" == 1 ]]
 }
