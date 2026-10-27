@@ -333,8 +333,17 @@ extension AppModel {
         guard let threadID = openThread?.id else { return false }
         let request = beginThreadWindowRequest(threadID)
         let refreshRevision = beginScopedConversationRefresh(in: threadID)
+        var published = false
         defer {
             endScopedConversationRefresh(refreshRevision)
+            // A jump that ends, failed or cancelled, still owning an unverified
+            // window owes the revalidation it superseded.
+            if !published, threadWindow.isNewestUnverified,
+               ownsThreadLoad(threadID, generation: request.generation),
+               threadWindow.revision == request.windowRevision
+            {
+                threadWindow.revalidationPending = true
+            }
             endThreadWindowRequest(request)
         }
         do {
@@ -350,6 +359,7 @@ extension AppModel {
                 request: request,
                 mutations: scopedConversationRefreshMutations(refreshRevision)
             )
+            published = true
             return true
         } catch is CancellationError {
             return false
@@ -357,9 +367,6 @@ extension AppModel {
             guard isCurrentAccountSession(session), isCurrentThreadWindow(request) else { return false }
             DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             errorMessage = error.localizedDescription
-            // The jump superseded any revalidation in flight, which is still
-            // owed until a current read establishes the newest edge.
-            if threadWindow.isNewestUnverified { threadWindow.revalidationPending = true }
             return false
         }
     }
