@@ -28,6 +28,9 @@ struct ThreadWindowOwnership {
     /// or when a cached window reopens. Until then it is treated as detached
     /// from the newest message for admission, sending and acknowledgement.
     var isNewestUnverified = false
+    /// A read of the newest messages failed while the edge was unverified;
+    /// the reader keeps the way back until a later read verifies it.
+    var newestReadFailed = false
     /// The target of a jump whose first window failed to load, for Retry.
     var failedInitialTarget: MessageID?
     /// The target of the initial load in flight when it reads around a
@@ -56,12 +59,11 @@ extension AppModel {
         hasMoreLaterThreadMessages || threadWindow.isNewestUnverified
     }
 
-    /// Away from the newest message with no read underway to return to it:
-    /// opened around an older message, or a revalidation that failed. A
-    /// reopened window revalidating at the bottom is not offered the way back.
+    /// The reader needs a way back to the newest message: the window was
+    /// opened around an older one, or reading its newest edge failed. A
+    /// reopened window still revalidating at the bottom does not.
     var needsThreadNewestRecovery: Bool {
-        hasMoreLaterThreadMessages || threadWindow.isNewestUnverified
-            && threadWindow.activeRevision == nil && !threadWindow.revalidationPending && !isLoadingThread
+        hasMoreLaterThreadMessages || threadWindow.isNewestUnverified && threadWindow.newestReadFailed
     }
 
     /// An initial load around an older message is in flight; a later intent
@@ -216,6 +218,7 @@ extension AppModel {
                 DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
                 model.threadErrorMessage = error.localizedDescription
                 model.threadErrorScope = .initialPage
+                model.threadWindow.newestReadFailed = model.threadWindow.isNewestUnverified
                 model.threadWindow.failedInitialTarget = target
                 model.threadWindow.initialLoadTarget = nil
                 model.isLoadingThread = false
@@ -320,6 +323,7 @@ extension AppModel {
         }
         hasMoreLaterThreadMessages = false
         threadWindow.isNewestUnverified = false
+        threadWindow.newestReadFailed = false
         hasMoreCache[threadID] = hasMoreThreadMessages
         contiguousHistoryBoundaries[threadID] = nil
     }
@@ -416,6 +420,7 @@ extension AppModel {
             DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             threadErrorMessage = error.localizedDescription
             threadErrorScope = .newestWindow
+            threadWindow.newestReadFailed = threadWindow.isNewestUnverified
             return false
         }
     }

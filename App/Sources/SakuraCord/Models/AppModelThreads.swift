@@ -381,6 +381,7 @@ extension AppModel {
         threadWindow.lowerCursor = nil
         threadWindow.upperCursor = nil
         threadWindow.isNewestUnverified = false
+        threadWindow.newestReadFailed = false
         threadWindow.failedInitialTarget = nil
         threadWindow.initialLoadTarget = nil
         threadWindow.newestReadRevision = nil
