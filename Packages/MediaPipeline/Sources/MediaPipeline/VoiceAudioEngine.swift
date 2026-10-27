@@ -37,6 +37,7 @@ public final class VoiceAudioEngine {
     }
 
     public private(set) var isRunning = false
+    private var isShutDown = false
     /// The input device in use, which may be the system default after a fallback.
     public private(set) var inputDeviceID: AudioDeviceID?
     public private(set) var outputDeviceID: AudioDeviceID?
@@ -166,6 +167,9 @@ public final class VoiceAudioEngine {
         captureBeforePlayback: Bool,
         onCapturedFrame: @escaping @Sendable (CapturedOpusFrame) -> Void
     ) throws {
+        // A start that reaches the main actor after shutDown() must not reopen
+        // the microphone the departing session already released.
+        guard !isShutDown else { throw CancellationError() }
         if isRunning || captureOutput != nil {
             stop()
         }
@@ -196,10 +200,11 @@ public final class VoiceAudioEngine {
         tearDownAudioGraph()
     }
 
-    /// Stops like `stop()`, then waits until the capture queue has stopped the
-    /// session, without blocking the main actor, so a following voice session
-    /// cannot open the microphone while this one still holds it.
-    public func stopAndWaitForCapture() async {
+    /// Stops the engine for good, then waits until the capture queue has stopped
+    /// the session, without blocking the main actor, so a following voice
+    /// session cannot open the microphone while this one still holds it.
+    public func shutDown() async {
+        isShutDown = true
         tearDownAudioGraph()
         await withCheckedContinuation { continuation in
             captureQueue.async { continuation.resume() }

@@ -202,12 +202,12 @@ public actor DiscordVoiceSession: DaveSessionDelegate {
         cameraGeneration &+= 1
         stopCameraPipeline()
         if let audioEngine {
-            await audioEngine.stopAndWaitForCapture()
+            await audioEngine.shutDown()
         }
         // A cancelled start may still hold the microphone through an engine it has
         // not published. It stays recorded until that start ends, so a repeated
         // disconnect also waits for it.
-        await startingAudioEngine?.stopAndWaitForCapture()
+        await startingAudioEngine?.shutDown()
 
         if locallySpeaking, let audioSSRC {
             try? await gateway.sendSpeaking(flags: 0, ssrc: audioSSRC)
@@ -1333,7 +1333,7 @@ private extension DiscordVoiceSession {
         }
         if Task.isCancelled {
             // disconnect() already cleared the shared stream state; only release ours.
-            await audio.stopAndWaitForCapture()
+            await audio.shutDown()
             capturedFrames.continuation.finish()
             captureTask.cancel()
             throw CancellationError()
