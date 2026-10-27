@@ -46,19 +46,36 @@ extension AppModel {
             model.preserveUnreadDividerIfNeeded(channelID: channelID)
             if summary?.isLowerBound == true {
                 // Discord reads one window around the last acknowledged
-                // message instead of paging toward it. Without a usable
-                // boundary no read can reach the unread start.
-                guard let acknowledged = model.readState[channelID]?.lastAcknowledgedMessageID,
-                      acknowledged.rawValue > 0
-                else { return }
-                let loaded = isThread
-                    ? await model.loadThreadWindow(around: acknowledged, session: account)
-                    : await model.loadSelectedMessageWindow(
-                        around: acknowledged,
-                        channelID: channelID,
-                        session: account
-                    )
-                guard loaded, isPresented() else { return }
+                // message instead of paging toward it.
+                if let acknowledged = model.readState[channelID]?.lastAcknowledgedMessageID,
+                   acknowledged.rawValue > 0
+                {
+                    let loaded = isThread
+                        ? await model.loadThreadWindow(around: acknowledged, session: account)
+                        : await model.loadSelectedMessageWindow(
+                            around: acknowledged,
+                            channelID: channelID,
+                            session: account
+                        )
+                    guard loaded, isPresented() else { return }
+                } else {
+                    // Nothing anchors a window, so page toward the unread
+                    // start, stopping once a page adds no older message.
+                    var previousOldestID: MessageID?
+                    while isPresented(),
+                          model.presentedUnreadSummary(channelID: channelID)?.isLowerBound == true,
+                          let oldestID = (isThread ? model.threadMessages : model.messages).first?.id,
+                          previousOldestID.map({ oldestID < $0 }) ?? true
+                    {
+                        previousOldestID = oldestID
+                        if isThread {
+                            await model.loadEarlierThread(account: account)
+                        } else {
+                            await model.loadEarlier(account: account)
+                        }
+                    }
+                    guard isPresented() else { return }
+                }
                 glides = false
                 summary = model.presentedUnreadSummary(channelID: channelID)
                 model.preserveUnreadDividerIfNeeded(channelID: channelID)

@@ -163,10 +163,15 @@ extension AppModel {
     }
 
     /// The detached window cached for `channelID`, unless a Gateway gap
-    /// crossed it while it was cached; a stale one is dropped.
+    /// crossed it while it was cached or deletions emptied it, leaving no
+    /// edge to page from; such a window is dropped.
     private func takeDetachedMessageWindow(for channelID: ChannelID) -> DetachedMessageWindow? {
         guard let window = detachedMessageWindows.removeValue(forKey: channelID) else { return nil }
-        if window.historyEpoch == historyEpoch, hasMoreCache[channelID] != nil { return window }
+        if window.historyEpoch == historyEpoch, hasMoreCache[channelID] != nil,
+           messageCache[channelID]?.isEmpty == false
+        {
+            return window
+        }
         discardCachedMessages(for: channelID)
         return nil
     }
@@ -695,7 +700,10 @@ extension AppModel {
                   isCurrentAccountSession(session),
                   selectedChannelID == channelID
             else { return false }
-            replaceSelectedMessages(with: page.messages)
+            replaceSelectedMessages(with: Self.merging(
+                current: messages.filter { $0.outboxState != .confirmed },
+                fresh: page.messages
+            ))
             hasMoreMessages = page.hasMoreBefore
             hasMoreLaterMessages = false
             hasMoreCache[channelID] = page.hasMoreBefore

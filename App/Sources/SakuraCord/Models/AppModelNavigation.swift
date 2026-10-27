@@ -563,7 +563,12 @@ extension AppModel {
                   isCurrentAccountSession(session),
                   selectedChannelID == channelID
             else { return false }
-            replaceSelectedMessages(with: page.messages)
+            // Unconfirmed sends keep their rows, including failed ones
+            // awaiting Retry or Discard, whichever window is presented.
+            replaceSelectedMessages(with: Self.merging(
+                current: messages.filter { $0.outboxState != .confirmed },
+                fresh: page.messages
+            ))
             hasMoreMessages = page.hasMoreBefore
             hasMoreLaterMessages = page.hasMoreAfter
             hasMoreCache[channelID] = page.hasMoreBefore

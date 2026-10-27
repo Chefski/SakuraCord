@@ -56,9 +56,12 @@ extension AppModel {
                 anchoredAt: request.anchor,
                 limit: historyPageFetchLimit
             )
+            // A window replaced meanwhile, such as by a jump, no longer
+            // continues from the edge this page was read from.
             guard !Task.isCancelled,
                   isCurrentAccountSession(session),
-                  selectedChannelID == request.channelID
+                  selectedChannelID == request.channelID,
+                  selectedMessageHistoryRequestEdge(direction) == request.anchor
             else { return }
             let reconcileStart = ProcessInfo.processInfo.systemUptime
             let inserted = AppPerformanceSignposts.measureSync(
@@ -107,30 +110,30 @@ extension AppModel {
         }
     }
 
+    private func selectedMessageHistoryRequestEdge(
+        _ direction: SelectedMessageHistoryDirection
+    ) -> MessageHistoryAnchor? {
+        // Unconfirmed sends sort last and carry local IDs, so the REST edges
+        // are the outermost confirmed messages.
+        switch direction {
+        case .earlier: messages.first { $0.outboxState == .confirmed }.map { .before($0.id) }
+        case .later: messages.last { $0.outboxState == .confirmed }.map { .after($0.id) }
+        }
+    }
+
     private func selectedMessageHistoryRequest(
         _ direction: SelectedMessageHistoryDirection
     ) -> SelectedMessageHistoryRequest? {
-        guard let channelID = selectedChannelID else { return nil }
+        guard let channelID = selectedChannelID,
+              let anchor = selectedMessageHistoryRequestEdge(direction)
+        else { return nil }
         switch direction {
         case .earlier:
-            guard let first = messages.first,
-                  hasMoreMessages,
-                  !isLoadingEarlier
-            else { return nil }
-            return SelectedMessageHistoryRequest(
-                channelID: channelID,
-                anchor: .before(first.id)
-            )
+            guard hasMoreMessages, !isLoadingEarlier else { return nil }
         case .later:
-            guard let last = messages.last,
-                  hasMoreLaterMessages,
-                  !isLoadingLater
-            else { return nil }
-            return SelectedMessageHistoryRequest(
-                channelID: channelID,
-                anchor: .after(last.id)
-            )
+            guard hasMoreLaterMessages, !isLoadingLater else { return nil }
         }
+        return SelectedMessageHistoryRequest(channelID: channelID, anchor: anchor)
     }
 
     private func setSelectedMessageHistoryLoading(

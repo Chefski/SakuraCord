@@ -986,7 +986,18 @@ extension AppModel {
         guard message.channelID != openThread?.id else { return }
         guard detachedMessageWindows[message.channelID] == nil else {
             // A live message or send would join the window past its open
-            // newer edge; an edit still reaches a message it holds.
+            // newer edge; an edit still reaches a message it holds, and a
+            // send confirmed there leaves its row.
+            if message.outboxState == .confirmed, let nonce = message.nonce,
+               var cached = messageCache[message.channelID],
+               let index = cached.firstIndex(where: { $0.nonce == nonce && $0.outboxState != .confirmed })
+            {
+                cached.remove(at: index)
+                messageCache[message.channelID] = cached
+                messageRowCache[message.channelID] = nil
+                messageRowCacheOrder.removeAll { $0 == message.channelID }
+                return
+            }
             reconcileCachedMessageUpdate(message)
             return
         }
