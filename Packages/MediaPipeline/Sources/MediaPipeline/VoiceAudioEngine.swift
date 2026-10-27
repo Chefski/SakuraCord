@@ -138,8 +138,8 @@ public final class VoiceAudioEngine {
         inputDeviceID: AudioDeviceID? = nil,
         outputDeviceID: AudioDeviceID? = nil,
         onCapturedFrame: @escaping @Sendable (CapturedOpusFrame) -> Void
-    ) throws {
-        try start(
+    ) async throws {
+        try await start(
             inputDeviceID: inputDeviceID,
             outputDeviceID: outputDeviceID,
             captureBeforePlayback: false,
@@ -151,8 +151,8 @@ public final class VoiceAudioEngine {
         inputDeviceID: AudioDeviceID?,
         outputDeviceID: AudioDeviceID?,
         onCapturedFrame: @escaping @Sendable (CapturedOpusFrame) -> Void
-    ) throws {
-        try start(
+    ) async throws {
+        try await start(
             inputDeviceID: inputDeviceID,
             outputDeviceID: outputDeviceID,
             captureBeforePlayback: true,
@@ -165,25 +165,33 @@ public final class VoiceAudioEngine {
         outputDeviceID: AudioDeviceID?,
         captureBeforePlayback: Bool,
         onCapturedFrame: @escaping @Sendable (CapturedOpusFrame) -> Void
-    ) throws {
+    ) async throws {
         if isRunning || captureOutput != nil {
             stop()
         }
         self.inputDeviceID = inputDeviceID
         self.outputDeviceID = outputDeviceID
-        captureEncoder.handler = onCapturedFrame
+        let generation = inputRouteGeneration
+        // Installed behind any queued teardown, so sample callbacks still queued
+        // from a previous run cannot reach the new handler.
+        captureQueue.async { [captureEncoder] in
+            captureEncoder.handler = onCapturedFrame
+        }
         do {
             // Local tests can warm up capture while Core Audio starts the output route.
             if captureBeforePlayback {
-                try startCaptureGraph(deviceID: inputDeviceID)
+                try await startCaptureGraph(deviceID: inputDeviceID)
             }
             try startPlaybackGraph()
             if !captureBeforePlayback {
-                try startCaptureGraph(deviceID: inputDeviceID)
+                try await startCaptureGraph(deviceID: inputDeviceID)
             }
             isRunning = true
         } catch {
-            tearDownAudioGraph()
+            // A stop() during the awaited configuration already tore the graph down.
+            if generation == inputRouteGeneration {
+                tearDownAudioGraph()
+            }
             throw error
         }
     }
@@ -216,10 +224,10 @@ public final class VoiceAudioEngine {
         captureEncoder.handler = nil
     }
 
-    // Configuration and startRunning run asynchronously on the serial capture
-    // queue so the main actor never blocks on Core Audio; queue order keeps them
-    // behind any earlier teardown. A rejected input surfaces through recovery.
-    private func startCaptureGraph(deviceID: AudioDeviceID?) throws {
+    // Configuration runs on the serial capture queue and is awaited, so the main
+    // actor never blocks on Core Audio while a rejected input still fails the
+    // start. Queue order keeps it behind any earlier teardown.
+    private func startCaptureGraph(deviceID: AudioDeviceID?) async throws {
         let (input, resolvedDeviceID) = try makeCaptureInput(
             deviceID: deviceID,
             allowsDefaultFallback: true
@@ -228,36 +236,34 @@ public final class VoiceAudioEngine {
         output.setSampleBufferDelegate(captureEncoder, queue: captureQueue)
         captureOutput = output
         let generation = inputRouteGeneration
-        captureQueue.async { [weak self, captureSession] in
-            captureSession.beginConfiguration()
-            for existing in captureSession.inputs {
-                captureSession.removeInput(existing)
-            }
-            for existing in captureSession.outputs {
-                captureSession.removeOutput(existing)
-            }
-            guard captureSession.canAddInput(input),
-                  captureSession.canAddOutput(output)
-            else {
-                captureSession.commitConfiguration()
-                voiceAudioLogger.error("Voice capture session rejected the microphone input")
-                Task { @MainActor [weak self] in
-                    self?.scheduleCaptureRecovery()
+        do {
+            try await onCaptureQueue { [captureSession] in
+                captureSession.beginConfiguration()
+                defer { captureSession.commitConfiguration() }
+                for existing in captureSession.inputs {
+                    captureSession.removeInput(existing)
                 }
-                return
+                for existing in captureSession.outputs {
+                    captureSession.removeOutput(existing)
+                }
+                guard captureSession.canAddInput(input),
+                      captureSession.canAddOutput(output)
+                else { throw VoiceAudioEngineError.inputUnavailable }
+                captureSession.addInput(input)
+                captureSession.addOutput(output)
             }
-            captureSession.addInput(input)
-            captureSession.addOutput(output)
-            captureSession.commitConfiguration()
-            Task { @MainActor [weak self] in
-                guard let self, generation == self.inputRouteGeneration else { return }
-                self.inputDeviceID = resolvedDeviceID
-            }
+        } catch {
+            output.setSampleBufferDelegate(nil, queue: nil)
+            throw error
+        }
+        guard generation == inputRouteGeneration else { throw CancellationError() }
+        inputDeviceID = resolvedDeviceID
+        voiceAudioLogger.info("Voice capture configured without opening a shared output route")
+        captureQueue.async { [captureSession] in
             if !captureSession.isRunning {
                 captureSession.startRunning()
             }
         }
-        voiceAudioLogger.info("Voice capture configured without opening a shared output route")
     }
 
     private func onCaptureQueue(_ work: @escaping @Sendable () throws -> Void) async throws {
@@ -342,7 +348,7 @@ public final class VoiceAudioEngine {
                 "Selected microphone could not recover; trying the system default"
             )
             tearDownCaptureGraph()
-            try startCaptureGraph(deviceID: nil)
+            try await startCaptureGraph(deviceID: nil)
             try await stabilizeCaptureSession(generation: generation)
         }
         voiceAudioLogger.info("Voice capture recovered after a hardware configuration change")

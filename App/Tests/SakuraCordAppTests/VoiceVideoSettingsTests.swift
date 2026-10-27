@@ -341,7 +341,7 @@ private final class ControlledMicrophoneTestEngine: VoiceMicrophoneTesting {
         inputDeviceID: AudioDeviceID?,
         outputDeviceID: AudioDeviceID?,
         onCapturedFrame: @escaping @Sendable (CapturedOpusFrame) -> Void
-    ) throws {
+    ) async throws {
         startRequest = StartRequest(
             inputDeviceID: inputDeviceID,
             outputDeviceID: outputDeviceID
