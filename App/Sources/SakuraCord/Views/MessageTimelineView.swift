@@ -176,9 +176,12 @@ struct MessageTimelineView: View {
             model.completeConversationNewestRequest(requestID: request.requestID)
         }
         .onChange(of: model.replyRevealDestination) { _, destination in
-            guard destination == .channel, let messageID = model.replyingTo?.id else { return }
-            requestScroll(.message(messageID, anchor: .center), glides: true)
+            guard destination == .channel else { return }
+            // Consumed first: a reply cancelled or deleted meanwhile must not
+            // leave the signal set, or the next reveal would not change it.
             model.replyRevealDestination = nil
+            guard let messageID = model.replyingTo?.id else { return }
+            requestScroll(.message(messageID, anchor: .center), glides: true)
         }
         .task(id: model.selectedChannelID) {
             allowsAutomaticHistoryLoading = false
