@@ -25,6 +25,8 @@ public actor DiscordVoiceSession: DaveSessionDelegate {
     private var cipher: VoiceTransportCipher?
     private var audioEngine: VoiceAudioEngine?
     private var audioEngineStartTask: Task<Void, Error>?
+    /// The engine a start is building before it is published as `audioEngine`.
+    private var startingAudioEngine: VoiceAudioEngine?
     private var videoEngine: VoiceVideoEngine?
     private var screenCaptureEngine: ScreenShareCaptureEngine?
     private var encodedScreenTask: Task<Void, Never>?
@@ -183,9 +185,8 @@ public actor DiscordVoiceSession: DaveSessionDelegate {
         connectTimeoutTask?.cancel()
         connectContinuation?.resume(throwing: CancellationError())
         connectContinuation = nil
-        let pendingAudioEngineStart = audioEngineStartTask
+        audioEngineStartTask?.cancel()
         audioEngineStartTask = nil
-        pendingAudioEngineStart?.cancel()
         // Stop local producers before best-effort network signaling. A saturated
         // screen-share path must never keep capture, mute, or leave work queued
         // behind more video frames.
@@ -203,9 +204,10 @@ public actor DiscordVoiceSession: DaveSessionDelegate {
         if let audioEngine {
             await audioEngine.stopAndWaitForCapture()
         }
-        // A start still in flight owns an engine nothing else can reach; its
-        // cancellation path releases the microphone before this returns.
-        _ = await pendingAudioEngineStart?.result
+        // A cancelled start may still hold the microphone through an engine it has
+        // not published. It stays recorded until that start ends, so a repeated
+        // disconnect also waits for it.
+        await startingAudioEngine?.stopAndWaitForCapture()
 
         if locallySpeaking, let audioSSRC {
             try? await gateway.sendSpeaking(flags: 0, ssrc: audioSSRC)
@@ -1293,6 +1295,10 @@ private extension DiscordVoiceSession {
         try Task.checkCancellation()
         guard permission else { throw VoiceSessionError.microphonePermissionDenied }
         let audio = try await VoiceAudioEngine()
+        startingAudioEngine = audio
+        defer {
+            if startingAudioEngine === audio { startingAudioEngine = nil }
+        }
         await audio.setInputVolume(configuration.inputVolume)
         await audio.setOutputVolume(configuration.outputVolume)
         await audio.setMuted(configuration.isMuted)
