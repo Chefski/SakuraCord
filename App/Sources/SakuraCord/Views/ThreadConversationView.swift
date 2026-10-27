@@ -421,9 +421,11 @@ private struct ThreadMessageTimelineView: View {
         let overlays = isLeaving ? shownOverlays : liveOverlays
         let showsLoadingSkeleton = MessageTimelineLoadingPolicy.showsInitialPlaceholder(
             isLoading: model.isLoadingThread,
-            // A forum post's preview of its first message is not loaded history.
+            // A forum post's preview of its first message is not loaded
+            // history; a send made while loading is, so it stays visible.
             messageCount: model.hasCompletedInitialThreadLoad || model.isLoadingInitialThreadJump
-                ? model.threadMessages.count : 0
+                ? model.threadMessages.count
+                : model.threadMessages.count { $0.isUnconfirmedLocalSend }
         )
         NativeMessageTimelineView(
             model: model,
