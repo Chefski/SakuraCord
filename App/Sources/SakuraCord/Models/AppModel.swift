@@ -245,6 +245,9 @@ final class AppModel {
     @ObservationIgnored var selectedReplyMessageIDsByTarget:
         [MessageID: Set<MessageID>] = [:]
     var messageNavigationRequest: MessageNavigationRequest?
+    /// Only keyboard reply navigation scrolls; a pointer-chosen reply is on screen.
+    var replyRevealRequest: ReplyRevealRequest?
+    @ObservationIgnored var replyRevealRequestID: UInt64 = 0
     var conversationNewestRequest: ConversationNewestRequest?
     var presentedProfileGame: ProfileGame?
     var mediaViewerPresentation: NativeTimelineMediaViewerPresentation?

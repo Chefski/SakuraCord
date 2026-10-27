@@ -175,8 +175,8 @@ struct MessageTimelineView: View {
             requestScroll(.bottom)
             model.completeConversationNewestRequest(requestID: request.requestID)
         }
-        .onChange(of: model.replyingTo?.id) { _, messageID in
-            guard let messageID else { return }
+        .onChange(of: model.replyRevealRequest) { _, request in
+            guard request?.destination == .channel, let messageID = model.replyingTo?.id else { return }
             requestScroll(.message(messageID, anchor: .center), glides: true)
         }
         .task(id: model.selectedChannelID) {

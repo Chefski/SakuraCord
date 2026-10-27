@@ -325,6 +325,12 @@ nonisolated struct ComponentControlKey: Hashable, Sendable {
     let customID: String
 }
 
+/// Asks the timeline to scroll to the keyboard-selected reply.
+nonisolated struct ReplyRevealRequest: Equatable, Sendable {
+    let requestID: UInt64
+    let destination: MessageComposerDestination
+}
+
 nonisolated struct MessageNavigationRequest: Equatable, Sendable {
     let requestID: UInt64
     let channelID: ChannelID
