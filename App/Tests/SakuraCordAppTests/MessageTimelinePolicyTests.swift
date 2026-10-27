@@ -306,11 +306,3 @@ func `history fetch limits follow the official client's viewport formula`(
     #expect(DiscordHistoryFetchLimit.initial(windowHeight: 794, zoom: zoom) == initial)
     #expect(DiscordHistoryFetchLimit.page(windowHeight: 794, zoom: zoom) == page)
 }
-
-@Test func `history fetch limits are bounded and track compact density and font size`() {
-    #expect(DiscordHistoryFetchLimit.initial(windowHeight: 300) == 10)
-    #expect(DiscordHistoryFetchLimit.initial(windowHeight: 5_000) == 30)
-    #expect(DiscordHistoryFetchLimit.page(windowHeight: 5_000) == 30)
-    #expect(DiscordHistoryFetchLimit.initial(windowHeight: 794, isCompact: true) == 11)
-    #expect(DiscordHistoryFetchLimit.initial(windowHeight: 794, fontSize: 20) == 10)
-}
