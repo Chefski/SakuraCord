@@ -1286,7 +1286,6 @@ public actor DiscordVoiceSession: DaveSessionDelegate {
     }
 }
 
-// Kept outside the actor body to stay within the type length limit.
 private extension DiscordVoiceSession {
     func startAudioEngine() async throws {
         // disconnect() cancels this task; bail out after each await so a late

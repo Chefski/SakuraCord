@@ -67,7 +67,7 @@ public final class VoiceAudioEngine {
     private let captureQueue = DispatchQueue(label: "app.sakuracord.audio.capture", qos: .userInteractive)
     private var captureOutput: AVCaptureAudioDataOutput?
     private final class CaptureInputs: @unchecked Sendable {
-        // Only touched on captureQueue.
+        // Written on captureQueue, read only after the awaited hop returns.
         var inputs: [AVCaptureInput] = []
     }
     private let playbackEngine = AVAudioEngine()
@@ -666,9 +666,9 @@ public final class VoiceAudioEngine {
         }
         let buffer = try codec.decode(opusPacket)
         let player = try player(for: userID)
-        // The decode and node setup above can race a route change that stops the
-        // engine; scheduling or playing on a stopped engine raises an ObjC exception.
-        guard playbackEngine.isRunning, player.engine === playbackEngine else {
+        // The engine can stop during the decode and node setup above; scheduling or
+        // playing on a stopped engine raises an ObjC exception.
+        guard playbackEngine.isRunning else {
             schedulePlaybackRecovery()
             return
         }
