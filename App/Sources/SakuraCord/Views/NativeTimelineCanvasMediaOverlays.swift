@@ -76,7 +76,6 @@ extension NativeTimelineCanvasView {
     }
 
     func startVisibleInlineVideosImmediately() {
-        guard !suppressesHoverPresentation else { return }
         let reduceMotion =
             NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
             || !permitsAnimatedMediaPlayback
@@ -118,7 +117,9 @@ extension NativeTimelineCanvasView {
         }
         inlineVideoRows = rows
         reconcileInlineVideoOverlays(
-            plays: !reduceMotion
+            // Created while scrolling so the embed is not blank, but paused
+            // until scrolling settles.
+            plays: !reduceMotion && !suppressesHoverPresentation
         )
     }
 
