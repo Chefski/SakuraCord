@@ -285,6 +285,25 @@ extension NativeTimelineCanvasView {
         return keysByIdentifier
     }
 
+    /// Rows scrolling in from the overscan were painted before they became
+    /// visible, so no draw requested their media, and their spoiler and GIFV
+    /// overlays are otherwise reconciled only after scrolling settles.
+    /// Present each newly visible row range as it arrives; scroll-time loads
+    /// stay at prefetch priority, whose lanes are bounded and off the main
+    /// thread.
+    func presentRowsEnteringViewport() {
+        let previousRowRange = visibleMediaProjection?.rowRange
+        let keysByIdentifier = refreshVisibleMediaPins()
+        guard visibleMediaProjection?.rowRange != previousRowRange else {
+            return
+        }
+        for (identifier, keys) in keysByIdentifier {
+            enqueueVisibleMediaRequests(identifier: identifier, keys: keys)
+        }
+        reconcileSpoilerOverlays()
+        startVisibleInlineVideosImmediately()
+    }
+
     func uncachedMediaKeys(
         for item: NativeMessageTimelineItem,
         at index: Int?

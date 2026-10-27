@@ -525,6 +525,7 @@ extension NativeTimelineCanvasView {
             }
         }
         reconcileHistorySkeletonShimmer()
+        presentRowsEnteringViewport()
         // Supplementary Inbox rows are content, not hover presentation. Keep
         // them materialized as the viewport moves, including momentum ticks
         // that stay within the current overscanned backing window.
