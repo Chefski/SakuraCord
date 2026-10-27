@@ -200,7 +200,7 @@ public actor DiscordVoiceSession: DaveSessionDelegate {
         cameraGeneration &+= 1
         stopCameraPipeline()
         if let audioEngine {
-            await audioEngine.stop()
+            await audioEngine.stopAndWaitForCapture()
         }
 
         if locallySpeaking, let audioSSRC {
@@ -1324,7 +1324,7 @@ private extension DiscordVoiceSession {
         }
         if Task.isCancelled {
             // disconnect() already cleared the shared stream state; only release ours.
-            await audio.stop()
+            await audio.stopAndWaitForCapture()
             capturedFrames.continuation.finish()
             captureTask.cancel()
             throw CancellationError()

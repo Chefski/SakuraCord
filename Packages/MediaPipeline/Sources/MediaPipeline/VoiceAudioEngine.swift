@@ -192,6 +192,16 @@ public final class VoiceAudioEngine {
         tearDownAudioGraph()
     }
 
+    /// Stops like `stop()`, then waits until the capture queue has stopped the
+    /// session, without blocking the main actor, so a following voice session
+    /// cannot open the microphone while this one still holds it.
+    public func stopAndWaitForCapture() async {
+        tearDownAudioGraph()
+        await withCheckedContinuation { continuation in
+            captureQueue.async { continuation.resume() }
+        }
+    }
+
     private func tearDownAudioGraph() {
         isRunning = false
         inputRouteGeneration &+= 1
