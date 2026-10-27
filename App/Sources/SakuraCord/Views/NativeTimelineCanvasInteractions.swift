@@ -1164,7 +1164,7 @@ extension NativeTimelineCanvasView {
                   highlightFrame: layouts[index].highlightFrame
               )
         else { return nil }
-        return messageContextMenu(
+        guard let menu = messageContextMenu(
             for: row,
             at: index,
             targetsAuthor: NativeTimelineAuthorProfileGeometry.hitFrame(
@@ -1177,7 +1177,9 @@ extension NativeTimelineCanvasView {
             failedMediaActions: interactionMode == .failed
                 ? imageItem.map(imageContextMenuActions(for:))
                 : nil
-        )
+        ) else { return nil }
+        prependTextLinkActions(to: menu, row: row, index: index, localPoint: localPoint)
+        return menu
     }
 
     /// `targetsAuthor` offers user commands instead of message commands in
@@ -1462,7 +1464,7 @@ extension NativeTimelineCanvasView {
                             from: item.url
                         )
                     } catch {
-                        self?.presentMediaActionError(error)
+                        self?.presentActionError(error)
                     }
                 }
             },
@@ -1494,7 +1496,7 @@ extension NativeTimelineCanvasView {
                     to: destination
                 )
             } catch {
-                self?.presentMediaActionError(error)
+                self?.presentActionError(error)
             }
         }
     }
@@ -1520,7 +1522,7 @@ extension NativeTimelineCanvasView {
         )
     }
 
-    func presentMediaActionError(_ error: Error) {
+    func presentActionError(_ error: Error) {
         let alert = NSAlert(error: error)
         if let window {
             alert.beginSheetModal(for: window)

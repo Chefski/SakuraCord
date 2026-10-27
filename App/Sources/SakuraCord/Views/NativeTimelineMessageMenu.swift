@@ -239,13 +239,13 @@ nonisolated enum NativeTimelineMessageMenuPolicy {
         ))
         result.append(.action(
             .copyLink,
-            title: "Copy Link",
+            title: "Copy Message Link",
             systemImage: "link"
         ))
         result.append(.action(
             .copyMessageID,
             title: "Copy Message ID",
-            systemImage: "number.square.fill"
+            systemImage: "number.sign"
         ))
         if canDelete {
             result.append(.separator)
@@ -296,13 +296,13 @@ nonisolated enum NativeTimelineMessageMenuPolicy {
             ),
             .action(
                 .copyLink,
-                title: "Copy Link",
+                title: "Copy Message Link",
                 systemImage: "link"
             ),
             .action(
                 .copyMessageID,
                 title: "Copy Message ID",
-                systemImage: "number.square.fill"
+                systemImage: "number.sign"
             ),
             .action(
                 .copyAuthorID,
