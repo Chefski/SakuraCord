@@ -325,6 +325,13 @@ nonisolated struct ComponentControlKey: Hashable, Sendable {
     let customID: String
 }
 
+/// Keyboard reply navigation's request to scroll the selected reply into
+/// view; each has its own ID, so one never handled cannot mask the next.
+nonisolated struct ReplyRevealRequest: Equatable, Sendable {
+    let requestID: UInt64
+    let destination: MessageComposerDestination
+}
+
 nonisolated struct MessageNavigationRequest: Equatable, Sendable {
     let requestID: UInt64
     let channelID: ChannelID

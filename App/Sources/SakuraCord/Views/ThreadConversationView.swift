@@ -545,12 +545,8 @@ private struct ThreadMessageTimelineView: View {
             requestScroll(.bottom)
             model.completeConversationNewestRequest(requestID: request.requestID)
         }
-        .onChange(of: model.replyRevealDestination) { _, destination in
-            guard destination == .thread else { return }
-            // Consumed first: a reply cancelled or deleted meanwhile must not
-            // leave the signal set, or the next reveal would not change it.
-            model.replyRevealDestination = nil
-            guard let messageID = model.threadReplyingTo?.id else { return }
+        .onChange(of: model.replyRevealRequest) { _, request in
+            guard request?.destination == .thread, let messageID = model.threadReplyingTo?.id else { return }
             requestScroll(.message(messageID, anchor: .center), glides: true)
         }
         .onDisappear {
