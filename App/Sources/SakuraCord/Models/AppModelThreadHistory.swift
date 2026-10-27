@@ -56,6 +56,14 @@ extension AppModel {
         hasMoreLaterThreadMessages || threadWindow.isNewestUnverified
     }
 
+    /// Away from the newest message with no read underway to return to it:
+    /// opened around an older message, or a revalidation that failed. A
+    /// reopened window revalidating at the bottom is not offered the way back.
+    var needsThreadNewestRecovery: Bool {
+        hasMoreLaterThreadMessages || threadWindow.isNewestUnverified
+            && threadWindow.activeRevision == nil && !threadWindow.revalidationPending && !isLoadingThread
+    }
+
     /// An initial load around an older message is in flight; a later intent
     /// for the newest messages takes it over.
     var isLoadingInitialThreadJump: Bool {

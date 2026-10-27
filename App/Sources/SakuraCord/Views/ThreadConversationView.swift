@@ -619,10 +619,10 @@ private struct ThreadMessageTimelineView: View {
         let showsNewestButton = ThreadTimelinePresentationPolicy.showsNewRepliesButton(
             isNearBottom: isNearBottom,
             hasUnreadReplies: unread.summary != nil,
-            isDetachedFromNewest: model.hasMoreLaterThreadMessages,
+            isDetachedFromNewest: model.needsThreadNewestRecovery,
             messageCount: model.threadMessages.count
         ) && (hasEstablishedInitialPosition
-            || model.hasMoreLaterThreadMessages && model.hasCompletedInitialThreadLoad)
+            || model.needsThreadNewestRecovery && model.hasCompletedInitialThreadLoad)
         return Overlays(
             unreadSummary: model.openThread == nil ? nil : unread.summary,
             showsNewestButton: showsNewestButton
