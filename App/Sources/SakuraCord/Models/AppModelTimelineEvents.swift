@@ -991,17 +991,9 @@ extension AppModel {
             // A live message or send would join the window past its open
             // newer edge; an edit still reaches a message it holds, and a
             // send confirmed there leaves its row.
-            if message.outboxState == .confirmed, let nonce = message.nonce,
-               var cached = messageCache[message.channelID],
-               let index = cached.firstIndex(where: { $0.nonce == nonce && $0.outboxState != .confirmed })
-            {
-                cached.remove(at: index)
-                messageCache[message.channelID] = cached
-                messageRowCache[message.channelID] = nil
-                messageRowCacheOrder.removeAll { $0 == message.channelID }
-                return
+            if message.outboxState != .confirmed || !dropCachedPendingSend(settledBy: message) {
+                reconcileCachedMessageUpdate(message)
             }
-            reconcileCachedMessageUpdate(message)
             return
         }
         var cached = messageCache[message.channelID]
@@ -1011,12 +1003,7 @@ extension AppModel {
         {
             // A cached thread window admits nothing below its REST edge while
             // older history remains. A send confirmed there leaves its row.
-            if let nonce = message.nonce,
-               let index = cached?.firstIndex(where: { $0.nonce == nonce && $0.outboxState != .confirmed })
-            {
-                cached?.remove(at: index)
-                if let cached { storeCachedMessages(cached, for: message.channelID) }
-            }
+            dropCachedPendingSend(settledBy: message)
             return
         }
         if cached == nil {
@@ -1027,6 +1014,19 @@ extension AppModel {
             Self.merging(current: cached ?? [], fresh: [message]),
             for: message.channelID
         )
+    }
+
+    /// Removes the unconfirmed row a confirmed send settles from a cached
+    /// window that does not admit the confirmation itself.
+    @discardableResult
+    private func dropCachedPendingSend(settledBy message: Message) -> Bool {
+        guard let nonce = message.nonce,
+              var cached = messageCache[message.channelID],
+              let index = cached.firstIndex(where: { $0.nonce == nonce && $0.outboxState != .confirmed })
+        else { return false }
+        cached.remove(at: index)
+        storeCachedMessages(cached, for: message.channelID)
+        return true
     }
 
     func storeCachedMessages(

@@ -163,6 +163,7 @@ extension AppModel {
         _ messages: [Message],
         around reading: MessageTimelineScrollRequest.Target?
     ) -> [Message] {
+        guard messages.count > ChannelMessageCachePolicy.maximumMessageCountPerChannel else { return messages }
         let pending = messages.filter { $0.outboxState != .confirmed }
         let confirmed = messages.filter { $0.outboxState == .confirmed }
         let limit = max(1, ChannelMessageCachePolicy.maximumMessageCountPerChannel - pending.count)
@@ -174,22 +175,12 @@ extension AppModel {
         return Array(confirmed[start ..< start + limit]) + pending
     }
 
-    private func discardCachedMessages(for channelID: ChannelID) {
-        messageCache[channelID] = nil
-        messageCacheOrder.removeAll { $0 == channelID }
-        messageRowCache[channelID] = nil
-        messageRowCacheOrder.removeAll { $0 == channelID }
-        hasMoreCache[channelID] = nil
-    }
-
     /// Drops a detached window but keeps its unconfirmed sends, including
     /// failed ones awaiting Retry or Discard, for the cold load that follows.
     private func cacheOnlyUnconfirmedSends(_ messages: [Message], for channelID: ChannelID) {
-        discardCachedMessages(for: channelID)
+        _ = discardCachedHistory(for: channelID)
         let pending = messages.filter { $0.outboxState != .confirmed }
-        guard !pending.isEmpty else { return }
-        messageCache[channelID] = pending
-        messageCacheOrder.append(channelID)
+        if !pending.isEmpty { storeCachedMessages(pending, for: channelID) }
     }
 
     /// The detached window cached for `channelID`, unless a Gateway gap
@@ -259,12 +250,8 @@ extension AppModel {
         let jumpTarget = pendingChannelJumpTarget.flatMap { $0.channelID == channelID ? $0.messageID : nil }
         if jumpTarget != nil { pendingChannelJumpTarget = nil }
         if cachedBoundary != nil {
-            isLoadingMessages = false
-            hasCompletedInitialMessageLoad = true
-            readState.observeLoadedMessages(channelID: channelID, messages: messages)
-            preserveUnreadDividerIfNeeded(channelID: channelID)
-            reportConversationHistoryLoaded(channelID: channelID)
-            restoreSelectedDraft(channelID: channelID, generation: generation)
+            presentLoadedSelectedHistory(channelID: channelID)
+            channelLoadTask = restoreSelectedDraft(channelID: channelID, generation: generation)
             return
         }
         isLoadingMessages = true
@@ -274,23 +261,29 @@ extension AppModel {
             // A jump into a channel with nothing loaded reads only the window
             // around its target, as the official client does. The selection's
             // load owns that read, so cancelling the navigation cannot strand it.
-            let draftRevision = composer.draftRevision
+            restoreSelectedDraft(channelID: channelID, generation: generation)
             channelLoadTask = startAccountChildTask(account: account) { model, account in
                 let loaded = await model.loadSelectedMessageWindow(
                     around: jumpTarget,
                     channelID: channelID,
                     session: account
                 )
-                let savedDraft = await model.storedDraft(in: channelID, account: account)
                 guard model.isCurrentAccountSession(account),
                       model.isCurrentLoad(channelID, generation: generation)
                 else { return }
-                model.composer.restoreDraft(savedDraft, ifUnchangedSince: draftRevision)
                 guard loaded else {
                     await model.loadSelectedChannel(channelID, generation: generation, account: account)
                     return
                 }
-                model.finishJumpSelectedChannelLoad(channelID: channelID, generation: generation, session: account)
+                model.presentLoadedSelectedHistory(channelID: channelID)
+                // Authors resolve after the jump lands, as on a cold load.
+                model.startAccountChildTask(account: account) { model, account in
+                    await model.resolveSelectedHistoryMembers(
+                        channelID: channelID,
+                        generation: generation,
+                        session: account
+                    )
+                }
             }
             return
         }
@@ -303,10 +296,10 @@ extension AppModel {
         }
     }
 
-    private func restoreSelectedDraft(channelID: ChannelID, generation: Int) {
-        let account = accountSession()
+    @discardableResult
+    private func restoreSelectedDraft(channelID: ChannelID, generation: Int) -> Task<Void, Never> {
         let draftRevision = composer.draftRevision
-        channelLoadTask = startAccountChildTask(account: account) { model, account in
+        return startAccountChildTask(account: accountSession()) { model, account in
             let savedDraft = await model.storedDraft(in: channelID, account: account)
             guard model.isCurrentAccountSession(account),
                   model.isCurrentLoad(channelID, generation: generation)
@@ -315,25 +308,13 @@ extension AppModel {
         }
     }
 
-    /// Completes a selection whose cold load a jump's window around its
-    /// target replaced.
-    private func finishJumpSelectedChannelLoad(
-        channelID: ChannelID,
-        generation: Int,
-        session: AppModelAccountSession
-    ) {
+    /// Ends the selection's loading state for history already in place.
+    private func presentLoadedSelectedHistory(channelID: ChannelID) {
         isLoadingMessages = false
         hasCompletedInitialMessageLoad = true
         readState.observeLoadedMessages(channelID: channelID, messages: messages)
         preserveUnreadDividerIfNeeded(channelID: channelID)
         reportConversationHistoryLoaded(channelID: channelID)
-        startAccountChildTask(account: session) { model, account in
-            await model.resolveSelectedHistoryMembers(
-                channelID: channelID,
-                generation: generation,
-                session: account
-            )
-        }
     }
 
     func refreshSelectedChannelPreservingHistory() {
