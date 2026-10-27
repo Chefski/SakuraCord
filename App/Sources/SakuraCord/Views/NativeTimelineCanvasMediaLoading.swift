@@ -285,18 +285,14 @@ extension NativeTimelineCanvasView {
         return keysByIdentifier
     }
 
-    /// Rows scrolling in from the overscan were painted before they became
-    /// visible, so no draw requested their media, and their spoiler and GIFV
-    /// overlays are otherwise reconciled only after scrolling settles.
-    /// Present each newly visible row range as it arrives; scroll-time loads
-    /// stay at prefetch priority, whose lanes are bounded and off the main
-    /// thread.
+    /// Rows entering the viewport mid-scroll were painted from the overscan,
+    /// so no draw requested their media. Request it and reconcile their
+    /// overlays now rather than after scrolling settles.
     func presentRowsEnteringViewport() {
-        let previousRowRange = visibleMediaProjection?.rowRange
         let keysByIdentifier = refreshVisibleMediaPins()
-        guard visibleMediaProjection?.rowRange != previousRowRange else {
-            return
-        }
+        let rowRange = visibleMediaProjection?.rowRange
+        guard rowRange != presentedMediaRowRange else { return }
+        presentedMediaRowRange = rowRange
         for (identifier, keys) in keysByIdentifier {
             enqueueVisibleMediaRequests(identifier: identifier, keys: keys)
         }
@@ -609,6 +605,7 @@ extension NativeTimelineCanvasView {
 
     func invalidateVisibleMediaProjection(keepingCapacity: Bool) {
         visibleMediaProjection = nil
+        presentedMediaRowRange = nil
         mediaKeysByIdentifier.removeAll(keepingCapacity: keepingCapacity)
     }
 

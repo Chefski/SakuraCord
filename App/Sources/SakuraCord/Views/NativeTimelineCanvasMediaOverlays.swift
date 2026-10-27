@@ -75,9 +75,6 @@ extension NativeTimelineCanvasView {
         }
     }
 
-    /// The canvas leaves autoplaying GIFV frames to these overlays. While
-    /// scrolling they are still materialized for newly visible rows, paused,
-    /// so the embed is not blank until input settles.
     func startVisibleInlineVideosImmediately() {
         let reduceMotion =
             NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
@@ -120,6 +117,8 @@ extension NativeTimelineCanvasView {
         }
         inlineVideoRows = rows
         reconcileInlineVideoOverlays(
+            // Created while scrolling so the embed is not blank, but paused
+            // until scrolling settles.
             plays: !reduceMotion && !suppressesHoverPresentation
         )
     }

@@ -238,6 +238,9 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
         [NativeMessageTimelineItem.Identifier:
             Set<NativeTimelineMediaKey>] = [:]
     var visibleMediaProjection: VisibleMediaProjection?
+    /// The visible rows `presentRowsEnteringViewport` last presented; its own
+    /// record, so another refresh of the projection cannot hide an entry.
+    var presentedMediaRowRange: Range<Int>?
     var presentationCacheInvalidationCount = 0
     var mentionPointerRegionCache:
         [NativeMessageTimelineItem.Identifier: [MentionPointerRegion]] = [:]
