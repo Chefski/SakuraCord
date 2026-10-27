@@ -180,7 +180,7 @@ extension AppModel {
                     account.provider,
                     in: thread.id,
                     anchoredAt: target.map(MessageHistoryAnchor.around) ?? .newest,
-                    limit: target == nil ? 100 : 50
+                    limit: target == nil ? model.initialHistoryFetchLimit : DiscordHistoryFetchLimit.aroundLimit
                 )
                 try Task.checkCancellation()
                 guard model.isCurrentAccountSession(account),
@@ -334,7 +334,7 @@ extension AppModel {
                 session.provider,
                 in: threadID,
                 anchoredAt: .around(messageID),
-                limit: 50
+                limit: DiscordHistoryFetchLimit.aroundLimit
             )
             guard isCurrentAccountSession(session), isCurrentThreadWindow(request) else { return false }
             replaceThreadWindow(
@@ -392,7 +392,7 @@ extension AppModel {
             endThreadWindowRequest(request)
         }
         do {
-            let page = try await threadHistoryPage(session.provider, in: threadID, anchoredAt: .newest, limit: 100)
+            let page = try await threadHistoryPage(session.provider, in: threadID, anchoredAt: .newest, limit: initialHistoryFetchLimit)
             guard isCurrentAccountSession(session), isCurrentThreadWindow(request) else { return false }
             replaceThreadWindow(
                 with: page,
@@ -447,7 +447,7 @@ extension AppModel {
                 session.provider,
                 in: thread.id,
                 anchoredAt: direction == .earlier ? .before(anchorID) : .after(anchorID),
-                limit: 50
+                limit: historyPageFetchLimit
             )
             guard isCurrentAccountSession(session),
                   isCurrentThreadLoad(thread.id, generation: generation)

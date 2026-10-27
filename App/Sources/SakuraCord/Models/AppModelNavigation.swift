@@ -522,31 +522,11 @@ extension AppModel {
             else { return }
 
             if !messages.contains(where: { $0.id == messageID }) {
-                do {
-                    let page = try await session.provider.messages(
-                        in: channel.id,
-                        anchoredAt: .around(messageID),
-                        limit: 50
-                    )
-                    guard !Task.isCancelled,
-                          isCurrentAccountSession(session),
-                          selectedChannelID == channel.id
-                    else { return }
-                    replaceSelectedMessages(with: page.messages)
-                    hasMoreMessages = page.hasMoreBefore
-                    hasMoreLaterMessages = page.hasMoreAfter
-                    hasMoreCache[channel.id] = page.hasMoreBefore
-                    contiguousHistoryBoundaries[channel.id] = nil
-                } catch is CancellationError {
-                    return
-                } catch {
-                    guard isCurrentAccountSession(session),
-                          selectedChannelID == channel.id
-                    else { return }
-                    DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
-                    errorMessage = error.localizedDescription
-                    return
-                }
+                guard await loadSelectedMessageWindow(
+                    around: messageID,
+                    channelID: channel.id,
+                    session: session
+                ) else { return }
             }
 
             guard isCurrentAccountSession(session),
@@ -563,6 +543,41 @@ extension AppModel {
                 messageID: messageID,
                 glides: wasShowingMessage
             )
+        }
+    }
+
+    /// Replaces the selected channel's window with one `around` a message.
+    /// Returns false when the selection changed or the read failed.
+    func loadSelectedMessageWindow(
+        around messageID: MessageID,
+        channelID: ChannelID,
+        session: AppModelAccountSession
+    ) async -> Bool {
+        do {
+            let page = try await session.provider.messages(
+                in: channelID,
+                anchoredAt: .around(messageID),
+                limit: DiscordHistoryFetchLimit.aroundLimit
+            )
+            guard !Task.isCancelled,
+                  isCurrentAccountSession(session),
+                  selectedChannelID == channelID
+            else { return false }
+            replaceSelectedMessages(with: page.messages)
+            hasMoreMessages = page.hasMoreBefore
+            hasMoreLaterMessages = page.hasMoreAfter
+            hasMoreCache[channelID] = page.hasMoreBefore
+            contiguousHistoryBoundaries[channelID] = nil
+            return true
+        } catch is CancellationError {
+            return false
+        } catch {
+            guard isCurrentAccountSession(session),
+                  selectedChannelID == channelID
+            else { return false }
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
+            errorMessage = error.localizedDescription
+            return false
         }
     }
 

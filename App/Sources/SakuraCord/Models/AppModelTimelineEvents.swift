@@ -984,6 +984,12 @@ extension AppModel {
     func cache(_ message: Message) {
         // The open thread's window is cached when it closes.
         guard message.channelID != openThread?.id else { return }
+        guard detachedMessageWindows[message.channelID] == nil else {
+            // A live message or send would join the window past its open
+            // newer edge; an edit still reaches a message it holds.
+            reconcileCachedMessageUpdate(message)
+            return
+        }
         var cached = messageCache[message.channelID]
         if message.outboxState == .confirmed, hasMoreCache[message.channelID] == true,
            let storedLower = threadWindow.cachedCursors[message.channelID]?.lower,
@@ -1034,6 +1040,7 @@ extension AppModel {
             messageRowCache[evicted] = nil
             messageRowCacheOrder.removeAll { $0 == evicted }
             hasMoreCache[evicted] = nil
+            detachedMessageWindows[evicted] = nil
             if evicted != selectedChannelID, evicted != openThread?.id {
                 contiguousHistoryBoundaries[evicted] = nil
                 threadWindow.cachedCursors[evicted] = nil

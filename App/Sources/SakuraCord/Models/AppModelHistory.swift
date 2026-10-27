@@ -113,7 +113,64 @@ struct MessageHistorySpan {
     }
 }
 
+/// A cached window that stops short of its channel's newest message, such as
+/// one opened around a search result. Unlike a newest-backed cache it admits
+/// no live message, and it returns to the place the reader left.
+struct DetachedMessageWindow {
+    /// The Gateway epoch it was fetched in; a gap may have dropped changes
+    /// inside it, and nothing refreshes a window that is not newest-backed.
+    let historyEpoch: Int
+    let readingPosition: MessageTimelineScrollRequest.Target?
+
+    /// The reading position in `messages`, moved to the nearest retained
+    /// message when the cache dropped or a deletion removed the original.
+    func restoredPosition(in messages: [Message]) -> MessageTimelineScrollRequest.Target? {
+        guard case let .readingPosition(id, offset)? = readingPosition else { return nil }
+        return messages.first { $0.outboxState == .confirmed && $0.id >= id }
+            .map { .readingPosition($0.id, offsetFromViewportTop: offset) }
+    }
+}
+
 extension AppModel {
+    /// Keeps the window the reader leaves for their return. A detached one is
+    /// kept only if no Gateway gap has crossed it since it was fetched.
+    func retainSelectedMessageWindow(for channelID: ChannelID) {
+        defer { channelTimelinePosition = TimelineReadingPosition() }
+        guard hasMoreLaterMessages else {
+            storeCachedMessages(messages, for: channelID)
+            storeCachedMessageRows(messageRows, for: channelID)
+            return
+        }
+        guard detachedWindowEpoch == historyEpoch else {
+            discardCachedMessages(for: channelID)
+            return
+        }
+        hasMoreCache[channelID] = hasMoreMessages
+        storeCachedMessages(messages, for: channelID)
+        storeCachedMessageRows(messageRows, for: channelID)
+        detachedMessageWindows[channelID] = DetachedMessageWindow(
+            historyEpoch: historyEpoch,
+            readingPosition: channelTimelinePosition.reading
+        )
+    }
+
+    private func discardCachedMessages(for channelID: ChannelID) {
+        messageCache[channelID] = nil
+        messageCacheOrder.removeAll { $0 == channelID }
+        messageRowCache[channelID] = nil
+        messageRowCacheOrder.removeAll { $0 == channelID }
+        hasMoreCache[channelID] = nil
+    }
+
+    /// The detached window cached for `channelID`, unless a Gateway gap
+    /// crossed it while it was cached; a stale one is dropped.
+    private func takeDetachedMessageWindow(for channelID: ChannelID) -> DetachedMessageWindow? {
+        guard let window = detachedMessageWindows.removeValue(forKey: channelID) else { return nil }
+        if window.historyEpoch == historyEpoch, hasMoreCache[channelID] != nil { return window }
+        discardCachedMessages(for: channelID)
+        return nil
+    }
+
     func beginSelectedChannelLoad() {
         let cacheSignpost = AppPerformanceSignposts.signposter.beginInterval(
             "ConversationCachePresentation"
@@ -151,6 +208,7 @@ extension AppModel {
             return
         }
 
+        let detachedWindow = takeDetachedMessageWindow(for: channelID)
         let cachedMessages = takeCachedMessages(for: channelID)
         let cachedRows = takeCachedMessageRows(for: channelID)
         restoreSelectedMessages(
@@ -159,7 +217,10 @@ extension AppModel {
         )
         let cachedBoundary = hasMoreCache[channelID]
         hasMoreMessages = cachedBoundary ?? false
-        hasMoreLaterMessages = false
+        hasMoreLaterMessages = detachedWindow != nil
+        channelTimelinePosition = TimelineReadingPosition(
+            restore: detachedWindow?.restoredPosition(in: cachedMessages)
+        )
         if cachedBoundary != nil {
             isLoadingMessages = false
             hasCompletedInitialMessageLoad = true
@@ -430,17 +491,20 @@ extension AppModel {
         account: AppModelAccountSession
     ) -> Task<MessagePage, any Error> {
         let provider = account.provider
+        let limit = initialHistoryFetchLimit
         return Task.detached(priority: .userInitiated) {
             try await Self.requestInitialHistory(
                 provider: provider,
-                channelID: channelID
+                channelID: channelID,
+                limit: limit
             )
         }
     }
 
     nonisolated static func requestInitialHistory(
         provider: any ChatProvider,
-        channelID: ChannelID
+        channelID: ChannelID,
+        limit: Int
     ) async throws -> MessagePage {
         let interval = AppPerformanceSignposts.signposter.beginInterval(
             "ConversationHistoryRequest",
@@ -454,7 +518,7 @@ extension AppModel {
         return try await provider.messagesForImmediatePresentation(
             in: channelID,
             anchoredAt: .newest,
-            limit: 10
+            limit: limit
         )
     }
 
@@ -625,7 +689,7 @@ extension AppModel {
             let page = try await session.provider.messages(
                 in: channelID,
                 anchoredAt: .newest,
-                limit: 50
+                limit: initialHistoryFetchLimit
             )
             guard !Task.isCancelled,
                   isCurrentAccountSession(session),

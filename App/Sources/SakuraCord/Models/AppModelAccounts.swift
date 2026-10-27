@@ -317,6 +317,7 @@ extension AppModel {
         messageRowCache = [:]
         messageRowCacheOrder = []
         hasMoreCache = [:]
+        detachedMessageWindows = [:]
         contiguousHistoryBoundaries = [:]
         threadWindow.cachedCursors = [:]
         threadPreviewMessages = [:]

@@ -54,11 +54,7 @@ extension AppModel {
             let page = try await session.provider.messages(
                 in: request.channelID,
                 anchoredAt: request.anchor,
-                // Amortize network and member-resolution latency while the
-                // viewport is consuming history. Row preparation remains off
-                // the main actor, and the viewport controls further prefetch.
-                limit: liveScrollingConversationIDs.contains(request.channelID)
-                    ? 100 : 20
+                limit: historyPageFetchLimit
             )
             guard !Task.isCancelled,
                   isCurrentAccountSession(session),

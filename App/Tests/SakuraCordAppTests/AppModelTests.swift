@@ -4590,7 +4590,7 @@ func `gateway mutations keep exact indexes after repeated history prepends`(
     for _ in 0 ..< 13 {
         await model.loadEarlier()
     }
-    #expect(model.messages.count == initialCount + 13 * (whileScrolling ? 100 : 20))
+    #expect(model.messages.count == initialCount + 13 * 20)
 
     let updateTarget = model.messages[173]
     var updated = updateTarget
@@ -4626,19 +4626,19 @@ func `gateway mutations keep exact indexes after repeated history prepends`(
         model.messageNavigationRequest?.messageID == targetID
             && model.messages.contains(where: { $0.id == targetID })
     })
-    #expect(model.messages.map(\.id) == (75 ... 124).map {
+    #expect(model.messages.map(\.id) == (85 ... 114).map {
         MessageID(rawValue: 5_000_000 + UInt64($0))
     })
     #expect(model.hasMoreMessages)
     #expect(model.hasMoreLaterMessages)
 
     await model.loadEarlier()
-    #expect(model.messages.map(\.id) == (55 ... 124).map {
+    #expect(model.messages.map(\.id) == (65 ... 114).map {
         MessageID(rawValue: 5_000_000 + UInt64($0))
     })
 
     await model.loadLater()
-    #expect(model.messages.map(\.id) == (55 ... 144).map {
+    #expect(model.messages.map(\.id) == (65 ... 134).map {
         MessageID(rawValue: 5_000_000 + UInt64($0))
     })
     #expect(model.hasMoreLaterMessages)
@@ -4654,11 +4654,124 @@ func `gateway mutations keep exact indexes after repeated history prepends`(
     #expect(!model.messages.contains(where: { $0.id == liveMessage.id }))
 
     #expect(await model.loadNewestMessageWindow())
-    #expect(model.messages.map(\.id) == (450 ... 499).map {
+    #expect(model.messages.map(\.id) == (490 ... 499).map {
         MessageID(rawValue: 5_000_000 + UInt64($0))
     })
     #expect(model.hasMoreMessages)
     #expect(!model.hasMoreLaterMessages)
+}
+
+/// A 300-message channel whose message at offset `n` has ID `channelID + n`.
+private let historyParityChannelID = ChannelID(rawValue: 91_001)
+
+private func historyParityMessageID(_ offset: Int) -> MessageID {
+    MessageID(rawValue: historyParityChannelID.rawValue + UInt64(offset))
+}
+
+@MainActor
+@Test func `channel history requests use the official client's counts and anchors`() async {
+    let channelID = historyParityChannelID
+    let provider = ChannelLoadTestProvider(paginatedThreadID: channelID, paginatedThreadMessageCount: 300)
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    #expect(await until { model.selectedChannelID == channelID && model.hasCompletedInitialMessageLoad })
+
+    // A fast scroll does not enlarge the older page.
+    model.reportTimelineLiveScrolling(true, conversationID: channelID)
+    await model.loadEarlier()
+    model.reportTimelineLiveScrolling(false, conversationID: channelID)
+    model.navigate(to: nil, channelID: channelID, messageID: historyParityMessageID(100))
+    #expect(await until { model.messageNavigationRequest?.messageID == historyParityMessageID(100) })
+    await model.loadLater()
+    #expect(await model.loadNewestMessageWindow())
+
+    #expect(await provider.requests(for: channelID) == [
+        .init(anchor: .newest, limit: 10),
+        .init(anchor: .before(historyParityMessageID(290)), limit: 20),
+        .init(anchor: .around(historyParityMessageID(100)), limit: 30),
+        .init(anchor: .after(historyParityMessageID(114)), limit: 20),
+        .init(anchor: .newest, limit: 10),
+    ])
+}
+
+@MainActor
+@Test func `jumping to the first unread message makes one request around the last read message`() async throws {
+    let channelID = historyParityChannelID
+    let provider = ChannelLoadTestProvider(paginatedThreadID: channelID, paginatedThreadMessageCount: 300)
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    #expect(await until { model.selectedChannelID == channelID && model.hasCompletedInitialMessageLoad })
+    #expect(model.readState.applyRemote(ChannelReadState(
+        channelID: channelID,
+        lastAcknowledgedMessageID: historyParityMessageID(100),
+        isManual: true
+    )))
+    #expect(model.hasUnresolvedUnreadBoundary(channelID: channelID))
+
+    model.jumpToUnreadBoundary(channelID: channelID)
+    #expect(await until { model.messageNavigationRequest != nil })
+
+    let request = try #require(model.messageNavigationRequest)
+    #expect(request.messageID == historyParityMessageID(101))
+    #expect(request.isUnreadBoundary)
+    #expect(model.hasMoreLaterMessages)
+    #expect(await provider.requests(for: channelID) == [
+        .init(anchor: .newest, limit: 10),
+        .init(anchor: .around(historyParityMessageID(100)), limit: 30),
+    ])
+}
+
+@MainActor
+@Test(arguments: [false, true])
+func `returning to a detached channel window restores it without a request unless a gateway gap crossed it`(
+    crossesGap: Bool
+) async throws {
+    let channelID = historyParityChannelID
+    let provider = ChannelLoadTestProvider(paginatedThreadID: channelID, paginatedThreadMessageCount: 300)
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    model.consumeImmediately(.connectionChanged(.ready))
+    #expect(await until { model.selectedChannelID == channelID && model.hasCompletedInitialMessageLoad })
+    model.navigate(to: nil, channelID: channelID, messageID: historyParityMessageID(100))
+    #expect(await until { model.messageNavigationRequest != nil })
+    await model.loadEarlier()
+    let detachedIDs = model.messages.map(\.id)
+    let reading = MessageTimelineScrollRequest.Target.readingPosition(
+        historyParityMessageID(70), offsetFromViewportTop: 12
+    )
+    model.channelTimelinePosition.reading = reading
+    let requestCount = await provider.requests(for: channelID).count
+
+    let otherChannelID = ChannelID(rawValue: 91_002)
+    model.selectedChannelID = otherChannelID
+    #expect(await until { model.hasCompletedInitialMessageLoad && !model.isLoadingMessages })
+    // A live message must not join the cached window past its open edge.
+    let live = Message(
+        id: historyParityMessageID(300),
+        channelID: channelID,
+        author: User(id: UserID(rawValue: 91_000), username: "tester", displayName: "Tester"),
+        content: "live"
+    )
+    model.consumeImmediately(.messageCreated(live))
+    if crossesGap {
+        model.consumeImmediately(.connectionChanged(.disconnected))
+        model.consumeImmediately(.connectionChanged(.ready))
+    }
+
+    model.selectedChannelID = channelID
+    await model.channelLoadTask?.value
+
+    #expect(!model.messages.contains { $0.id == live.id })
+    if crossesGap {
+        #expect(!model.hasMoreLaterMessages)
+        #expect(Array(await provider.requests(for: channelID).dropFirst(requestCount)) == [.init(anchor: .newest, limit: 10)])
+    } else {
+        #expect(model.messages.map(\.id) == detachedIDs)
+        #expect(model.hasMoreMessages)
+        #expect(model.hasMoreLaterMessages)
+        #expect(model.channelTimelinePosition.restore == reading)
+        #expect(await provider.requests(for: channelID).count == requestCount)
+    }
 }
 
 @MainActor
@@ -4725,8 +4838,8 @@ func `interrupted thread history reloads after navigation`(switchesDirectly: Boo
     #expect(model.threadMessages.map(\.id) == [starter.id])
     await model.threadLoadTask?.value
 
-    #expect(model.threadMessages.count == 100)
-    #expect(model.threadMessages.first?.id == MessageID(rawValue: threadID.rawValue + 6))
+    #expect(model.threadMessages.count == 10)
+    #expect(model.threadMessages.first?.id == MessageID(rawValue: threadID.rawValue + 96))
     #expect(model.hasMoreThreadMessages)
 
     model.closeThread()
@@ -4735,18 +4848,42 @@ func `interrupted thread history reloads after navigation`(switchesDirectly: Boo
     model.open(post)
     // The cached window appears at once and its newest page is revalidated.
     #expect(!model.isLoadingThread)
-    #expect(model.threadMessages.count == 100)
-    #expect(model.threadMessages.first?.id == MessageID(rawValue: threadID.rawValue + 6))
+    #expect(model.threadMessages.count == 10)
+    #expect(model.threadMessages.first?.id == MessageID(rawValue: threadID.rawValue + 96))
     await model.threadLoadTask?.value
     #expect(await provider.requestCount(for: threadID) == 2)
-    #expect(model.threadMessages.map(\.id) == (6 ..< 108).map { MessageID(rawValue: threadID.rawValue + UInt64($0)) })
+    #expect(model.threadMessages.map(\.id) == (96 ..< 108).map { MessageID(rawValue: threadID.rawValue + UInt64($0)) })
     #expect(model.hasMoreThreadMessages)
 
-    await model.loadEarlierThread()
+    for _ in 0 ..< 5 {
+        await model.loadEarlierThread()
+    }
 
     #expect(model.threadMessages.count == 108)
     #expect(model.threadMessages.first?.id == starter.id)
     #expect(!model.hasMoreThreadMessages)
+}
+
+@MainActor
+@Test func `thread history requests use the same counts and anchors as channels`() async {
+    let threadID = ChannelID(rawValue: 95_999)
+    let provider = ChannelLoadTestProvider(paginatedThreadID: threadID, paginatedThreadMessageCount: 300)
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    func id(_ offset: Int) -> MessageID { MessageID(rawValue: threadID.rawValue + UInt64(offset)) }
+    model.open(MessageThreadSummary(id: threadID, parentID: ChannelID(rawValue: 91_001), name: "Counts"))
+    await model.threadLoadTask?.value
+    await model.loadEarlierThread()
+    #expect(await model.loadThreadWindow(around: id(100), session: model.accountSession()))
+    await model.loadLaterThread()
+    #expect(await model.loadNewestThreadWindow())
+
+    #expect(await provider.requests(for: threadID) == [
+        .init(anchor: .newest, limit: 10),
+        .init(anchor: .before(id(290)), limit: 20),
+        .init(anchor: .around(id(100)), limit: 30),
+        .init(anchor: .after(id(114)), limit: 20),
+        .init(anchor: .newest, limit: 10),
+    ])
 }
 
 @MainActor
@@ -4783,13 +4920,13 @@ func `interrupted thread history reloads after navigation`(switchesDirectly: Boo
     await receiveLiveReply(290)
     await provider.releaseBlockedPaginatedRequest()
     await model.threadLoadTask?.value
-    #expect(model.threadMessages.map(\.id) == (0 ..< 50).map(id))
+    #expect(model.threadMessages.map(\.id) == (5 ..< 35).map(id))
     #expect(model.hasMoreLaterThreadMessages)
 
-    for _ in 0 ..< 4 {
+    for _ in 0 ..< 12 {
         await model.loadLaterThread()
     }
-    #expect(model.threadMessages.last?.id == id(249))
+    #expect(model.threadMessages.last?.id == id(274))
     #expect(model.hasMoreLaterThreadMessages)
     guard model.hasMoreLaterThreadMessages else { return }
 
@@ -4803,9 +4940,9 @@ func `interrupted thread history reloads after navigation`(switchesDirectly: Boo
     await provider.releaseBlockedPaginatedRequest()
     await finalPage.value
 
-    #expect(model.threadMessages.map(\.id) == (0 ..< 292).filter { $0 != 260 }.map(id))
+    #expect(model.threadMessages.map(\.id) == (5 ..< 292).filter { $0 != 260 }.map(id))
     #expect(!model.hasMoreLaterThreadMessages)
-    #expect(!model.hasMoreThreadMessages)
+    #expect(model.hasMoreThreadMessages)
     #expect(!model.isLoadingLaterThread)
 }
 
@@ -4838,7 +4975,7 @@ func `interrupted thread history reloads after navigation`(switchesDirectly: Boo
     #expect(model.threadMessages.last?.nonce == "failed-send")
 
     #expect(await model.loadNewestThreadWindow())
-    #expect(model.threadMessages.dropLast().map(\.id) == (200 ..< 300).map {
+    #expect(model.threadMessages.dropLast().map(\.id) == (290 ..< 300).map {
         MessageID(rawValue: threadID.rawValue + UInt64($0))
     })
     #expect(model.threadMessages.last?.nonce == "failed-send")
@@ -4877,15 +5014,15 @@ func `a late send confirmation outside the thread window stays out of it and its
         nonce: "late-send"
     )))
     if !arrivesWhileClosed {
-        #expect(model.threadMessages.map(\.id) == ids(200 ..< 300))
+        #expect(model.threadMessages.map(\.id) == ids(290 ..< 300))
         model.closeThread()
     }
 
     model.open(thread)
     await model.threadLoadTask?.value
-    #expect(model.threadMessages.map(\.id) == ids(200 ..< 300))
+    #expect(model.threadMessages.map(\.id) == ids(290 ..< 300))
     await model.loadEarlierThread()
-    #expect(model.threadMessages.map(\.id) == ids(150 ..< 300))
+    #expect(model.threadMessages.map(\.id) == ids(270 ..< 300))
 }
 
 @MainActor
@@ -4920,7 +5057,7 @@ func `a late send confirmation outside the thread window stays out of it and its
     #expect(!model.isThreadWindowAwayFromNewest)
     let confirmedIDs = model.threadMessages.filter { $0.outboxState == .confirmed }.map(\.id)
     #expect(Array(confirmedIDs.suffix(5)) == ids(300 ..< 305))
-    #expect(confirmedIDs == ids(205 ..< 305))
+    #expect(confirmedIDs == ids(295 ..< 305))
 }
 
 @MainActor
@@ -4941,7 +5078,7 @@ func `a late send confirmation outside the thread window stays out of it and its
 
     model.retryThreadLoad()
     #expect(await eventually { model.messageNavigationRequest?.messageID == target })
-    #expect(model.threadMessages.map(\.id) == (0 ..< 50).map { MessageID(rawValue: threadID.rawValue + UInt64($0)) })
+    #expect(model.threadMessages.map(\.id) == (5 ..< 35).map { MessageID(rawValue: threadID.rawValue + UInt64($0)) })
 }
 
 @MainActor
@@ -4978,7 +5115,7 @@ func `a late send confirmation outside the thread window stays out of it and its
     await provider.releaseBlockedPaginatedRequest()
     await jump?.value
 
-    #expect(model.threadMessages.map(\.id) == (201 ..< 301).map(id))
+    #expect(model.threadMessages.map(\.id) == (291 ..< 301).map(id))
     #expect(!model.isThreadWindowAwayFromNewest)
     #expect(!model.isLoadingThread)
 }
@@ -5092,7 +5229,7 @@ func `a late send confirmation outside the thread window stays out of it and its
     await provider.blockNextPaginatedRequest(.after)
     await provider.releaseBlockedPaginatedRequest()
     await newest.value
-    #expect(model.threadMessages.map(\.id) == ids(200 ..< 300))
+    #expect(model.threadMessages.map(\.id) == ids(290 ..< 300))
     #expect(model.hasMoreLaterThreadMessages)
 
     // The deferred revalidation reads on from the fetched edge, so the
@@ -5100,7 +5237,7 @@ func `a late send confirmation outside the thread window stays out of it and its
     await provider.waitForBlockedPaginatedRequest()
     await provider.releaseBlockedPaginatedRequest()
     #expect(await until { !model.hasMoreLaterThreadMessages })
-    #expect(model.threadMessages.map(\.id) == ids(200 ..< 306))
+    #expect(model.threadMessages.map(\.id) == ids(290 ..< 306))
 }
 
 @MainActor
@@ -5163,7 +5300,7 @@ func `a jump to older thread history wins over an overlapping reconnect refresh`
     }
     await model.threadLoadTask?.value
 
-    #expect(model.threadMessages.map(\.id) == (0 ..< 50).map { MessageID(rawValue: threadID.rawValue + UInt64($0)) })
+    #expect(model.threadMessages.map(\.id) == (5 ..< 35).map { MessageID(rawValue: threadID.rawValue + UInt64($0)) })
     #expect(model.hasMoreLaterThreadMessages)
 }
 
@@ -5185,7 +5322,7 @@ func `a jump to older thread history wins over an overlapping reconnect refresh`
     await provider.releaseBlockedEdit()
     await edit.value
 
-    #expect(model.threadMessages.map(\.id) == (200 ..< 300).map { MessageID(rawValue: threadID.rawValue + UInt64($0)) })
+    #expect(model.threadMessages.map(\.id) == (290 ..< 300).map { MessageID(rawValue: threadID.rawValue + UInt64($0)) })
 }
 
 @MainActor
@@ -5208,7 +5345,7 @@ func `a jump to older thread history wins over an overlapping reconnect refresh`
     model.open(thread)
     await model.threadLoadTask?.value
     let reopenedWindow = model.threadMessages.map(\.id)
-    #expect(reopenedWindow == (156 ..< 256).map { MessageID(rawValue: threadID.rawValue + UInt64($0)) })
+    #expect(reopenedWindow == (246 ..< 256).map { MessageID(rawValue: threadID.rawValue + UInt64($0)) })
 
     await provider.releaseBlockedPaginatedRequest()
     await staleLoad.value
@@ -6269,7 +6406,7 @@ private enum PaginatedRequestKind: Sendable {
 }
 
 private struct ChannelLoadMessageRequest: Equatable, Sendable {
-    let before: MessageID?
+    let anchor: MessageHistoryAnchor
     let limit: Int
 }
 
@@ -6589,7 +6726,7 @@ private actor ChannelLoadTestProvider: ChatProvider {
     {
         messageRequests[channelID, default: 0] += 1
         messageRequestParameters[channelID, default: []].append(
-            ChannelLoadMessageRequest(before: before, limit: limit)
+            ChannelLoadMessageRequest(anchor: before.map(MessageHistoryAnchor.before) ?? .newest, limit: limit)
         )
         if channelID == paginatedThreadID {
             return try await paginatedThreadPage(
@@ -6660,6 +6797,9 @@ private actor ChannelLoadTestProvider: ChatProvider {
                 throw ChatProviderError.invalidRequest("Bidirectional history is not part of this test.")
             }
             messageRequests[channelID, default: 0] += 1
+            messageRequestParameters[channelID, default: []].append(
+                ChannelLoadMessageRequest(anchor: anchor, limit: limit)
+            )
             return try await paginatedThreadPage(in: channelID, anchoredAt: anchor, limit: limit)
         }
     }

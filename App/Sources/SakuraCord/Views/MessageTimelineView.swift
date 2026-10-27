@@ -57,7 +57,7 @@ struct MessageTimelineView: View {
             unreadMessageID: unread.dividerMessageID,
             highlightedMessageID: highlightedMessageID,
             selectedMessageID: model.replyingTo?.id,
-            initialScrollTarget: unread.initialScrollTarget,
+            initialScrollTarget: model.channelTimelinePosition.restore ?? unread.initialScrollTarget,
             scrollRequest: scrollRequest,
             editRequest: editRequest,
             runsPerformanceAutoScroll: runsPerformanceAutoScroll,
@@ -266,6 +266,7 @@ struct MessageTimelineView: View {
         }
         hasEstablishedInitialPosition = true
         latestScrollState = state
+        model.channelTimelinePosition.restore = nil
         let hasReachedReadBoundary =
             TimelineReadEligibilityPolicy.hasReachedReadBoundary(state)
         if hasReachedReadBoundary {
@@ -299,6 +300,13 @@ struct MessageTimelineView: View {
 
     private func handleScrollState(_ value: TimelineScrollState) {
         latestScrollState = value
+        if value.hasEstablishedInitialPosition {
+            // Only a detached window is restored by position; a newest-backed
+            // one reopens at its unread boundary or bottom.
+            model.channelTimelinePosition.reading = model.hasMoreLaterMessages
+                ? value.readingMessage.map { .readingPosition($0.id, offsetFromViewportTop: $0.offsetFromViewportTop) }
+                : nil
+        }
         let retainedPaging = historyPaging.retained(for: value)
         if historyPaging != retainedPaging {
             historyPaging = retainedPaging

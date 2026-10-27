@@ -245,7 +245,17 @@ final class NativeMessageTimelineCoordinator: NSObject {
 
         /// Start the next bounded history request before a fast gesture can
         /// consume the current headroom and visually pin at the loaded top.
+        /// Search, pins and the Inbox page well ahead of the viewport.
         static let prefetchDistance: CGFloat = 8_000
+        /// Channel and thread timelines request the next page only once the
+        /// viewport is within this distance of a loaded edge, as the official
+        /// client's scroller does (build 650389). A window shorter than the
+        /// viewport plus this distance is also near both edges, so it keeps
+        /// loading until it fills.
+        static let conversationPrefetchDistance: CGFloat = 500
+        /// An unread conversation's earlier edge loads only once the viewport
+        /// is 18 points above its oldest loaded message.
+        static let unreadConversationPrefetchDistance: CGFloat = -18
         static let historyReserveChunk: CGFloat = 65_536
         static let leadingHistoryReserveChunk = historyReserveChunk
         static let maximumCachedItemLayouts = 750
