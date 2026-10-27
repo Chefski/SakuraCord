@@ -1,3 +1,4 @@
+import DiscordProtocol
 import Foundation
 import SakuraCordModels
 
@@ -495,7 +496,8 @@ extension AppModel {
 
     func prependSelectedMessages(
         _ earlier: [Message],
-        channelID: ChannelID
+        channelID: ChannelID,
+        continuing edge: MessageHistoryAnchor? = nil
     ) async -> Bool {
         guard !earlier.isEmpty else { return true }
         // History preparation performs Markdown/CoreText setup for an entire
@@ -516,7 +518,7 @@ extension AppModel {
                 priority: preparationPriority
             )
         }
-        guard !Task.isCancelled, selectedChannelID == channelID else { return false }
+        guard !Task.isCancelled, selectedChannelID == channelID, windowContinues(from: edge, .earlier) else { return false }
         // The timeline can change while rows are prepared off the main actor.
         // Revalidate the insertion against the current window, not the IDs
         // that pagination filtered before awaiting preparation.
@@ -697,7 +699,8 @@ extension AppModel {
 
     func appendSelectedHistoryMessages(
         _ later: [Message],
-        channelID: ChannelID
+        channelID: ChannelID,
+        continuing edge: MessageHistoryAnchor? = nil
     ) async -> Bool {
         guard !later.isEmpty else { return true }
         let preparationPriority: TaskPriority = AppScrollWorkGate.isActive
@@ -711,7 +714,7 @@ extension AppModel {
                 priority: preparationPriority
             )
         }
-        guard !Task.isCancelled, selectedChannelID == channelID else { return false }
+        guard !Task.isCancelled, selectedChannelID == channelID, windowContinues(from: edge, .later) else { return false }
         guard later.allSatisfy({ message in
             !selectedMessageIDs.contains(message.id)
                 && (messages.last.map { Self.messagePrecedes($0, message) } ?? true)
@@ -984,6 +987,15 @@ extension AppModel {
     func cache(_ message: Message) {
         // The open thread's window is cached when it closes.
         guard message.channelID != openThread?.id else { return }
+        guard detachedMessageWindows[message.channelID] == nil else {
+            // A live message or send would join the window past its open
+            // newer edge; an edit still reaches a message it holds, and a
+            // send confirmed there leaves its row.
+            if message.outboxState != .confirmed || !dropCachedPendingSend(settledBy: message) {
+                reconcileCachedMessageUpdate(message)
+            }
+            return
+        }
         var cached = messageCache[message.channelID]
         if message.outboxState == .confirmed, hasMoreCache[message.channelID] == true,
            let storedLower = threadWindow.cachedCursors[message.channelID]?.lower,
@@ -991,12 +1003,7 @@ extension AppModel {
         {
             // A cached thread window admits nothing below its REST edge while
             // older history remains. A send confirmed there leaves its row.
-            if let nonce = message.nonce,
-               let index = cached?.firstIndex(where: { $0.nonce == nonce && $0.outboxState != .confirmed })
-            {
-                cached?.remove(at: index)
-                if let cached { storeCachedMessages(cached, for: message.channelID) }
-            }
+            dropCachedPendingSend(settledBy: message)
             return
         }
         if cached == nil {
@@ -1007,6 +1014,19 @@ extension AppModel {
             Self.merging(current: cached ?? [], fresh: [message]),
             for: message.channelID
         )
+    }
+
+    /// Removes the unconfirmed row a confirmed send settles from a cached
+    /// window that does not admit the confirmation itself.
+    @discardableResult
+    private func dropCachedPendingSend(settledBy message: Message) -> Bool {
+        guard let nonce = message.nonce,
+              var cached = messageCache[message.channelID],
+              let index = cached.firstIndex(where: { $0.nonce == nonce && $0.outboxState != .confirmed })
+        else { return false }
+        cached.remove(at: index)
+        storeCachedMessages(cached, for: message.channelID)
+        return true
     }
 
     func storeCachedMessages(
@@ -1034,6 +1054,7 @@ extension AppModel {
             messageRowCache[evicted] = nil
             messageRowCacheOrder.removeAll { $0 == evicted }
             hasMoreCache[evicted] = nil
+            detachedMessageWindows[evicted] = nil
             if evicted != selectedChannelID, evicted != openThread?.id {
                 contiguousHistoryBoundaries[evicted] = nil
                 threadWindow.cachedCursors[evicted] = nil

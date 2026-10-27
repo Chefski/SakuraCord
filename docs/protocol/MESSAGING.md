@@ -50,20 +50,42 @@ Current permissions, membership gates and slowmode are checked before consuming
 a draft or dispatching any send entry point. REST/Gateway confirmations reconcile
 the same optimistic message rather than creating duplicates.
 
-History uses permission-checked channel message reads. A cold newest page loads
-10 messages once per channel per uninterrupted Gateway connection. Warm
-newest-backed pages are session-cached; a Gateway gap invalidates completeness
+History uses permission-checked channel message reads. Counts and anchors match
+the official desktop client (build 650389, captured 27 October 2026) and follow
+its viewport formula (module 326337): with `h = max(windowHeight / zoom - 145, 400)`,
+`base = max(10, min(30, ceil(1.05 * ceil(h / ((compact ? 65 : 91) * (fontSize / 16))))))`.
+A cold newest page, a stale refetch and Jump to Present read `base` messages
+(10 in a 794 pt window), the cold page once per channel per uninterrupted Gateway
+connection. Scrolling reads `min(30, 2 * base)`: `before={oldest loaded}` upward
+and, in a detached window, `after={newest loaded}` downward, one request at a time.
+SakuraCord takes the window height from the timeline's hosting window (800 pt before
+one reports), divides it by Interface Size as Discord's zoom, and uses the cozy
+height and a 16 pt font, having no compact mode and a fixed message text size.
+A page is requested once the viewport is within 500 pt of the loaded edge, so a
+window shorter than the viewport plus 500 pt keeps loading until it fills. In an
+unread conversation the earlier edge waits until the viewport is 18 pt above the
+oldest loaded message (the scroller's 16 pt bar buffer plus 2). A jump to
+a message not loaded (search, link, reply) is one `around={message}&limit=30` read,
+also into a channel with nothing loaded, which reads no newest page first.
+Jump to the first unread, when its boundary is not loaded, is one `around` read of 30
+centred on the last acknowledged message, never a chain of `before` pages; a
+cold open into a long backlog loads only `base` messages and shows the unread bar.
+Warm newest-backed pages are session-cached; a Gateway gap invalidates completeness
 and refreshes a reopened/selected channel once. Distant navigation replaces the
 window with `around` history; older/newer edges paginate independently. It must
-not masquerade as a newest-backed cache. A superseded selection may still finish
-its dispatched read and populate the account cache without changing selection.
+not masquerade as a newest-backed cache: leaving a detached window caches it
+with its viewport anchor and open later edge, so returning makes no request and
+restores the same messages and position. A cached detached window admits no live
+message or send, is never acknowledged, and is discarded by a Gateway gap. A
+superseded selection may still finish its dispatched read and populate the
+account cache without changing selection.
 An edge stays open after a full page, counting returned messages that cannot be
 decoded. A newest page extends a loaded window only when it reaches messages
 known to be gap-free (not ones that arrived live after a Gateway gap);
 otherwise it replaces the window rather than joining disjoint blocks.
 
-Threads and forum posts use the same windows: a cold open reads the newest 100
-messages and a jump to a message opens its `around` window. Gateway does not
+Threads and forum posts use the same windows, request sizes and 500 pt trigger as
+channels. Gateway does not
 guarantee a closed thread's messages, so a cached thread reopens at once and
 always revalidates its newest page. Until a current read establishes the newest
 edge after such a reopen or a Gateway gap, the window counts as detached: sends

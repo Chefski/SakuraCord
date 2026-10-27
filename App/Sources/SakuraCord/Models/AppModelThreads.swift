@@ -341,7 +341,7 @@ extension AppModel {
 
     func closeThread() {
         noteSideConversationChange()
-        threadTimelinePosition = ThreadTimelinePosition()
+        threadTimelinePosition = TimelineReadingPosition()
         threadVoiceMessageComposer.discard(playback: voiceMessagePlayback)
         threadCommandComposer.resetForChannelChange()
         if let threadID = openThread?.id {

@@ -8,9 +8,9 @@ struct SideConversationLabel: Equatable {
     let systemImage: String
 }
 
-/// Where the open thread's timeline is read, so moving it between the pane
-/// and full width reopens it at the same place.
-struct ThreadTimelinePosition {
+/// Where a timeline is read, so moving it between the pane and full width, or
+/// returning to a detached channel window, reopens it at the same place.
+struct TimelineReadingPosition {
     /// The latest reading position the timeline reported.
     var reading: MessageTimelineScrollRequest.Target?
     /// The position a recreated timeline opens at instead of its default.

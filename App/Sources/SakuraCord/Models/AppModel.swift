@@ -210,7 +210,14 @@ final class AppModel {
     let inbox = InboxState()
     @ObservationIgnored var lastDirectMessageSelection: DirectMessageSidebarSelection?
     @ObservationIgnored var lastOpenedChannelIDsByGuild: [GuildID: ChannelID] = [:]
-    @ObservationIgnored var threadTimelinePosition = ThreadTimelinePosition()
+    @ObservationIgnored var threadTimelinePosition = TimelineReadingPosition()
+    @ObservationIgnored var channelTimelinePosition = TimelineReadingPosition()
+    /// The content height of the window hosting the message timeline, which
+    /// sizes history reads.
+    @ObservationIgnored var timelineWindowHeight: CGFloat?
+    /// A message the next selection of its channel jumps to, so a cold
+    /// selection reads only the window around it.
+    @ObservationIgnored var pendingChannelJumpTarget: (channelID: ChannelID, messageID: MessageID)?
     @ObservationIgnored var messages: [Message] = []
     @ObservationIgnored var messageRows: [MessageRowPresentation] = []
     @ObservationIgnored var messageRowsRevision: UInt64 = 0
@@ -363,7 +370,11 @@ final class AppModel {
     var isLoadingEarlier = false
     var isLoadingLater = false
     var hasMoreMessages = false
-    var hasMoreLaterMessages = false
+    var hasMoreLaterMessages = false {
+        didSet {
+            if hasMoreLaterMessages, !oldValue { detachedWindowEpoch = historyEpoch }
+        }
+    }
     var messageLoadError: String?
     @ObservationIgnored var messageLoadErrorIsEarlierPage = false
     @ObservationIgnored var messageLoadErrorIsLaterPage = false
@@ -930,16 +941,7 @@ final class AppModel {
                 if conversationNewestRequest?.channelID == oldValue {
                     conversationNewestRequest = nil
                 }
-                if hasMoreLaterMessages {
-                    messageCache[oldValue] = nil
-                    messageCacheOrder.removeAll { $0 == oldValue }
-                    messageRowCache[oldValue] = nil
-                    messageRowCacheOrder.removeAll { $0 == oldValue }
-                    hasMoreCache[oldValue] = nil
-                } else {
-                    storeCachedMessages(messages, for: oldValue)
-                    storeCachedMessageRows(messageRows, for: oldValue)
-                }
+                retainSelectedMessageWindow(for: oldValue)
                 lastTypingRequestAt[oldValue] = nil
                 _ = readState.updatePresentation(channelID: oldValue, isPresented: false)
                 if readState.endForumVisit(channelID: oldValue) {
@@ -1144,6 +1146,10 @@ final class AppModel {
         [ChannelID: [MessageRowPresentation]] = [:]
     @ObservationIgnored var messageRowCacheOrder: [ChannelID] = []
     @ObservationIgnored var hasMoreCache: [ChannelID: Bool] = [:]
+    /// Cached windows that do not reach the channel's newest message.
+    @ObservationIgnored var detachedMessageWindows: [ChannelID: DetachedMessageWindow] = [:]
+    /// The Gateway epoch the selected channel's window was detached in.
+    @ObservationIgnored var detachedWindowEpoch = 0
     /// Latest known message per thread, drawn in timeline thread cards.
     @ObservationIgnored var threadPreviewMessages: [ChannelID: Message] = [:]
     @ObservationIgnored var threadPreviewParentIDs: [ChannelID: ChannelID] = [:]

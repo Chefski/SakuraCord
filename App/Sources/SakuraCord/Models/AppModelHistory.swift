@@ -113,7 +113,90 @@ struct MessageHistorySpan {
     }
 }
 
+/// A cached window that stops short of its channel's newest message, such as
+/// one opened around a search result. Unlike a newest-backed cache it admits
+/// no live message, and it returns to the place the reader left.
+struct DetachedMessageWindow {
+    /// The Gateway epoch it was fetched in; a gap may have dropped changes
+    /// inside it, and nothing refreshes a window that is not newest-backed.
+    let historyEpoch: Int
+    let readingPosition: MessageTimelineScrollRequest.Target?
+
+    /// The reading position in `messages`, moved to the nearest retained
+    /// message when the cache dropped or a deletion removed the original.
+    func restoredPosition(in messages: [Message]) -> MessageTimelineScrollRequest.Target? {
+        guard case let .readingPosition(id, offset)? = readingPosition else { return nil }
+        return messages.first { $0.outboxState == .confirmed && $0.id >= id }
+            .map { .readingPosition($0.id, offsetFromViewportTop: offset) }
+    }
+}
+
 extension AppModel {
+    /// Keeps the window the reader leaves for their return. A detached one is
+    /// kept only if no Gateway gap has crossed it since it was fetched.
+    func retainSelectedMessageWindow(for channelID: ChannelID) {
+        defer { channelTimelinePosition = TimelineReadingPosition() }
+        guard hasMoreLaterMessages else {
+            storeCachedMessages(messages, for: channelID)
+            storeCachedMessageRows(messageRows, for: channelID)
+            return
+        }
+        guard detachedWindowEpoch == historyEpoch else {
+            cacheOnlyUnconfirmedSends(messages, for: channelID)
+            return
+        }
+        let reading = channelTimelinePosition.reading
+        let retained = Self.retainedDetachedMessages(messages, around: reading)
+        hasMoreCache[channelID] = hasMoreMessages || retained.first?.id != messages.first?.id
+        storeCachedMessages(retained, for: channelID)
+        storeCachedMessageRows(messageRows, for: channelID)
+        detachedMessageWindows[channelID] = DetachedMessageWindow(
+            historyEpoch: historyEpoch,
+            readingPosition: reading
+        )
+    }
+
+    /// The cache's message budget, spent around the reading position rather
+    /// than at the newest end, which a detached window does not reach.
+    /// Unconfirmed sends are always kept.
+    static func retainedDetachedMessages(
+        _ messages: [Message],
+        around reading: MessageTimelineScrollRequest.Target?
+    ) -> [Message] {
+        guard messages.count > ChannelMessageCachePolicy.maximumMessageCountPerChannel else { return messages }
+        let pending = messages.filter { $0.outboxState != .confirmed }
+        let confirmed = messages.filter { $0.outboxState == .confirmed }
+        let limit = max(1, ChannelMessageCachePolicy.maximumMessageCountPerChannel - pending.count)
+        guard confirmed.count > limit,
+              case let .readingPosition(id, _)? = reading,
+              let index = confirmed.firstIndex(where: { $0.id >= id })
+        else { return messages }
+        let start = min(max(0, index - limit / 2), confirmed.count - limit)
+        return Array(confirmed[start ..< start + limit]) + pending
+    }
+
+    /// Drops a detached window but keeps its unconfirmed sends, including
+    /// failed ones awaiting Retry or Discard, for the cold load that follows.
+    private func cacheOnlyUnconfirmedSends(_ messages: [Message], for channelID: ChannelID) {
+        _ = discardCachedHistory(for: channelID)
+        let pending = messages.filter { $0.outboxState != .confirmed }
+        if !pending.isEmpty { storeCachedMessages(pending, for: channelID) }
+    }
+
+    /// The detached window cached for `channelID`, unless a Gateway gap
+    /// crossed it while it was cached or deletions left it no confirmed
+    /// message to page from; such a window is dropped.
+    private func takeDetachedMessageWindow(for channelID: ChannelID) -> DetachedMessageWindow? {
+        guard let window = detachedMessageWindows.removeValue(forKey: channelID) else { return nil }
+        if window.historyEpoch == historyEpoch, hasMoreCache[channelID] != nil,
+           messageCache[channelID]?.contains(where: { $0.outboxState == .confirmed }) == true
+        {
+            return window
+        }
+        cacheOnlyUnconfirmedSends(messageCache[channelID] ?? [], for: channelID)
+        return nil
+    }
+
     func beginSelectedChannelLoad() {
         let cacheSignpost = AppPerformanceSignposts.signposter.beginInterval(
             "ConversationCachePresentation"
@@ -151,6 +234,7 @@ extension AppModel {
             return
         }
 
+        let detachedWindow = takeDetachedMessageWindow(for: channelID)
         let cachedMessages = takeCachedMessages(for: channelID)
         let cachedRows = takeCachedMessageRows(for: channelID)
         restoreSelectedMessages(
@@ -159,27 +243,50 @@ extension AppModel {
         )
         let cachedBoundary = hasMoreCache[channelID]
         hasMoreMessages = cachedBoundary ?? false
-        hasMoreLaterMessages = false
+        hasMoreLaterMessages = detachedWindow != nil
+        channelTimelinePosition = TimelineReadingPosition(
+            restore: detachedWindow?.restoredPosition(in: cachedMessages)
+        )
+        let jumpTarget = pendingChannelJumpTarget.flatMap { $0.channelID == channelID ? $0.messageID : nil }
+        if jumpTarget != nil { pendingChannelJumpTarget = nil }
         if cachedBoundary != nil {
-            isLoadingMessages = false
-            hasCompletedInitialMessageLoad = true
-            readState.observeLoadedMessages(channelID: channelID, messages: messages)
-            preserveUnreadDividerIfNeeded(channelID: channelID)
-            reportConversationHistoryLoaded(channelID: channelID)
-            let account = accountSession()
-            let draftRevision = composer.draftRevision
-            channelLoadTask = startAccountChildTask(account: account) { model, account in
-                let savedDraft = await model.storedDraft(in: channelID, account: account)
-                guard model.isCurrentAccountSession(account),
-                      model.isCurrentLoad(channelID, generation: generation)
-                else { return }
-                model.composer.restoreDraft(savedDraft, ifUnchangedSince: draftRevision)
-            }
+            presentLoadedSelectedHistory(channelID: channelID)
+            channelLoadTask = restoreSelectedDraft(channelID: channelID, generation: generation)
             return
         }
         isLoadingMessages = true
         preserveUnreadDividerIfNeeded(channelID: channelID)
         let account = accountSession()
+        if let jumpTarget {
+            // A jump into a channel with nothing loaded reads only the window
+            // around its target, as the official client does. The selection's
+            // load owns that read, so cancelling the navigation cannot strand it.
+            restoreSelectedDraft(channelID: channelID, generation: generation)
+            channelLoadTask = startAccountChildTask(account: account) { model, account in
+                let loaded = await model.loadSelectedMessageWindow(
+                    around: jumpTarget,
+                    channelID: channelID,
+                    session: account
+                )
+                guard model.isCurrentAccountSession(account),
+                      model.isCurrentLoad(channelID, generation: generation)
+                else { return }
+                guard loaded else {
+                    await model.loadSelectedChannel(channelID, generation: generation, account: account)
+                    return
+                }
+                model.presentLoadedSelectedHistory(channelID: channelID)
+                // Authors resolve after the jump lands, as on a cold load.
+                model.startAccountChildTask(account: account) { model, account in
+                    await model.resolveSelectedHistoryMembers(
+                        channelID: channelID,
+                        generation: generation,
+                        session: account
+                    )
+                }
+            }
+            return
+        }
         channelLoadTask = startAccountChildTask(account: account) { model, account in
             await model.loadSelectedChannel(
                 channelID,
@@ -187,6 +294,27 @@ extension AppModel {
                 account: account
             )
         }
+    }
+
+    @discardableResult
+    private func restoreSelectedDraft(channelID: ChannelID, generation: Int) -> Task<Void, Never> {
+        let draftRevision = composer.draftRevision
+        return startAccountChildTask(account: accountSession()) { model, account in
+            let savedDraft = await model.storedDraft(in: channelID, account: account)
+            guard model.isCurrentAccountSession(account),
+                  model.isCurrentLoad(channelID, generation: generation)
+            else { return }
+            model.composer.restoreDraft(savedDraft, ifUnchangedSince: draftRevision)
+        }
+    }
+
+    /// Ends the selection's loading state for history already in place.
+    private func presentLoadedSelectedHistory(channelID: ChannelID) {
+        isLoadingMessages = false
+        hasCompletedInitialMessageLoad = true
+        readState.observeLoadedMessages(channelID: channelID, messages: messages)
+        preserveUnreadDividerIfNeeded(channelID: channelID)
+        reportConversationHistoryLoaded(channelID: channelID)
     }
 
     func refreshSelectedChannelPreservingHistory() {
@@ -430,17 +558,20 @@ extension AppModel {
         account: AppModelAccountSession
     ) -> Task<MessagePage, any Error> {
         let provider = account.provider
+        let limit = initialHistoryFetchLimit
         return Task.detached(priority: .userInitiated) {
             try await Self.requestInitialHistory(
                 provider: provider,
-                channelID: channelID
+                channelID: channelID,
+                limit: limit
             )
         }
     }
 
     nonisolated static func requestInitialHistory(
         provider: any ChatProvider,
-        channelID: ChannelID
+        channelID: ChannelID,
+        limit: Int
     ) async throws -> MessagePage {
         let interval = AppPerformanceSignposts.signposter.beginInterval(
             "ConversationHistoryRequest",
@@ -454,7 +585,7 @@ extension AppModel {
         return try await provider.messagesForImmediatePresentation(
             in: channelID,
             anchoredAt: .newest,
-            limit: 10
+            limit: limit
         )
     }
 
@@ -621,17 +752,26 @@ extension AppModel {
         messageLoadError = nil
         messageLoadErrorIsEarlierPage = false
         messageLoadErrorIsLaterPage = false
+        let refreshRevision = beginScopedConversationRefresh(in: channelID)
+        defer { endScopedConversationRefresh(refreshRevision) }
         do {
             let page = try await session.provider.messages(
                 in: channelID,
                 anchoredAt: .newest,
-                limit: 50
+                limit: initialHistoryFetchLimit
             )
             guard !Task.isCancelled,
                   isCurrentAccountSession(session),
                   selectedChannelID == channelID
             else { return false }
-            replaceSelectedMessages(with: page.messages)
+            replaceSelectedMessages(with: Self.merging(
+                current: messages.filter { $0.outboxState != .confirmed },
+                fresh: Self.applyingConversationRefreshMutations(
+                    scopedConversationRefreshMutations(refreshRevision),
+                    to: page.messages,
+                    within: MessageHistorySpan(page: page)
+                )
+            ))
             hasMoreMessages = page.hasMoreBefore
             hasMoreLaterMessages = false
             hasMoreCache[channelID] = page.hasMoreBefore

@@ -493,7 +493,11 @@ extension AppModel {
         startConversationNavigation(target: target) { [weak self] _, session in
             guard let self else { return }
             if selectedGuildID != guildID {
+                // The server may reopen at this very channel; that selection
+                // then reads only the window around the target.
+                pendingChannelJumpTarget = (channelID, messageID)
                 await activateGuild(guildID, account: session)
+                pendingChannelJumpTarget = nil
             }
             guard !Task.isCancelled, isCurrentAccountSession(session) else { return }
             guard let channel = knownRootChannel(channelID) else {
@@ -513,8 +517,10 @@ extension AppModel {
                 && messages.contains(where: { $0.id == messageID })
             closeThread()
             if selectedChannelID != channel.id {
+                pendingChannelJumpTarget = (channel.id, messageID)
                 selectedChannelID = channel.id
             }
+            pendingChannelJumpTarget = nil
             await channelLoadTask?.value
             guard !Task.isCancelled,
                   isCurrentAccountSession(session),
@@ -522,31 +528,11 @@ extension AppModel {
             else { return }
 
             if !messages.contains(where: { $0.id == messageID }) {
-                do {
-                    let page = try await session.provider.messages(
-                        in: channel.id,
-                        anchoredAt: .around(messageID),
-                        limit: 50
-                    )
-                    guard !Task.isCancelled,
-                          isCurrentAccountSession(session),
-                          selectedChannelID == channel.id
-                    else { return }
-                    replaceSelectedMessages(with: page.messages)
-                    hasMoreMessages = page.hasMoreBefore
-                    hasMoreLaterMessages = page.hasMoreAfter
-                    hasMoreCache[channel.id] = page.hasMoreBefore
-                    contiguousHistoryBoundaries[channel.id] = nil
-                } catch is CancellationError {
-                    return
-                } catch {
-                    guard isCurrentAccountSession(session),
-                          selectedChannelID == channel.id
-                    else { return }
-                    DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
-                    errorMessage = error.localizedDescription
-                    return
-                }
+                guard await loadSelectedMessageWindow(
+                    around: messageID,
+                    channelID: channel.id,
+                    session: session
+                ) else { return }
             }
 
             guard isCurrentAccountSession(session),
@@ -563,6 +549,54 @@ extension AppModel {
                 messageID: messageID,
                 glides: wasShowingMessage
             )
+        }
+    }
+
+    /// Replaces the selected channel's window with one `around` a message.
+    /// Returns false when the selection changed or the read failed.
+    func loadSelectedMessageWindow(
+        around messageID: MessageID,
+        channelID: ChannelID,
+        session: AppModelAccountSession
+    ) async -> Bool {
+        // Gateway edits and deletions that land while the read is in flight
+        // are replayed onto its older response.
+        let refreshRevision = beginScopedConversationRefresh(in: channelID)
+        defer { endScopedConversationRefresh(refreshRevision) }
+        do {
+            let page = try await session.provider.messages(
+                in: channelID,
+                anchoredAt: .around(messageID),
+                limit: DiscordHistoryFetchLimit.aroundLimit
+            )
+            guard !Task.isCancelled,
+                  isCurrentAccountSession(session),
+                  selectedChannelID == channelID
+            else { return false }
+            // Unconfirmed sends keep their rows, including failed ones
+            // awaiting Retry or Discard, whichever window is presented.
+            replaceSelectedMessages(with: Self.merging(
+                current: messages.filter { $0.outboxState != .confirmed },
+                fresh: Self.applyingConversationRefreshMutations(
+                    scopedConversationRefreshMutations(refreshRevision),
+                    to: page.messages,
+                    within: MessageHistorySpan(page: page)
+                )
+            ))
+            hasMoreMessages = page.hasMoreBefore
+            hasMoreLaterMessages = page.hasMoreAfter
+            hasMoreCache[channelID] = page.hasMoreBefore
+            contiguousHistoryBoundaries[channelID] = nil
+            return true
+        } catch is CancellationError {
+            return false
+        } catch {
+            guard isCurrentAccountSession(session),
+                  selectedChannelID == channelID
+            else { return false }
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
+            errorMessage = error.localizedDescription
+            return false
         }
     }
 

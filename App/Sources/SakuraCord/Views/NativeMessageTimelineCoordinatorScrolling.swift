@@ -1745,6 +1745,14 @@ extension NativeMessageTimelineCoordinator {
         }
 
         func reportScrollState(force: Bool = false) {
+            switch parent.conversation {
+            case .channel, .thread:
+                // History reads are sized from the window, as Discord's are.
+                if let height = scrollView?.window?.contentView?.bounds.height {
+                    parent.model.timelineWindowHeight = height
+                }
+            default: break
+            }
             let state = scrollState()
             if hasEarlierHistoryScrollIntent,
                !isEarlierHistoryScrollGestureActive,
@@ -1807,10 +1815,13 @@ extension NativeMessageTimelineCoordinator {
             case .earlier: hasIssuedEarlierHistoryRequest
             case .later: hasIssuedLaterHistoryRequest
             }
+            // The model keeps one page in flight across both edges; a request
+            // it would refuse must not count as issued.
             guard isNearBoundary,
                   hasIntent,
                   hasMoreHistory(direction),
-                  !isLoadingHistory(direction),
+                  !isLoadingHistory(.earlier),
+                  !isLoadingHistory(.later),
                   !hasIssuedRequest
             else { return }
             switch direction {
@@ -1855,6 +1866,19 @@ extension NativeMessageTimelineCoordinator {
             }
         }
 
+        func prefetchDistance(_ direction: TimelineHistoryDirection) -> CGFloat {
+            switch parent.conversation {
+            case let .channel(id?) where direction == .earlier && parent.model.isChannelUnread(id),
+                 let .thread(id?) where direction == .earlier && parent.model.isChannelUnread(id):
+                // With unread messages the official scroller waits until the
+                // reader scrolls past the oldest loaded message.
+                Self.unreadConversationPrefetchDistance
+            case .channel, .thread: Self.conversationPrefetchDistance
+            case .inbox where direction == .later: 2_000
+            default: Self.prefetchDistance
+            }
+        }
+
         func scrollState() -> TimelineScrollState {
             guard let scrollView else {
                 return TimelineScrollState(
@@ -1874,11 +1898,11 @@ extension NativeMessageTimelineCoordinator {
             let isNearLoadedBottom =
                 materializedHistoryMaximumY(
                     viewportHeight: visibleRect.height
-                ) - visibleRect.maxY < (parent.conversation.isInbox ? 2_000 : Self.prefetchDistance)
+                ) - visibleRect.maxY < prefetchDistance(.later)
             return TimelineScrollState(
                 isNearTop:
                     visibleRect.minY - leadingHistoryReserve
-                    < Self.prefetchDistance,
+                    < prefetchDistance(.earlier),
                 isNearBottom:
                     isAtDocumentBottom
                     && !parent.hasMoreLaterMessages,
