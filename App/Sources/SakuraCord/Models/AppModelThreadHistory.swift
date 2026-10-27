@@ -406,6 +406,9 @@ extension AppModel {
             {
                 isLoadingThread = false
                 threadWindow.newestReadRevision = nil
+                // A revalidation queued behind this read's loading state,
+                // even once a later request superseded the read, may run now.
+                resumePendingThreadRevalidation()
             }
             endThreadWindowRequest(request)
         }
