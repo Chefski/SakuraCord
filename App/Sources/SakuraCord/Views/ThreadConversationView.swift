@@ -616,13 +616,13 @@ private struct ThreadMessageTimelineView: View {
     }
 
     private func overlays(_ unread: TimelineUnreadPresentation) -> Overlays {
+        let needsRecovery = model.needsThreadNewestRecovery
         let showsNewestButton = ThreadTimelinePresentationPolicy.showsNewRepliesButton(
             isNearBottom: isNearBottom,
             hasUnreadReplies: unread.summary != nil,
-            isDetachedFromNewest: model.needsThreadNewestRecovery,
+            isDetachedFromNewest: needsRecovery,
             messageCount: model.threadMessages.count
-        ) && (hasEstablishedInitialPosition
-            || model.needsThreadNewestRecovery && model.hasCompletedInitialThreadLoad)
+        ) && (hasEstablishedInitialPosition || needsRecovery && model.hasCompletedInitialThreadLoad)
         return Overlays(
             unreadSummary: model.openThread == nil ? nil : unread.summary,
             showsNewestButton: showsNewestButton

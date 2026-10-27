@@ -56,9 +56,8 @@ extension AppModel {
         hasMoreLaterThreadMessages || threadWindow.isNewestUnverified
     }
 
-    /// The reader needs a way back to the newest message: the window was
-    /// opened around an older one, or reading its newest edge failed. A
-    /// reopened window still revalidating at the bottom does not.
+    /// The reader needs a way back to the newest message: the window is
+    /// detached, or reading its newest edge failed.
     var needsThreadNewestRecovery: Bool {
         hasMoreLaterThreadMessages || threadWindow.isNewestUnverified && threadNewestReadFailed
     }

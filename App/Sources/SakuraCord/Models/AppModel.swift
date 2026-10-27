@@ -468,8 +468,9 @@ final class AppModel {
     /// instance, including one of the same thread, are discarded.
     @ObservationIgnored var threadLoadGeneration = 0
     @ObservationIgnored var threadWindow = ThreadWindowOwnership()
-    /// A read of the open thread's unverified newest edge failed; observed
-    /// so the side chat offers, and later withdraws, its way back.
+    /// A read of the open thread's unverified newest edge failed. Unlike the
+    /// error, which loading other pages clears, it lasts until a read verifies
+    /// the edge; observed so the side chat offers, and withdraws, its way back.
     var threadNewestReadFailed = false
     /// Advanced at every Gateway gap. History read in an earlier epoch cannot
     /// prove that a window reaches the newest message.
