@@ -62,6 +62,15 @@ extension AppModel {
         isLoadingThread && threadWindow.initialLoadTarget != nil
     }
 
+    /// The open thread's messages that are loaded history. Until the first
+    /// read completes, a forum post's preview of its first message is not;
+    /// anything else, such as a reply sent meanwhile, is.
+    var loadedThreadHistoryCount: Int {
+        hasCompletedInitialThreadLoad || isLoadingInitialThreadJump
+            ? threadMessages.count
+            : threadMessages.count { $0.id != openThreadStarterMessageID }
+    }
+
     func beginThreadWindowRequest(_ threadID: ChannelID) -> ThreadWindowRequest {
         threadWindow.revision &+= 1
         threadWindow.activeRevision = threadWindow.revision
