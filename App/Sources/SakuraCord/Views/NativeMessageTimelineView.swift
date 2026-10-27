@@ -689,6 +689,14 @@ extension NativeMessageTimelineCoordinator {
             } else if oldParent.isLoadingLater {
                 hasIssuedLaterHistoryRequest = false
             }
+            // One page loads at a time, so a request the model refused while
+            // the other edge loaded is re-issued once loading goes idle.
+            if !parent.isLoadingEarlier, !parent.isLoadingLater,
+               oldParent.isLoadingEarlier || oldParent.isLoadingLater
+            {
+                hasIssuedEarlierHistoryRequest = false
+                hasIssuedLaterHistoryRequest = false
+            }
         }
 
         func resetTimelineMutationState(

@@ -4775,6 +4775,32 @@ func `returning to a detached channel window restores it without a request unles
 }
 
 @MainActor
+@Test func `jumping into a channel with nothing loaded reads only the window around the target`() async throws {
+    let channelID = historyParityChannelID
+    let provider = ChannelLoadTestProvider(paginatedThreadID: channelID, paginatedThreadMessageCount: 300)
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    #expect(await until { model.selectedChannelID == channelID && model.hasCompletedInitialMessageLoad })
+    model.selectedChannelID = ChannelID(rawValue: 91_002)
+    #expect(await until { model.hasCompletedInitialMessageLoad && !model.isLoadingMessages })
+    model.messageCache[channelID] = nil
+    model.messageCacheOrder.removeAll { $0 == channelID }
+    model.hasMoreCache[channelID] = nil
+    let requestCount = await provider.requests(for: channelID).count
+
+    model.navigate(to: nil, channelID: channelID, messageID: historyParityMessageID(100))
+    #expect(await until { model.messageNavigationRequest?.messageID == historyParityMessageID(100) })
+
+    #expect(Array(await provider.requests(for: channelID).dropFirst(requestCount)) == [
+        .init(anchor: .around(historyParityMessageID(100)), limit: 30),
+    ])
+    #expect(!model.isLoadingMessages)
+    #expect(model.hasCompletedInitialMessageLoad)
+    #expect(model.hasMoreMessages)
+    #expect(model.hasMoreLaterMessages)
+}
+
+@MainActor
 @Test func `a detached channel window emptied by deletions reloads on return`() async {
     let channelID = historyParityChannelID
     let provider = ChannelLoadTestProvider(paginatedThreadID: channelID, paginatedThreadMessageCount: 300)

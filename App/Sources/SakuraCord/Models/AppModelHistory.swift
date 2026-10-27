@@ -256,24 +256,26 @@ extension AppModel {
         channelTimelinePosition = TimelineReadingPosition(
             restore: detachedWindow?.restoredPosition(in: cachedMessages)
         )
+        let jumpTarget = pendingChannelJumpTarget.flatMap { $0.channelID == channelID ? $0.messageID : nil }
+        pendingChannelJumpTarget = nil
         if cachedBoundary != nil {
             isLoadingMessages = false
             hasCompletedInitialMessageLoad = true
             readState.observeLoadedMessages(channelID: channelID, messages: messages)
             preserveUnreadDividerIfNeeded(channelID: channelID)
             reportConversationHistoryLoaded(channelID: channelID)
-            let account = accountSession()
-            let draftRevision = composer.draftRevision
-            channelLoadTask = startAccountChildTask(account: account) { model, account in
-                let savedDraft = await model.storedDraft(in: channelID, account: account)
-                guard model.isCurrentAccountSession(account),
-                      model.isCurrentLoad(channelID, generation: generation)
-                else { return }
-                model.composer.restoreDraft(savedDraft, ifUnchangedSince: draftRevision)
-            }
+            restoreSelectedDraft(channelID: channelID, generation: generation)
             return
         }
         isLoadingMessages = true
+        if jumpTarget != nil {
+            // A jump into a channel with nothing loaded reads only the window
+            // around its target, as the official client does; the jump
+            // completes the load.
+            preserveUnreadDividerIfNeeded(channelID: channelID)
+            restoreSelectedDraft(channelID: channelID, generation: generation)
+            return
+        }
         preserveUnreadDividerIfNeeded(channelID: channelID)
         let account = accountSession()
         channelLoadTask = startAccountChildTask(account: account) { model, account in
@@ -281,6 +283,45 @@ extension AppModel {
                 channelID,
                 generation: generation,
                 account: account
+            )
+        }
+    }
+
+    private func restoreSelectedDraft(channelID: ChannelID, generation: Int) {
+        let account = accountSession()
+        let draftRevision = composer.draftRevision
+        channelLoadTask = startAccountChildTask(account: account) { model, account in
+            let savedDraft = await model.storedDraft(in: channelID, account: account)
+            guard model.isCurrentAccountSession(account),
+                  model.isCurrentLoad(channelID, generation: generation)
+            else { return }
+            model.composer.restoreDraft(savedDraft, ifUnchangedSince: draftRevision)
+        }
+    }
+
+    /// Completes a selection whose cold load a jump replaced with its window
+    /// around the target, or falls back to the newest page if that read failed.
+    func finishJumpSelectedChannelLoad(channelID: ChannelID, loaded: Bool, session: AppModelAccountSession) {
+        // A cancelled jump was superseded by a newer navigation, which owns
+        // the selection's load.
+        guard !Task.isCancelled, isCurrentAccountSession(session),
+              selectedChannelID == channelID, isLoadingMessages
+        else { return }
+        guard loaded else {
+            beginSelectedChannelLoad()
+            return
+        }
+        isLoadingMessages = false
+        hasCompletedInitialMessageLoad = true
+        readState.observeLoadedMessages(channelID: channelID, messages: messages)
+        preserveUnreadDividerIfNeeded(channelID: channelID)
+        reportConversationHistoryLoaded(channelID: channelID)
+        let generation = channelLoadGeneration
+        startAccountChildTask(account: session) { model, account in
+            await model.resolveSelectedHistoryMembers(
+                channelID: channelID,
+                generation: generation,
+                session: account
             )
         }
     }

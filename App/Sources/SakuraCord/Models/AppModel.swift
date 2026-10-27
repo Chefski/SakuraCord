@@ -215,6 +215,9 @@ final class AppModel {
     /// The content height of the window hosting the message timeline, which
     /// sizes history reads.
     @ObservationIgnored var timelineWindowHeight: CGFloat?
+    /// A message the next selection of its channel jumps to, so a cold
+    /// selection reads only the window around it.
+    @ObservationIgnored var pendingChannelJumpTarget: (channelID: ChannelID, messageID: MessageID)?
     @ObservationIgnored var messages: [Message] = []
     @ObservationIgnored var messageRows: [MessageRowPresentation] = []
     @ObservationIgnored var messageRowsRevision: UInt64 = 0

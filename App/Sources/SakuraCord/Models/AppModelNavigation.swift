@@ -513,6 +513,7 @@ extension AppModel {
                 && messages.contains(where: { $0.id == messageID })
             closeThread()
             if selectedChannelID != channel.id {
+                pendingChannelJumpTarget = (channel.id, messageID)
                 selectedChannelID = channel.id
             }
             await channelLoadTask?.value
@@ -522,11 +523,13 @@ extension AppModel {
             else { return }
 
             if !messages.contains(where: { $0.id == messageID }) {
-                guard await loadSelectedMessageWindow(
+                let loaded = await loadSelectedMessageWindow(
                     around: messageID,
                     channelID: channel.id,
                     session: session
-                ) else { return }
+                )
+                finishJumpSelectedChannelLoad(channelID: channel.id, loaded: loaded, session: session)
+                guard loaded else { return }
             }
 
             guard isCurrentAccountSession(session),
