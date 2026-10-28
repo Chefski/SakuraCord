@@ -113,10 +113,11 @@ struct MessageTimelineView: View {
             .padding(InterfaceScale.metric(8))
         }
         .overlay(alignment: .bottom) {
-            if hasEstablishedInitialPosition,
-               !scrollPolicy.isNearBottom,
-               !model.messages.isEmpty
-            {
+            if TimelineNewestButtonPolicy.isShown(
+                hasEstablishedInitialPosition: hasEstablishedInitialPosition,
+                isNearBottom: scrollPolicy.isNearBottom,
+                messageCount: model.messages.count
+            ) {
                 TimelineNewestButton(
                     title: hasUnreadMessages ? "New messages" : "Scroll to bottom",
                     hasUnread: hasUnreadMessages,
@@ -653,6 +654,20 @@ struct TimelineNewestButton: View {
             )
         )
         .accessibilityHint(accessibilityHint)
+    }
+}
+
+nonisolated enum TimelineNewestButtonPolicy {
+    /// The reader is away from the newest message: scrolled up, or in a
+    /// window that ends before it, which the scroll state's `isNearBottom`
+    /// already excludes. A timeline still settling its first position shows
+    /// no button.
+    static func isShown(
+        hasEstablishedInitialPosition: Bool,
+        isNearBottom: Bool,
+        messageCount: Int
+    ) -> Bool {
+        hasEstablishedInitialPosition && !isNearBottom && messageCount > 0
     }
 }
 

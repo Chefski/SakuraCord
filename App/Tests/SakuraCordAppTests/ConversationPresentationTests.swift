@@ -466,37 +466,19 @@ func `permission resolver ignores noncanonical numeric member ids`(_ overwriteID
     #expect(presentation(friends: true, side: paneThread).supplementaryPane == nil)
 }
 
-@Test func `new replies button requires actual unread replies below the viewport`() {
-    #expect(
-        ThreadTimelinePresentationPolicy.showsNewRepliesButton(
-            isNearBottom: false,
-            hasUnreadReplies: true,
-            messageCount: 2
+@Test func `newest button shows once the reader is away from the newest message`() {
+    func shows(established: Bool = true, nearBottom: Bool, count: Int = 2) -> Bool {
+        TimelineNewestButtonPolicy.isShown(
+            hasEstablishedInitialPosition: established,
+            isNearBottom: nearBottom,
+            messageCount: count
         )
-    )
-    #expect(
-        !ThreadTimelinePresentationPolicy.showsNewRepliesButton(
-            isNearBottom: false,
-            hasUnreadReplies: false,
-            messageCount: 2
-        )
-    )
-    #expect(
-        !ThreadTimelinePresentationPolicy.showsNewRepliesButton(
-            isNearBottom: true,
-            hasUnreadReplies: true,
-            messageCount: 2
-        )
-    )
-    // A detached window's own bottom is not the newest reply.
-    #expect(
-        ThreadTimelinePresentationPolicy.showsNewRepliesButton(
-            isNearBottom: true,
-            hasUnreadReplies: false,
-            isDetachedFromNewest: true,
-            messageCount: 2
-        )
-    )
+    }
+    #expect(shows(nearBottom: false))
+    #expect(!shows(nearBottom: true))
+    // A timeline still settling its first position, or an empty one, has none.
+    #expect(!shows(established: false, nearBottom: false))
+    #expect(!shows(nearBottom: false, count: 0))
 }
 
 @Test func `wheel input toward newest is downward and vertical`() {
