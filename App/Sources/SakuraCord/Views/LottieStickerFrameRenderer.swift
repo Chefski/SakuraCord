@@ -34,7 +34,8 @@ nonisolated final class LottieStickerFrameRenderer {
             height: max(1, Int((animation.size.height * scale).rounded())),
             bitsPerComponent: 8,
             bytesPerRow: 0,
-            space: CGColorSpaceCreateDeviceRGB(),
+            // A profiled space lets the frames enter the on-disk frame cache.
+            space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { return nil }
         self.context = context

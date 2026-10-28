@@ -469,6 +469,8 @@ nonisolated final class DecodedAnimatedImage: @unchecked Sendable {
     let frameSchedule: AnimatedImageFrameSchedule
     let playCount: Int?
     let estimatedByteCount: Int
+    /// The memory the animation keeps: frames stay compressed between draws,
+    /// so this, not the expanded size, is what caches should charge.
     let storedByteCount: Int
     let compressedFrameData: [Data?]
 
@@ -898,7 +900,7 @@ actor SharedAnimatedImageLoader {
             cache.setObject(
                 image,
                 forKey: key.cacheKey,
-                cost: image.estimatedByteCount
+                cost: image.storedByteCount
             )
         }
         return result
