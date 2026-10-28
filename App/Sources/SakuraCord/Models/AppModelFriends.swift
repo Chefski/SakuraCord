@@ -182,9 +182,9 @@ extension AppModel {
         }
     }
 
-    func removeRelationship(with user: User, as removal: RelationshipRemoval) {
-        performRelationshipAction(on: user.id) { _, session in
-            try await session.provider.removeRelationship(with: user.id, as: removal)
+    func removeRelationship(with userID: UserID, as removal: RelationshipRemoval) {
+        performRelationshipAction(on: userID) { _, session in
+            try await session.provider.removeRelationship(with: userID, as: removal)
         }
     }
 
@@ -215,7 +215,7 @@ extension AppModel {
         switch confirmation {
         case .removeFriend(let user):
             guard isFriend(user.id) else { return }
-            removeRelationship(with: user, as: .removeFriend)
+            removeRelationship(with: user.id, as: .removeFriend)
         case .ignore(let user, let location):
             setUserIgnored(user, ignored: true, location: location)
         case .block(let user):

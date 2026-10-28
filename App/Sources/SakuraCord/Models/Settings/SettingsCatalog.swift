@@ -377,6 +377,7 @@ nonisolated extension SettingsControlID {
     static let anonymiseFileNames = Self(rawValue: "privacy.anonymise-file-names")
     static let privacyTypingIndicators = Self(rawValue: "privacy.typing-indicators")
     static let externalLinkProtection = Self(rawValue: "privacy.external-link-protection")
+    static let blockedAccounts = Self(rawValue: "privacy.blocked-accounts")
     static let ignoredAccounts = Self(rawValue: "privacy.ignored-accounts")
     static let trustedDomains = Self(rawValue: "privacy.trusted-domains")
     static let clearLocalActivity = Self(rawValue: "privacy.clear-local-activity")

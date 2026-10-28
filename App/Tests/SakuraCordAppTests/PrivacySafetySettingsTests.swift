@@ -252,7 +252,7 @@ import Testing
     let expected: Set<SettingsControlID> = [
         .privacyTypingIndicators, .anonymiseFileNames, .removeMediaMetadata,
         .externalLinkProtection, .trustedDomains,
-        .clearLocalActivity, .ignoredAccounts,
+        .clearLocalActivity, .ignoredAccounts, .blockedAccounts,
     ]
     let controls = SettingsCatalog.foundation.controls.filter {
         $0.destination.page == .privacySafety
@@ -262,6 +262,7 @@ import Testing
     let state = SettingsViewState()
     for (term, control) in [
         ("ignored accounts", SettingsControlID.ignoredAccounts),
+        ("unblock", .blockedAccounts),
         ("phishing", SettingsControlID.externalLinkProtection),
         ("allow list", .trustedDomains),
         ("randomise", .anonymiseFileNames),

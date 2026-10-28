@@ -130,12 +130,12 @@ extension AppModel {
             }
             add("decline", "Decline Request", "xmark", .destructive, !pending) { model in
                 guard model.relationships.first(where: { $0.id == user.id })?.type == .incomingRequest else { return }
-                model.removeRelationship(with: user, as: .declineIncomingRequest)
+                model.removeRelationship(with: user.id, as: .declineIncomingRequest)
             }
         case .outgoingRequest:
             add("cancel-request", "Cancel Request", "xmark", .destructive, !pending) { model in
                 guard model.relationships.first(where: { $0.id == user.id })?.type == .outgoingRequest else { return }
-                model.removeRelationship(with: user, as: .cancelOutgoingRequest)
+                model.removeRelationship(with: user.id, as: .cancelOutgoingRequest)
             }
         case .friend:
             add("remove-friend", "Remove Friend…", "person.badge.minus", .destructive, !pending) { model in
@@ -148,7 +148,7 @@ extension AppModel {
         if relationship?.type == .blocked {
             add("unblock", "Unblock", "hand.raised.slash", .destructive, !pending) { model in
                 guard model.relationships.first(where: { $0.id == user.id })?.type == .blocked else { return }
-                model.removeRelationship(with: user, as: .unblock)
+                model.removeRelationship(with: user.id, as: .unblock)
             }
         } else {
             add("block", "Block…", "hand.raised", .destructive, !pending) { model in
