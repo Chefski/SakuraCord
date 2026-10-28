@@ -607,7 +607,7 @@ private struct ProfileHeroSection: View {
                 showsServerTag: !cosmeticPolicy.disables(.serverTag, for: member.id),
                 isBot: profile?.user.isBot ?? member.user.isBot,
                 isVerifiedApp: isVerifiedApp,
-                badges: profile.map(SakuraCordSponsors.badges) ?? [],
+                badges: profile.map(SakuraCordBadges.badges) ?? [],
                 premiumSince: profile?.premiumSince,
                 premiumGuildSince: profile?.premiumGuildSince,
                 nameSize: 22,
@@ -1005,8 +1005,8 @@ private struct ProfileBadgeIcon: View {
 
     var body: some View {
         Group {
-            if badge.id == SakuraCordSponsors.badge.id {
-                Image("SakuraCordSponsorBadge", bundle: .module)
+            if let imageName = SakuraCordBadges.imageName(for: badge) {
+                Image(imageName, bundle: .module)
                     .resizable()
                     .scaledToFit()
             } else if let iconURL = badge.iconURL {
