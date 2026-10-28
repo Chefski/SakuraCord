@@ -53,13 +53,20 @@ nonisolated final class LottieStickerFrameRenderer {
         layer.frame = CGRect(origin: .zero, size: animation.size)
         layer.layoutIfNeeded()
         CATransaction.commit()
+        // Setting up the animation queues a redraw of it on the main queue.
+        // Let that finish so it cannot race the drawing below.
+        if !Thread.isMainThread {
+            DispatchQueue.main.sync {}
+        }
     }
 
     func frame(at index: Int) -> CGImage? {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         defer { CATransaction.commit() }
-        layer.currentFrame = startFrame + AnimationFrameTime(index)
+        // Lottie's own frame setter finishes on the main queue, racing this
+        // thread; set the inner layer's frame and redraw synchronously instead.
+        layer.animationLayer?.setValue(startFrame + AnimationFrameTime(index), forKey: "currentFrame")
         layer.forceDisplayUpdate()
         context.clear(CGRect(x: 0, y: 0, width: context.width, height: context.height))
         context.saveGState()
