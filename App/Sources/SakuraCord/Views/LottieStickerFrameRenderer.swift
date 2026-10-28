@@ -19,7 +19,7 @@ nonisolated final class LottieStickerFrameRenderer {
     /// Returns nil for anything that is not a Lottie document, leaving it to
     /// ImageIO.
     init?(data: Data, maximumPixelDimension: Int?) {
-        guard data.first == UInt8(ascii: "{"),
+        guard data.first(where: { !" \t\r\n".utf8.contains($0) }) == UInt8(ascii: "{"),
               let animation = try? LottieAnimation.from(data: data),
               animation.size.width > 0,
               animation.size.height > 0,

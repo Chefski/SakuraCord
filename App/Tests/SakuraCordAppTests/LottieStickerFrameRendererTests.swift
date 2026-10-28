@@ -15,6 +15,7 @@ private let topHalfRedLottie = Data("""
         LottieStickerFrameRenderer(data: topHalfRedLottie, maximumPixelDimension: nil)
     )
     #expect(renderer.frameCount == 2)
+    #expect(LottieStickerFrameRenderer(data: Data("\n ".utf8) + topHalfRedLottie, maximumPixelDimension: nil) != nil)
     let frame = try #require(renderer.frame(at: 0))
     #expect(frame.width == 20 && frame.height == 20)
 
