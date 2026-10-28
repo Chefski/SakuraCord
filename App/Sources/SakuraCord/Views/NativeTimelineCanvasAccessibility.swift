@@ -547,7 +547,7 @@ extension NativeTimelineCanvasView {
                 parent: parent
             ))
         }
-        if isUnreadBoundary, let frame = layout.unreadSeparatorFrame {
+        if isUnreadBoundary, let frame = layout.unreadSeparatorFrame ?? layout.daySeparatorFrame {
             children.append(accessibilityElement(
                 role: .staticText,
                 label: "New messages",

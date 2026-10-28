@@ -144,6 +144,8 @@ struct NativeTimelineRowLayout {
     var bubbleRegion: NativeTimelineBubbleRegion?
     var highlightFrame: CGRect?
     var daySeparatorFrame: CGRect?
+    /// Discord folds the NEW divider into a date divider on the same row.
+    var daySeparatorIsUnread = false
     /// The rule closing a forum post's original message off from its replies.
     var postStarterDividerFrame: CGRect?
     var unreadSeparatorFrame: CGRect?
@@ -219,8 +221,8 @@ struct NativeTimelineRowLayout {
                 result.daySeparatorFrame = CGRect(x: InterfaceScale.metric(12), y: offset,
                                                   width: width - InterfaceScale.metric(24), height: NativeTimelineDateSeparatorMetrics.rowHeight)
                 offset += NativeTimelineDateSeparatorMetrics.rowHeight
-            }
-            if group.isUnreadBoundary {
+                result.daySeparatorIsUnread = group.isUnreadBoundary
+            } else if group.isUnreadBoundary {
                 result.unreadSeparatorFrame = CGRect(x: InterfaceScale.metric(12), y: offset,
                                                      width: width - InterfaceScale.metric(24), height: NativeTimelineUnreadSeparatorMetrics.rowHeight)
                 offset += NativeTimelineUnreadSeparatorMetrics.rowHeight

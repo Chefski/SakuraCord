@@ -110,7 +110,7 @@ extension NativeTimelineRowPainter {
 
     private static func drawMessageSeparators(_ input: NativeTimelineMessageDrawInput) {
         if let frame = input.layout.daySeparatorFrame {
-            dateSeparator(date: input.row.message.timestamp, frame: frame)
+            dateSeparator(date: input.row.message.timestamp, frame: frame, isUnread: input.layout.daySeparatorIsUnread)
         }
         if let frame = input.layout.unreadSeparatorFrame {
             newMessagesSeparator(frame: frame)
@@ -1237,7 +1237,9 @@ extension NativeTimelineRowPainter {
         )
     }
 
-    static func dateSeparator(date: Date, frame: CGRect) {
+    /// `isUnread` folds the NEW divider in, as Discord does when both fall on
+    /// the same message: the rule and date turn red and the pill ends the line.
+    static func dateSeparator(date: Date, frame: CGRect, isUnread: Bool = false) {
         let label = date.formatted(
             .dateTime.day().month(.wide).year()
         )
@@ -1245,7 +1247,10 @@ extension NativeTimelineRowPainter {
             for: label,
             in: frame
         )
-        NSColor.labelColor.withAlphaComponent(0.16).setFill()
+        let lineEnd = isUnread
+            ? newMessagesCapsule(in: frame).minX - InterfaceScale.metric(8)
+            : frame.maxX
+        (isUnread ? MentionRed.nsColor : NSColor.labelColor.withAlphaComponent(0.16)).setFill()
         CGRect(
             x: frame.minX,
             y: frame.midY,
@@ -1263,7 +1268,7 @@ extension NativeTimelineRowPainter {
             y: frame.midY,
             width: max(
                 0,
-                frame.maxX
+                lineEnd
                     - labelFrame.maxX
                     - NativeTimelineDateSeparatorMetrics.lineSpacing
             ),
@@ -1273,24 +1278,14 @@ extension NativeTimelineRowPainter {
             label,
             in: labelFrame,
             font: NativeTimelineDateSeparatorMetrics.font,
-            color: .secondaryLabelColor,
+            color: isUnread ? MentionRed.nsColor : .secondaryLabelColor,
             alignment: .center,
             lineBreakMode: .byClipping
         )
     }
 
     static func newMessagesSeparator(frame: CGRect) {
-        let font = NSFont.interfaceSystemFont(ofSize: 10, weight: .bold)
-        let labelWidth = ceil(
-            measuredTextWidth("NEW", font: font) + 14
-        )
-        let capsuleFrame = CGRect(
-            x: frame.maxX - labelWidth,
-            y: frame.minY
-                + NativeTimelineUnreadSeparatorMetrics.verticalPadding,
-            width: labelWidth,
-            height: NativeTimelineUnreadSeparatorMetrics.capsuleHeight
-        )
+        let capsuleFrame = newMessagesCapsule(in: frame)
         MentionRed.nsColor.setFill()
         CGRect(
             x: frame.minX,
@@ -1298,6 +1293,22 @@ extension NativeTimelineRowPainter {
             width: max(0, capsuleFrame.minX - InterfaceScale.metric(8) - frame.minX),
             height: 1
         ).fill()
+    }
+
+    /// Draws the red NEW pill at the end of `frame`.
+    private static func newMessagesCapsule(in frame: CGRect) -> CGRect {
+        let font = NSFont.interfaceSystemFont(ofSize: 10, weight: .bold)
+        let labelWidth = ceil(
+            measuredTextWidth("NEW", font: font) + 14
+        )
+        let height = NativeTimelineUnreadSeparatorMetrics.capsuleHeight
+        let capsuleFrame = CGRect(
+            x: frame.maxX - labelWidth,
+            y: frame.midY - height / 2,
+            width: labelWidth,
+            height: height
+        )
+        MentionRed.nsColor.setFill()
         NSBezierPath(
             roundedRect: capsuleFrame,
             xRadius: capsuleFrame.height / 2,
@@ -1311,6 +1322,7 @@ extension NativeTimelineRowPainter {
             alignment: .center,
             lineBreakMode: .byClipping
         )
+        return capsuleFrame
     }
 
     static func card(_ frame: CGRect, tint: NSColor) {

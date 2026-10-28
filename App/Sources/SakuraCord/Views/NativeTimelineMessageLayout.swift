@@ -183,9 +183,8 @@ extension NativeTimelineRowLayout {
                     height: NativeTimelineDateSeparatorMetrics.rowHeight
                 )
                 prefixHeight += NativeTimelineDateSeparatorMetrics.rowHeight
-            }
-
-            if isUnreadBoundary {
+                result.daySeparatorIsUnread = isUnreadBoundary
+            } else if isUnreadBoundary {
                 result.unreadSeparatorFrame = CGRect(
                     x: horizontalInset,
                     y: prefixHeight,
