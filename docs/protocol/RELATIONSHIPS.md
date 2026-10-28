@@ -132,6 +132,15 @@ excluded from Pending, but can be accepted through a revealed profile. Unignore
 restores content without refetching or deleting retained history. Settings lists
 ignored accounts separately from blocked accounts.
 
+Settings management was verified through the official client on 2026-10-29
+(web stable **653945**). Messaging Permissions → Ignore & Block lists both from
+the relationships already held by the client; opening it sends no relationship
+request. A blocked account that is also ignored appears only under blocked.
+Unblock and Unignore act immediately, without a confirmation. Unblock sends the
+context-free DELETE above. Unignore sends the `/ignore` DELETE with location
+`user settings`. SakuraCord's Privacy settings link to searchable Blocked
+Accounts and Ignored Accounts lists with the same actions.
+
 Source-backed rules extend suppression to messages whose command initiator is
 ignored, and to reply previews, typing, activity, mention suggestions, message
 notifications and incoming-call alerts. Guild voice joins with ignored participants
