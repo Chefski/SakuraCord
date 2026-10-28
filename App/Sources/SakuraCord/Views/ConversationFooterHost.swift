@@ -57,6 +57,8 @@ final class ConversationFooterContainerView: NSView {
 
     init() {
         super.init(frame: .zero)
+        // The host reaches above this view's top edge (`placeHost`).
+        clipsToBounds = false
         // This view sets the hosting view's frame; it never asks for one.
         host.sizingOptions = []
         host.view.translatesAutoresizingMaskIntoConstraints = false
@@ -86,6 +88,9 @@ final class ConversationFooterContainerView: NSView {
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { [weak self] height in
                     self?.contentHeightDidChange(height)
                 }
+                // Held to the bottom of a host that stays put, so the footer
+                // grows and shrinks from its top edge on its own animation.
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         )
         measured = nil
         needsLayout = true
@@ -101,7 +106,9 @@ final class ConversationFooterContainerView: NSView {
             reportedHeight = measured.height
             return measured.height
         }
-        let height = host.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude)).height
+        // No height to spare: the aligning frame fills whatever it is
+        // offered, so it reports only the content's own.
+        let height = host.sizeThatFits(in: CGSize(width: width, height: 0)).height
         measured = (width, height)
         reportedHeight = height
         return height
@@ -115,11 +122,19 @@ final class ConversationFooterContainerView: NSView {
         placeHost()
     }
 
+    /// Taller than any footer. The host keeps this height on this view's
+    /// bottom edge: had it followed the footer's new height, its top would
+    /// jump at once, a frame after the content began animating from it.
+    private static let hostHeight: CGFloat = 4096
+
     /// Clear of a column sliding over the conversation, in the frame that
     /// moves it.
     private func placeHost() {
         let inset = WorkspaceConversationCover.shared.trailingInset
-        let frame = CGRect(x: 0, y: 0, width: max(0, bounds.width - inset), height: bounds.height)
+        let height = max(bounds.height, Self.hostHeight)
+        let frame = CGRect(
+            x: 0, y: bounds.height - height, width: max(0, bounds.width - inset), height: height
+        )
         guard host.view.frame != frame else { return }
         host.view.frame = frame
         // A line that wraps differently at the new width reports the
