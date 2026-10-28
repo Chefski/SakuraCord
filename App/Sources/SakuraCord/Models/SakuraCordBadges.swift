@@ -2,13 +2,13 @@ import SakuraCordModels
 
 /// Badges SakuraCord adds to profiles whose verified GitHub connection is on a badge's list.
 enum SakuraCordBadges {
-    struct Grant {
+    private struct Grant {
         let badge: ProfileBadge
         let imageName: String
         let githubAccountIDs: Set<String>
     }
 
-    static let sponsor = Grant(
+    private static let sponsor = Grant(
         badge: ProfileBadge(id: "sakuracord_sponsor", description: "SakuraCord Sponsor"),
         imageName: "SakuraCordSponsorBadge",
         githubAccountIDs: [
@@ -18,7 +18,7 @@ enum SakuraCordBadges {
     )
 
     /// People with at least one merged pull request.
-    static let contributor = Grant(
+    private static let contributor = Grant(
         badge: ProfileBadge(id: "sakuracord_contributor", description: "SakuraCord Contributor"),
         imageName: "SakuraCordContributorBadge",
         githubAccountIDs: [
