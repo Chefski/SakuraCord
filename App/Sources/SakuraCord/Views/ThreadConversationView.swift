@@ -13,21 +13,6 @@ nonisolated enum ThreadTimelinePresentationPolicy {
     ) -> ThreadInitialScrollTarget {
         isForumPost || !hasUnreadReplies ? .newest : .firstUnread
     }
-
-    /// - Parameter isDetachedFromNewest: The loaded window ends before the
-    ///   newest reply, so scrolling alone cannot reach it.
-    static func showsNewRepliesButton(
-        isNearBottom: Bool,
-        hasUnreadReplies: Bool,
-        isDetachedFromNewest: Bool = false,
-        messageCount: Int
-    ) -> Bool {
-        // A detached window ends before the newest reply even when its own
-        // bottom is in view, so the way back to newest always shows.
-        (!isNearBottom || isDetachedFromNewest)
-            && (hasUnreadReplies || isDetachedFromNewest)
-            && messageCount > 0
-    }
 }
 
 struct ThreadConversationView: View {
@@ -620,13 +605,11 @@ private struct ThreadMessageTimelineView: View {
     }
 
     private func overlays(_ unread: TimelineUnreadPresentation) -> Overlays {
-        let showsNewestButton = ThreadTimelinePresentationPolicy.showsNewRepliesButton(
+        let showsNewestButton = TimelineNewestButtonPolicy.isShown(
+            hasEstablishedInitialPosition: hasEstablishedInitialPosition,
             isNearBottom: isNearBottom,
-            hasUnreadReplies: unread.summary != nil,
-            isDetachedFromNewest: model.isThreadWindowAwayFromNewest,
             messageCount: model.threadMessages.count
-        ) && (hasEstablishedInitialPosition
-            || model.isThreadWindowAwayFromNewest && model.hasCompletedInitialThreadLoad)
+        )
         return Overlays(
             unreadSummary: model.openThread == nil ? nil : unread.summary,
             showsNewestButton: showsNewestButton
