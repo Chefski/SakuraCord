@@ -807,7 +807,8 @@ private enum NodeBuilder {
             _,
             disabled
         ):
-            let label = rawLabel ?? "Button"
+            // Discord shows an emoji-only button as just its emoji.
+            let label = rawLabel ?? (emoji == nil ? "Button" : "")
             let labelWidth = ceil(
                 (label as NSString).size(
                     withAttributes: [
@@ -817,12 +818,15 @@ private enum NodeBuilder {
             )
             let showsLeadingGlyph = emoji != nil || style == .premium
             let showsExternalLink = url != nil
+            let leadingGlyphWidth = label.isEmpty
+                ? DiscordComponentEmojiMetrics.buttonSize
+                : NativeTimelineComponentButtonMetrics.leadingGlyphAdvance
             let width = min(
                 maximumWidth,
                 max(NativeTimelineComponentButtonMetrics.height, ceil(
                     labelWidth
                         + NativeTimelineComponentButtonMetrics.horizontalPadding
-                        + (showsLeadingGlyph ? NativeTimelineComponentButtonMetrics.leadingGlyphAdvance : 0)
+                        + (showsLeadingGlyph ? leadingGlyphWidth : 0)
                         + (showsExternalLink
                             ? NativeTimelineComponentButtonMetrics.externalLinkAllowance
                             : NativeTimelineComponentButtonMetrics.horizontalPadding)

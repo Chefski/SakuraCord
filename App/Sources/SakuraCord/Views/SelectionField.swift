@@ -21,6 +21,14 @@ nonisolated enum SelectionFieldLeading: Hashable, Sendable {
         fallback: String,
         shape: SelectionFieldImageShape = .circle
     )
+
+    var imageURL: URL? {
+        switch self {
+        case .role(_, let iconURL, _): iconURL
+        case .remoteImage(let url, _, _): url
+        case .none, .systemImage, .text: nil
+        }
+    }
 }
 
 nonisolated enum SelectionFieldTitleStyle: Hashable, Sendable {
