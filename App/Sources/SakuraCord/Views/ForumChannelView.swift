@@ -131,8 +131,12 @@ private struct ForumBrowseHeader: View {
 
     var body: some View {
         HStack(spacing: InterfaceScale.metric(10)) {
+            // A side chat can leave the forum narrow; search gives way down
+            // to a minimum, then the tags scroll in what is left.
             ForumSearchField(text: $searchText)
-                .frame(width: InterfaceScale.metric(220), height: ForumTagChipMetrics.height)
+                .frame(minWidth: InterfaceScale.metric(100), maxWidth: InterfaceScale.metric(220))
+                .frame(height: ForumTagChipMetrics.height)
+                .layoutPriority(1)
                 .onChange(of: searchText) { _, value in model.updateForumSearch(value) }
             // Each forum's tags start scrolled to the first one.
             ForumTagStrip(model: model, channel: channel)
@@ -213,15 +217,21 @@ private struct ForumNewPostButton: View {
 
     var body: some View {
         Button(action: action) {
-            Label("New Post", systemImage: "square.and.pencil")
-                .labelStyle(.titleAndIcon)
-                .font(.interface(.callout).weight(.semibold))
-                .fixedSize()
-                .foregroundStyle(.white)
-                .padding(.horizontal, InterfaceScale.metric(13))
-                .frame(height: ForumTagChipMetrics.height)
-                .glassEffect(.forumChip(isOn: true), in: Capsule())
-                .contentShape(Capsule())
+            // Drops its title where the header is too narrow for it.
+            ViewThatFits(in: .horizontal) {
+                Label("New Post", systemImage: "square.and.pencil")
+                    .labelStyle(.titleAndIcon)
+                    .fixedSize()
+                    .padding(.horizontal, InterfaceScale.metric(13))
+                Label("New Post", systemImage: "square.and.pencil")
+                    .labelStyle(.iconOnly)
+                    .frame(width: ForumTagChipMetrics.height)
+            }
+            .font(.interface(.callout).weight(.semibold))
+            .foregroundStyle(.white)
+            .frame(height: ForumTagChipMetrics.height)
+            .glassEffect(.forumChip(isOn: true), in: Capsule())
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .disabled(!isEnabled)

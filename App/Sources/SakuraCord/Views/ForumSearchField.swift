@@ -77,21 +77,29 @@ private struct ForumSearchInput: NSViewRepresentable {
     }
 
     func updateNSView(_ field: NSTextField, context: Context) {
-        context.coordinator.parent = self
+        let coordinator = context.coordinator
+        coordinator.parent = self
         let font = NSFont.interfaceSystemFont(ofSize: NSFont.preferredFont(forTextStyle: .body).pointSize)
         if field.font != font { field.font = font }
-        // Rewriting the value mid-composition would discard marked text.
-        let isComposing = (field.currentEditor() as? NSTextView)?.hasMarkedText() == true
-        if field.stringValue != text, !isComposing { field.stringValue = text }
+        // Only a change from outside the field rewrites it, such as clearing
+        // or a channel switch; one made mid-composition ends the composition,
+        // so its next edit cannot write the old query back.
+        guard text != coordinator.reportedText else { return }
+        (field.currentEditor() as? NSTextView)?.unmarkText()
+        field.stringValue = text
+        coordinator.reportedText = text
     }
 
     final class Coordinator: NSObject, NSTextFieldDelegate {
         var parent: ForumSearchInput
+        /// The text this field last reported, to tell its own edits from others.
+        var reportedText = ""
 
         init(_ parent: ForumSearchInput) { self.parent = parent }
 
         func controlTextDidChange(_ notification: Notification) {
             guard let field = notification.object as? NSTextField else { return }
+            reportedText = field.stringValue
             parent.text = field.stringValue
         }
 
@@ -107,6 +115,7 @@ private struct ForumSearchInput: NSViewRepresentable {
                 return false
             }
             control.stringValue = ""
+            reportedText = ""
             parent.text = ""
             control.window?.makeFirstResponder(nil)
             return true
