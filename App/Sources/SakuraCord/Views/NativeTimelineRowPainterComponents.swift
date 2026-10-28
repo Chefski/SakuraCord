@@ -1309,12 +1309,7 @@ extension NativeTimelineRowPainter {
     static func componentSelectLeadingImage(
         _ leading: SelectionFieldLeading
     ) -> NSImage? {
-        let url: URL? = switch leading {
-        case .role(_, let iconURL, _): iconURL
-        case .remoteImage(let url, _, _): url
-        case .none, .systemImage, .text: nil
-        }
-        guard let url else { return nil }
+        guard let url = leading.imageURL else { return nil }
         if url.isFileURL { return fileImage(at: url) }
         return mediaImage(for: .media(url, maximumPixelDimension: 64))
     }
