@@ -51,14 +51,15 @@ final class ConversationFooterContainerView: NSView {
     private var coverObservation: NSObjectProtocol?
     /// The height last reported to the enclosing layout.
     private var reportedHeight: CGFloat?
+    /// Taller than any footer, and kept on this view's bottom edge, so the
+    /// host's top never jumps as the footer animates to a new height.
+    private static let hostHeight: CGFloat = 4096
     var heightDidChange: () -> Void = {}
 
     override var isFlipped: Bool { true }
 
     init() {
         super.init(frame: .zero)
-        // The host reaches above this view's top edge (`placeHost`).
-        clipsToBounds = false
         // This view sets the hosting view's frame; it never asks for one.
         host.sizingOptions = []
         host.view.translatesAutoresizingMaskIntoConstraints = false
@@ -88,8 +89,7 @@ final class ConversationFooterContainerView: NSView {
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { [weak self] height in
                     self?.contentHeightDidChange(height)
                 }
-                // Held to the bottom of a host that stays put, so the footer
-                // grows and shrinks from its top edge on its own animation.
+                // The footer grows and shrinks from its top edge.
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         )
         measured = nil
@@ -122,18 +122,12 @@ final class ConversationFooterContainerView: NSView {
         placeHost()
     }
 
-    /// Taller than any footer. The host keeps this height on this view's
-    /// bottom edge: had it followed the footer's new height, its top would
-    /// jump at once, a frame after the content began animating from it.
-    private static let hostHeight: CGFloat = 4096
-
     /// Clear of a column sliding over the conversation, in the frame that
     /// moves it.
     private func placeHost() {
         let inset = WorkspaceConversationCover.shared.trailingInset
-        let height = max(bounds.height, Self.hostHeight)
         let frame = CGRect(
-            x: 0, y: bounds.height - height, width: max(0, bounds.width - inset), height: height
+            x: 0, y: bounds.height - Self.hostHeight, width: max(0, bounds.width - inset), height: Self.hostHeight
         )
         guard host.view.frame != frame else { return }
         host.view.frame = frame
