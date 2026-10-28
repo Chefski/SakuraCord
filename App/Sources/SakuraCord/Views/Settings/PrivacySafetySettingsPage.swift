@@ -56,7 +56,6 @@ private struct PrivacyIgnoreBlockSection: View {
         } header: {
             Text("Ignore & Block", bundle: #bundle)
         }
-        .task { model.loadRelationshipsIfNeeded(for: .all) }
     }
 
     private func link(_ list: ManagedRelationshipList) -> some View {
