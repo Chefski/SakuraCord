@@ -51,6 +51,9 @@ final class ConversationFooterContainerView: NSView {
     private var coverObservation: NSObjectProtocol?
     /// The height last reported to the enclosing layout.
     private var reportedHeight: CGFloat?
+    /// Taller than any footer, and kept on this view's bottom edge, so the
+    /// host's top never jumps as the footer animates to a new height.
+    private static let hostHeight: CGFloat = 4096
     var heightDidChange: () -> Void = {}
 
     override var isFlipped: Bool { true }
@@ -86,6 +89,8 @@ final class ConversationFooterContainerView: NSView {
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { [weak self] height in
                     self?.contentHeightDidChange(height)
                 }
+                // The footer grows and shrinks from its top edge.
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         )
         measured = nil
         needsLayout = true
@@ -101,7 +106,9 @@ final class ConversationFooterContainerView: NSView {
             reportedHeight = measured.height
             return measured.height
         }
-        let height = host.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude)).height
+        // No height to spare: the aligning frame fills whatever it is
+        // offered, so it reports only the content's own.
+        let height = host.sizeThatFits(in: CGSize(width: width, height: 0)).height
         measured = (width, height)
         reportedHeight = height
         return height
@@ -119,7 +126,9 @@ final class ConversationFooterContainerView: NSView {
     /// moves it.
     private func placeHost() {
         let inset = WorkspaceConversationCover.shared.trailingInset
-        let frame = CGRect(x: 0, y: 0, width: max(0, bounds.width - inset), height: bounds.height)
+        let frame = CGRect(
+            x: 0, y: bounds.height - Self.hostHeight, width: max(0, bounds.width - inset), height: Self.hostHeight
+        )
         guard host.view.frame != frame else { return }
         host.view.frame = frame
         // A line that wraps differently at the new width reports the
