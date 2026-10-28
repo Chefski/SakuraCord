@@ -14,9 +14,8 @@ struct ForumChannelView: View {
         if let channel = model.selectedChannel {
             forumContent(channel: channel)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                // Posts scroll beneath the header and the window toolbar, as
-                // conversation timelines do. The header's controls need the
-                // opaque edge to stay legible over moving cards.
+                // Posts scroll beneath the header's glass controls and the
+                // window toolbar, as conversation timelines do.
                 .safeAreaBar(edge: .top, spacing: 0) {
                     VStack(spacing: 0) {
                         ForumBrowseHeader(
@@ -32,15 +31,11 @@ struct ForumChannelView: View {
                             )
                             .transition(.move(edge: .top).combined(with: .opacity))
                         }
-                        Divider()
                     }
                     .animation(.snappy(duration: 0.25), value: model.forumActionError)
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerHeight = $0 }
-                    // The board scrolls beneath the header and toolbar; this
-                    // opaque backdrop keeps both legible over moving cards.
-                    .background(.background.opacity(0.94), ignoresSafeAreaEdges: .top)
                 }
-                .scrollEdgeEffectStyle(.hard, for: .top)
+                .scrollEdgeEffectStyle(.soft, for: .top)
                 .onChange(of: channel.id) {
                     searchText = model.forumSearchText
                     reportPresentedForum(channel.id)
@@ -125,236 +120,120 @@ struct ForumChannelView: View {
     }
 }
 
-/// The forum's search, New Post and filter controls. Search matches the
-/// app's inline search headers (Threads browser, pickers); tags wrap rather
-/// than scroll, so none are cut off.
+/// The forum's search, filter tags, Sort & view and New Post in one row.
+/// Tags scroll sideways rather than wrap, so the header keeps one height at
+/// any width and does not reflow as a side chat opens or closes.
 private struct ForumBrowseHeader: View {
     let model: AppModel
     let channel: Channel
     @Binding var searchText: String
     @Binding var presentsComposer: Bool
-    @FocusState private var isSearchFocused: Bool
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                PickerSearchHeader(text: $searchText, focus: { isSearchFocused = true }, input: {
-                    TextField("Search posts", text: $searchText)
-                        .textFieldStyle(.plain)
-                        .font(.interfaceSystem(size: ChatChromeMetrics.pickerSearchHeaderFontSize))
-                        .tint(SakuraCordAccentColor.color)
-                        .focused($isSearchFocused)
-                        .onExitCommand { searchText = "" }
-                        .accessibilityIdentifier("forum-search")
-                })
+        HStack(spacing: InterfaceScale.metric(10)) {
+            ForumSearchField(text: $searchText)
+                .frame(width: InterfaceScale.metric(220), height: ForumTagChipMetrics.height)
                 .onChange(of: searchText) { _, value in model.updateForumSearch(value) }
-                HoverActionButton(systemImage: "square.and.pencil", help: "New Post") {
-                    isSearchFocused = false
-                    presentsComposer = true
-                }
-                .disabled(!model.canCreateForumPosts)
-                .pointerStyle(model.canCreateForumPosts ? .link : nil)
-                .padding(.trailing, InterfaceScale.metric(9))
-            }
-            Divider()
-            ForumFilterBar(model: model, channel: channel)
-                .padding(.horizontal, InterfaceScale.metric(14))
-                .padding(.vertical, InterfaceScale.metric(10))
+            // Each forum's tags start scrolled to the first one.
+            ForumTagStrip(model: model, channel: channel)
+                .id(channel.id)
+            ForumSortMenu(model: model)
+            // The composer's title field takes focus from the search.
+            ForumNewPostButton(isEnabled: model.canCreateForumPosts) { presentsComposer = true }
         }
+        .padding(.horizontal, InterfaceScale.metric(14))
+        .frame(height: InterfaceScale.metric(50))
     }
 }
 
-private struct ForumFilterBar: View {
+/// The forum's tags on one line, faded at whichever edge has more to scroll to.
+private struct ForumTagStrip: View {
     let model: AppModel
     let channel: Channel
-    @State private var isExpanded = false
-    @State private var width: CGFloat = 0
+    @State private var fades = Fades()
 
-    private static let collapsedRows = 2
+    private struct Fades: Equatable {
+        var leading = false
+        var trailing = false
+    }
 
     var body: some View {
-        let tags = channel.availableTags
-        let fit = ForumTagChipMetrics.visibleCount(
-            tags: tags,
-            leadingWidth: ForumTagChipMetrics.sortChipWidth,
-            width: width,
-            rows: Self.collapsedRows
-        )
-        let collapses = fit < tags.count
-        let shown = isExpanded || !collapses ? tags[...] : tags.prefix(fit)
-        ForumTagFlowLayout(spacing: ForumTagChipMetrics.spacing) {
-            ForumSortMenu(model: model)
-            ForEach(shown) { tag in
-                ForumTagButton(
-                    tag: tag,
-                    customEmojiURL: tag.emojiID.flatMap { model.customEmojiURLsByID[$0] },
-                    isSelected: model.forumSelectedTagIDs.contains(tag.id)
-                ) {
-                    model.toggleForumFilterTag(tag.id)
-                }
-                .transition(.scale(scale: 0.85).combined(with: .opacity))
-            }
-            if collapses {
-                ForumTagOverflowButton(
-                    hiddenCount: isExpanded ? 0 : tags.count - fit,
-                    selectedHiddenCount: isExpanded ? 0 : tags.dropFirst(fit).count(where: { model.forumSelectedTagIDs.contains($0.id) })
-                ) {
-                    isExpanded.toggle()
+        ScrollView(.horizontal) {
+            GlassEffectContainer(spacing: InterfaceScale.metric(4)) {
+                HStack(spacing: InterfaceScale.metric(6)) {
+                    ForEach(channel.availableTags) { tag in
+                        ForumTagButton(
+                            tag: tag,
+                            customEmojiURL: tag.emojiID.flatMap { model.customEmojiURLsByID[$0] },
+                            isSelected: model.forumSelectedTagIDs.contains(tag.id)
+                        ) {
+                            model.toggleForumFilterTag(tag.id)
+                        }
+                    }
                 }
             }
+            // Room for the glass edges, which the scroll view would clip.
+            .padding(.vertical, InterfaceScale.metric(6))
+            .padding(.horizontal, InterfaceScale.metric(2))
+        }
+        .scrollIndicators(.never)
+        .onScrollGeometryChange(for: Fades.self) { geometry in
+            Fades(
+                leading: geometry.contentOffset.x > 1,
+                trailing: geometry.contentOffset.x + geometry.containerSize.width < geometry.contentSize.width - 1
+            )
+        } action: { _, value in
+            fades = value
+        }
+        .mask {
+            HStack(spacing: 0) {
+                LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing)
+                    .frame(width: fades.leading ? InterfaceScale.metric(24) : 0)
+                Rectangle()
+                LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
+                    .frame(width: fades.trailing ? InterfaceScale.metric(32) : 0)
+            }
+            .animation(.easeOut(duration: 0.15), value: fades)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
-        .animation(.snappy(duration: 0.28), value: isExpanded)
-        .onChange(of: channel.id) { isExpanded = false }
     }
 }
 
-/// Chip sizes known before layout, so the collapsed filter bar can decide
-/// how many tags fit in its rows without measuring views.
+/// Chip sizes shared by the header's controls.
 enum ForumTagChipMetrics {
     static var height: CGFloat { InterfaceScale.metric(30) }
-    static var spacing: CGFloat { InterfaceScale.metric(8) }
     static var horizontalPadding: CGFloat { InterfaceScale.metric(11) }
     static var emojiSize: CGFloat { InterfaceScale.metric(16) }
-    private static var cachedFont = (scale: InterfaceScale.factor, font: makeFont())
-
-    /// Rebuilt only when the interface size changes; chip widths are measured
-    /// with it for every tag on each filter bar pass.
-    static var font: NSFont {
-        if cachedFont.scale != InterfaceScale.factor {
-            cachedFont = (InterfaceScale.factor, makeFont())
-        }
-        return cachedFont.font
-    }
-
-    private static func makeFont() -> NSFont {
-        .interfaceSystemFont(ofSize: NSFont.preferredFont(forTextStyle: .callout).pointSize, weight: .semibold)
-    }
-
-    static var sortChipWidth: CGFloat {
-        horizontalPadding * 2 + textWidth("Sort & view") + InterfaceScale.metric(44)
-    }
-
-    static func chipWidth(of tag: ForumTag) -> CGFloat {
-        let emoji = tag.emojiID != nil || tag.emojiName?.isEmpty == false ? emojiSize + InterfaceScale.metric(5) : 0
-        return ceil(horizontalPadding * 2 + emoji + textWidth(tag.name))
-    }
-
-    static func overflowWidth(hiddenCount: Int) -> CGFloat {
-        ceil(horizontalPadding * 2 + textWidth("+\(hiddenCount) more") + InterfaceScale.metric(18))
-    }
-
-    /// Memoized by text and font, so repeated passes over the same tags are lookups.
-    static func textWidth(_ text: String) -> CGFloat {
-        NativeTimelineRowLayout.measuredTextWidth(text, font: font)
-    }
-
-    /// How many leading tags fit within `rows` wrapped rows after the sort
-    /// chip, keeping room on the last row for the "+N more" chip.
-    static func visibleCount(tags: [ForumTag], leadingWidth: CGFloat, width: CGFloat, rows: Int) -> Int {
-        guard width > 0 else { return tags.count }
-        var row = 1
-        var cursorX = leadingWidth
-        var fitted = 0
-        for (index, tag) in tags.enumerated() {
-            let chip = chipWidth(of: tag)
-            let remaining = tags.count - index - 1
-            let reserve = remaining > 0 && row == rows ? spacing + overflowWidth(hiddenCount: remaining) : 0
-            if cursorX + spacing + chip + reserve <= width {
-                cursorX += spacing + chip
-                fitted += 1
-            } else if row < rows {
-                row += 1
-                // The last row also has to hold the overflow chip.
-                let lastRowReserve = remaining > 0 && row == rows ? spacing + overflowWidth(hiddenCount: remaining) : 0
-                guard chip + lastRowReserve <= width else { return fitted }
-                cursorX = chip
-                fitted += 1
-            } else {
-                return fitted
-            }
-        }
-        return fitted
-    }
 }
 
-/// Wraps chips onto as many rows as they need, left to right.
-private struct ForumTagFlowLayout: Layout {
-    let spacing: CGFloat
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache _: inout ()) -> CGSize {
-        let width = proposal.width ?? .infinity
-        let rows = arrange(subviews: subviews, width: width)
-        let height = rows.last.map { $0.originY + $0.height } ?? 0
-        let usedWidth = rows.map(\.width).max() ?? 0
-        return CGSize(width: proposal.width ?? usedWidth, height: height)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal _: ProposedViewSize, subviews: Subviews, cache _: inout ()) {
-        for row in arrange(subviews: subviews, width: bounds.width) {
-            for item in row.items {
-                subviews[item.index].place(
-                    at: CGPoint(x: bounds.minX + item.originX, y: bounds.minY + row.originY + (row.height - item.size.height) / 2),
-                    proposal: ProposedViewSize(item.size)
-                )
-            }
-        }
-    }
-
-    private struct Placement {
-        let index: Int
-        let originX: CGFloat
-        let size: CGSize
-    }
-
-    private struct Row {
-        var originY: CGFloat
-        var height: CGFloat = 0
-        var width: CGFloat = 0
-        var items: [Placement] = []
-    }
-
-    private func arrange(subviews: Subviews, width: CGFloat) -> [Row] {
-        var rows: [Row] = []
-        var row = Row(originY: 0)
-        for index in subviews.indices {
-            let size = subviews[index].sizeThatFits(.unspecified)
-            let originX = row.items.isEmpty ? 0 : row.width + spacing
-            if !row.items.isEmpty, originX + size.width > width {
-                rows.append(row)
-                row = Row(originY: row.originY + row.height + spacing)
-                row.items.append(Placement(index: index, originX: 0, size: size))
-                row.width = size.width
-            } else {
-                row.items.append(Placement(index: index, originX: originX, size: size))
-                row.width = originX + size.width
-            }
-            row.height = max(row.height, size.height)
-        }
-        if !row.items.isEmpty { rows.append(row) }
-        return rows
-    }
-}
-
-/// A filter chip: quiet at rest, lifted on hover, accent-filled when on.
-private struct ForumChipBackground: View {
-    let isSelected: Bool
-    let isHovered: Bool
+/// New Post, the forum's primary action.
+private struct ForumNewPostButton: View {
+    let isEnabled: Bool
+    let action: () -> Void
 
     var body: some View {
-        Capsule()
-            .fill(
-                isSelected
-                    ? AnyShapeStyle(SakuraCordAccentColor.color.opacity(isHovered ? 0.3 : 0.22))
-                    : AnyShapeStyle(Color.primary.opacity(isHovered ? 0.1 : 0.06))
-            )
-            .overlay {
-                Capsule().strokeBorder(
-                    isSelected ? SakuraCordAccentColor.color.opacity(0.55) : Color.primary.opacity(isHovered ? 0.16 : 0.09),
-                    lineWidth: 1
-                )
-            }
+        Button(action: action) {
+            Label("New Post", systemImage: "square.and.pencil")
+                .labelStyle(.titleAndIcon)
+                .font(.interface(.callout).weight(.semibold))
+                .fixedSize()
+                .foregroundStyle(.white)
+                .padding(.horizontal, InterfaceScale.metric(13))
+                .frame(height: ForumTagChipMetrics.height)
+                .glassEffect(.forumChip(isOn: true), in: Capsule())
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1 : 0.5)
+        .pointerStyle(isEnabled ? .link : nil)
+    }
+}
+
+private extension Glass {
+    /// Clear glass for the header's controls; accent-tinted when one is on.
+    static func forumChip(isOn: Bool) -> Glass {
+        isOn ? .regular.tint(SakuraCordAccentColor.color).interactive() : .regular.interactive()
     }
 }
 
@@ -363,35 +242,28 @@ private struct ForumSortMenu: View {
     @State private var isHovered = false
 
     var body: some View {
-        HStack(spacing: InterfaceScale.metric(5)) {
-            Image(systemName: "arrow.up.arrow.down")
-            Text("Sort & view")
-            Image(systemName: "chevron.down")
-                .font(.interface(.caption2).weight(.bold))
-        }
-        .font(.interface(.callout).weight(.semibold))
-        .lineLimit(1)
-        .fixedSize(horizontal: true, vertical: false)
-        .padding(.horizontal, ForumTagChipMetrics.horizontalPadding)
-        .frame(height: ForumTagChipMetrics.height)
-        .background(ForumChipBackground(isSelected: false, isHovered: isHovered))
-        .contentShape(Capsule())
-        .onHover { isHovered = $0 }
-        .animation(.easeOut(duration: 0.15), value: isHovered)
-        .pointerStyle(.link)
-        .overlay {
-            NativeForumSortMenuButton(
-                sortOrder: model.forumSortOrder,
-                layout: model.forumLayout,
-                tagMatch: model.forumTagMatch,
-                selectSortOrder: model.setForumSortOrder,
-                selectLayout: model.setForumLayout,
-                selectTagMatch: model.setForumTagMatch,
-                reset: model.resetForumView,
-                onHover: { isHovered = $0 }
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
+        Image(systemName: "line.3.horizontal.decrease")
+            .font(.interface(.callout).weight(.semibold))
+            .frame(width: ForumTagChipMetrics.height, height: ForumTagChipMetrics.height)
+            .background(Circle().fill(Color.primary.opacity(isHovered ? 0.1 : 0)))
+            .glassEffect(.regular, in: Circle())
+            .contentShape(Circle())
+            .onHover { isHovered = $0 }
+            .animation(.easeOut(duration: 0.15), value: isHovered)
+            .pointerStyle(.link)
+            .overlay {
+                NativeForumSortMenuButton(
+                    sortOrder: model.forumSortOrder,
+                    layout: model.forumLayout,
+                    tagMatch: model.forumTagMatch,
+                    selectSortOrder: model.setForumSortOrder,
+                    selectLayout: model.setForumLayout,
+                    selectTagMatch: model.setForumTagMatch,
+                    reset: model.resetForumView,
+                    onHover: { isHovered = $0 }
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
     }
 
 }
@@ -429,6 +301,7 @@ private struct NativeForumSortMenuButton: NSViewRepresentable {
         button.isTransparent = true
         button.focusRingType = .none
         button.setButtonType(.momentaryPushIn)
+        button.toolTip = "Sort & view"
         button.setAccessibilityLabel("Sort and view options")
         button.setAccessibilityHelp("Opens forum sorting and layout options")
         return button
@@ -678,7 +551,6 @@ private struct ForumTagButton: View {
     let customEmojiURL: URL?
     let isSelected: Bool
     let action: () -> Void
-    @State private var isHovered = false
     @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
@@ -691,45 +563,14 @@ private struct ForumTagButton: View {
             .font(.interface(.callout).weight(.semibold))
             .padding(.horizontal, ForumTagChipMetrics.horizontalPadding)
             .frame(height: ForumTagChipMetrics.height)
-            .background(ForumChipBackground(isSelected: isSelected, isHovered: isHovered && isEnabled))
+            .glassEffect(.forumChip(isOn: isSelected), in: Capsule())
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .onHover { isHovered = $0 }
-        .animation(.easeOut(duration: 0.15), value: isHovered)
         .animation(.snappy(duration: 0.2), value: isSelected)
         .pointerStyle(isEnabled ? .link : nil)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityHint(tag.isModerated ? "Only moderators can apply this tag" : "")
-    }
-}
-
-private struct ForumTagOverflowButton: View {
-    let hiddenCount: Int
-    let selectedHiddenCount: Int
-    let action: () -> Void
-    @State private var isHovered = false
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: InterfaceScale.metric(4)) {
-                Text(hiddenCount > 0 ? "+\(hiddenCount) more" : "Show less")
-                Image(systemName: hiddenCount > 0 ? "chevron.down" : "chevron.up")
-                    .font(.interface(.caption2).weight(.bold))
-            }
-            .font(.interface(.callout).weight(.semibold))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, ForumTagChipMetrics.horizontalPadding)
-            .frame(height: ForumTagChipMetrics.height)
-            .background(ForumChipBackground(isSelected: selectedHiddenCount > 0, isHovered: isHovered))
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .onHover { isHovered = $0 }
-        .pointerStyle(.link)
-        .help(hiddenCount > 0 ? "Show all tags" : "Show fewer tags")
-        .accessibilityLabel(hiddenCount > 0 ? "Show \(hiddenCount) more tags" : "Show fewer tags")
-        .accessibilityValue(selectedHiddenCount > 0 ? "\(selectedHiddenCount) selected" : "")
     }
 }
 

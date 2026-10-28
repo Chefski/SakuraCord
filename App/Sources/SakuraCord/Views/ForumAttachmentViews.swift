@@ -547,7 +547,14 @@ struct ForumActionErrorBanner: View {
         }
         .padding(.horizontal, InterfaceScale.metric(14))
         .padding(.vertical, InterfaceScale.metric(9))
-        .background(Color.red.opacity(0.08))
+        // Glass of its own: the forum header has no backdrop, and posts
+        // scroll beneath the banner.
+        .glassEffect(
+            .regular.tint(Color.red.opacity(0.2)),
+            in: RoundedRectangle(cornerRadius: InterfaceScale.metric(14), style: .continuous)
+        )
+        .padding(.horizontal, InterfaceScale.metric(14))
+        .padding(.bottom, InterfaceScale.metric(8))
         .accessibilityElement(children: .contain)
     }
 }
