@@ -693,7 +693,10 @@ extension NativeTimelineRowPainter {
             let sticker = message.stickers.indices.contains(index)
                 ? message.stickers[index]
                 : nil
-            if let sticker, input.animatedOverlayRoles.contains(.sticker(sticker.id)) { continue }
+            if let sticker,
+               input.animatedOverlayRoles.contains(.sticker(sticker.id)) {
+                continue
+            }
             let image = sticker?.mediaURL.flatMap {
                 mediaImage(
                     for: .media($0, maximumPixelDimension: 384)

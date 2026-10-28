@@ -584,7 +584,7 @@ extension NativeTimelineCanvasView {
         accumulator: AnimatedMediaOverlayAccumulator
     ) {
         for (stickerIndex, sticker) in row.message.stickers.enumerated()
-        where sticker.format == .apng || sticker.format == .gif || sticker.format == .lottie {
+        where sticker.format?.isAnimated == true {
             guard layout.stickerFrames.indices.contains(stickerIndex),
                   let url = sticker.mediaURL
             else { continue }

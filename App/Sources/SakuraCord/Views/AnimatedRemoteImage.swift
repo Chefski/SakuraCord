@@ -392,7 +392,7 @@ final class AnimatedRemoteImageDisplayCache: @unchecked Sendable {
         )
         let entry = Entry(
             image: image,
-            cost: max(1, image.estimatedByteCount)
+            cost: max(1, image.storedByteCount)
         )
         lock.lock()
         defer { lock.unlock() }
