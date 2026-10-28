@@ -21,11 +21,32 @@ enum ManagedRelationshipList: Hashable {
         }
     }
 
-    /// Block takes precedence, so a blocked account is never listed as ignored.
+    var emptyTitle: LocalizedStringResource {
+        switch self {
+        case .blocked: LocalizedStringResource("No Blocked Accounts", bundle: #bundle)
+        case .ignored: LocalizedStringResource("No Ignored Accounts", bundle: #bundle)
+        }
+    }
+
+    var actionTitle: LocalizedStringResource {
+        switch self {
+        case .blocked: LocalizedStringResource("Unblock", bundle: #bundle)
+        case .ignored: LocalizedStringResource("Unignore", bundle: #bundle)
+        }
+    }
+
     func contains(_ relationship: Relationship) -> Bool {
         switch self {
         case .blocked: relationship.type == .blocked
         case .ignored: relationship.isIgnored
+        }
+    }
+
+    @MainActor
+    func remove(_ userID: UserID, in model: AppModel) {
+        switch self {
+        case .blocked: model.removeRelationship(with: userID, as: .unblock)
+        case .ignored: model.setUserIgnored(userID, ignored: false, location: .settings)
         }
     }
 }
@@ -49,10 +70,9 @@ struct RelationshipListSettingsPage: View {
         SettingsForm {
             Section {
                 if relationships.isEmpty {
-                    emptyState(ContentUnavailableView(
-                        list == .blocked ? "No Blocked Accounts" : "No Ignored Accounts",
-                        systemImage: list.systemImage
-                    ))
+                    emptyState(ContentUnavailableView {
+                        Label { Text(list.emptyTitle) } icon: { Image(systemName: list.systemImage) }
+                    })
                 } else if visible.isEmpty {
                     emptyState(ContentUnavailableView.search(text: query))
                 } else {
@@ -80,11 +100,10 @@ struct RelationshipListSettingsPage: View {
                 }
             }
             Spacer()
-            Button(list == .blocked ? "Unblock" : "Unignore") {
-                switch list {
-                case .blocked: model.removeRelationship(with: relationship.id, as: .unblock)
-                case .ignored: model.setUserIgnored(relationship.id, ignored: false, location: .settings)
-                }
+            Button {
+                list.remove(relationship.id, in: model)
+            } label: {
+                Text(list.actionTitle)
             }
             .disabled(model.friends.pendingUserIDs.contains(relationship.id))
         }
