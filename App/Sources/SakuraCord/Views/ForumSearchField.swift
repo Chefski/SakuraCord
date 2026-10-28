@@ -79,8 +79,10 @@ private struct ForumSearchInput: NSViewRepresentable {
     func updateNSView(_ field: NSTextField, context: Context) {
         let coordinator = context.coordinator
         coordinator.parent = self
-        let font = NSFont.interfaceSystemFont(ofSize: NSFont.preferredFont(forTextStyle: .body).pointSize)
-        if field.font != font { field.font = font }
+        if coordinator.fontScale != InterfaceScale.factor {
+            coordinator.fontScale = InterfaceScale.factor
+            field.font = .interfaceSystemFont(ofSize: NSFont.preferredFont(forTextStyle: .body).pointSize)
+        }
         // Only a change from outside the field rewrites it, such as clearing
         // or a channel switch; one made mid-composition ends the composition,
         // so its next edit cannot write the old query back.
@@ -94,6 +96,8 @@ private struct ForumSearchInput: NSViewRepresentable {
         var parent: ForumSearchInput
         /// The text this field last reported, to tell its own edits from others.
         var reportedText = ""
+        /// The interface size the field's font was made for; each edit updates the view.
+        var fontScale: CGFloat?
 
         init(_ parent: ForumSearchInput) { self.parent = parent }
 

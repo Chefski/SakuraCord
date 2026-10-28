@@ -135,14 +135,12 @@ private struct ForumBrowseHeader: View {
             // to a minimum, then the tags scroll in what is left.
             ForumSearchField(text: $searchText)
                 .frame(minWidth: InterfaceScale.metric(100), maxWidth: InterfaceScale.metric(220))
-                .frame(height: ForumTagChipMetrics.height)
                 .layoutPriority(1)
                 .onChange(of: searchText) { _, value in model.updateForumSearch(value) }
             // Each forum's tags start scrolled to the first one.
             ForumTagStrip(model: model, channel: channel)
                 .id(channel.id)
             ForumSortMenu(model: model)
-            // The composer's title field takes focus from the search.
             ForumNewPostButton(isEnabled: model.canCreateForumPosts) { presentsComposer = true }
         }
         .padding(.horizontal, InterfaceScale.metric(14))
@@ -216,14 +214,15 @@ private struct ForumNewPostButton: View {
     let action: () -> Void
 
     var body: some View {
+        let label = Label("New Post", systemImage: "square.and.pencil")
         Button(action: action) {
             // Drops its title where the header is too narrow for it.
             ViewThatFits(in: .horizontal) {
-                Label("New Post", systemImage: "square.and.pencil")
+                label
                     .labelStyle(.titleAndIcon)
                     .fixedSize()
                     .padding(.horizontal, InterfaceScale.metric(13))
-                Label("New Post", systemImage: "square.and.pencil")
+                label
                     .labelStyle(.iconOnly)
                     .frame(width: ForumTagChipMetrics.height)
             }
@@ -241,7 +240,7 @@ private struct ForumNewPostButton: View {
 }
 
 private extension Glass {
-    /// Clear glass for the header's controls; accent-tinted when one is on.
+    /// Regular glass for the forum's chips; accent-tinted when one is on.
     static func forumChip(isOn: Bool) -> Glass {
         isOn ? .regular.tint(SakuraCordAccentColor.color).interactive() : .regular.interactive()
     }
@@ -255,7 +254,7 @@ private struct ForumSortMenu: View {
         Image(systemName: "line.3.horizontal.decrease")
             .font(.interface(.callout).weight(.semibold))
             .frame(width: ForumTagChipMetrics.height, height: ForumTagChipMetrics.height)
-            .background(Circle().fill(Color.primary.opacity(isHovered ? 0.1 : 0)))
+            .background { if isHovered { Circle().fill(Color.primary.opacity(0.1)) } }
             .glassEffect(.regular, in: Circle())
             .contentShape(Circle())
             .onHover { isHovered = $0 }
