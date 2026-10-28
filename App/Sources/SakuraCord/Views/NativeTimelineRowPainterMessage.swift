@@ -34,7 +34,7 @@ struct NativeTimelineMessageDrawInput {
     let revealedTextSpoilerState: NativeTimelineTextSpoilerRevealState
     let spoilerRevealStore: NativeTimelineSpoilerRevealStore?
     let pollPresentation: NativeTimelinePollPresentation
-    let animatedReactionIDs: Set<String>
+    let animatedOverlayRoles: Set<NativeTimelineCanvasView.AnimatedMediaOverlayRole>
     let reactionCountTransitions: [String: NativeTimelineReactionCountTransition]
 }
 
@@ -693,6 +693,7 @@ extension NativeTimelineRowPainter {
             let sticker = message.stickers.indices.contains(index)
                 ? message.stickers[index]
                 : nil
+            if let sticker, input.animatedOverlayRoles.contains(.sticker(sticker.id)) { continue }
             let image = sticker?.mediaURL.flatMap {
                 mediaImage(
                     for: .media($0, maximumPixelDimension: 384)
@@ -754,7 +755,7 @@ extension NativeTimelineRowPainter {
                 countTransition: reactionCountTransitions[
                     region.reaction.id
                 ],
-                hasAnimatedEmojiOverlay: input.animatedReactionIDs.contains(region.reaction.id)
+                hasAnimatedEmojiOverlay: input.animatedOverlayRoles.contains(.reaction(region.reaction.id))
             )
         }
         if let frame = layout.addReactionFrame, model?.canCreateReactions(on: message) != false {

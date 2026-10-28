@@ -622,7 +622,7 @@ extension NativeTimelineCanvasView {
     ) {
         let desiredKeys = Set(desired.map(\.key))
         let changedKeys = Set(animatedMediaOverlays.keys).symmetricDifference(desiredKeys)
-        defer { invalidateReactionPosters(for: changedKeys) }
+        defer { invalidateOverlaidPosters(for: changedKeys) }
         for key in Array(animatedMediaOverlays.keys)
         where !desiredKeys.contains(key) {
             animatedMediaOverlays.removeValue(forKey: key)?
@@ -732,17 +732,18 @@ extension NativeTimelineCanvasView {
         reconcileAnimatedMediaOverlays(reduceMotion: reduceMotion)
     }
 
-    func animatedReactionIDs(for row: NativeMessageTimelineItem.Identifier) -> Set<String> {
+    /// The row's live reactions and stickers, whose still copies the row
+    /// leaves out: their transparent frames would show the still through.
+    func animatedOverlayRoles(for row: NativeMessageTimelineItem.Identifier) -> Set<AnimatedMediaOverlayRole> {
         Set(animatedMediaOverlays.keys.compactMap { key in
-            guard key.row == row, case let .reaction(id) = key.role else { return nil }
-            return id
+            guard key.row == row, key.role.replacesPoster else { return nil }
+            return key.role
         })
     }
 
-    private func invalidateReactionPosters(for keys: Set<AnimatedMediaOverlayKey>) {
+    private func invalidateOverlaidPosters(for keys: Set<AnimatedMediaOverlayKey>) {
         let rows = Set(keys.compactMap { key -> NativeMessageTimelineItem.Identifier? in
-            guard case .reaction = key.role else { return nil }
-            return key.row
+            key.role.replacesPoster ? key.row : nil
         })
         for row in rows {
             invalidateBitmap(row)
@@ -758,7 +759,7 @@ extension NativeTimelineCanvasView {
             overlay.removeFromSuperview()
         }
         animatedMediaOverlays.removeAll()
-        invalidateReactionPosters(for: removedKeys)
+        invalidateOverlaidPosters(for: removedKeys)
     }
 
     static let maximumActivityIndicatorCount = 32

@@ -85,6 +85,14 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
                 false
             }
         }
+
+        /// Whether the row paints nothing beneath this overlay once it is live.
+        var replacesPoster: Bool {
+            switch self {
+            case .sticker, .reaction: true
+            default: false
+            }
+        }
     }
 
     struct AnimatedMediaOverlayKey: Hashable {
@@ -528,7 +536,7 @@ enum NativeTimelineRowPainter {
         reactionCountTransitions:
             [String: NativeTimelineReactionCountTransition] = [:],
         pollPresentation: NativeTimelinePollPresentation = .init(),
-        animatedReactionIDs: Set<String> = []
+        animatedOverlayRoles: Set<NativeTimelineCanvasView.AnimatedMediaOverlayRole> = []
     ) {
         NSGraphicsContext.saveGraphicsState()
         let transform = NSAffineTransform()
@@ -606,7 +614,7 @@ enum NativeTimelineRowPainter {
                     revealedTextSpoilerState,
                 spoilerRevealStore: spoilerRevealStore,
                 pollPresentation: pollPresentation,
-                animatedReactionIDs: animatedReactionIDs,
+                animatedOverlayRoles: animatedOverlayRoles,
                 reactionCountTransitions: reactionCountTransitions
             ))
         }

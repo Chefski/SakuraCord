@@ -968,7 +968,7 @@ extension NativeTimelineCanvasView {
             spoilerRevealStore: spoilerRevealStore,
             reactionCountTransitions: reactionCountTransitions(inMessageAt: index),
             pollPresentation: pollPresentation(for: item.messageID),
-            animatedReactionIDs: animatedReactionIDs(for: item.identifier)
+            animatedOverlayRoles: animatedOverlayRoles(for: item.identifier)
         )
     }
 
@@ -1023,7 +1023,7 @@ extension NativeTimelineCanvasView {
                     item: item, layout: layouts[index], in: rowFrame, model: model,
                     isHovered: false, revealedTextSpoilerState: revealState,
                     spoilerRevealStore: spoilerRevealStore,
-                    animatedReactionIDs: animatedReactionIDs(for: item.identifier)
+                    animatedOverlayRoles: animatedOverlayRoles(for: item.identifier)
                 )
             }
         } else {
@@ -1402,7 +1402,7 @@ extension NativeTimelineCanvasView {
                 model: model,
                 isHovered: false,
                 spoilerRevealStore: spoilerRevealStore,
-                animatedReactionIDs: animatedReactionIDs(for: item.identifier)
+                animatedOverlayRoles: animatedOverlayRoles(for: item.identifier)
             )
         }
         flippedGraphics.flushGraphics()
