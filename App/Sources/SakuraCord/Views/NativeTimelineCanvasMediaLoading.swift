@@ -569,7 +569,7 @@ extension NativeTimelineCanvasView {
         layout: NativeTimelineRowLayout,
         into keys: inout [NativeTimelineMediaKey]
     ) {
-        for sticker in message.stickers where sticker.format != .lottie {
+        for sticker in message.stickers {
             if let url = sticker.mediaURL {
                 keys.append(.media(url, maximumPixelDimension: 384))
             }

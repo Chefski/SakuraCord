@@ -38,9 +38,6 @@ extension NativeTimelineCanvasView {
         reconcileInlineVideoOverlays(
             plays: !reduceMotion
         )
-        reconcileLottieStickerOverlays(
-            reduceMotion: reduceMotion
-        )
     }
 
     func scheduleAnimatedMediaReconciliation() {
@@ -587,7 +584,7 @@ extension NativeTimelineCanvasView {
         accumulator: AnimatedMediaOverlayAccumulator
     ) {
         for (stickerIndex, sticker) in row.message.stickers.enumerated()
-        where sticker.format == .apng || sticker.format == .gif {
+        where sticker.format?.isAnimated == true {
             guard layout.stickerFrames.indices.contains(stickerIndex),
                   let url = sticker.mediaURL
             else { continue }
@@ -625,7 +622,7 @@ extension NativeTimelineCanvasView {
     ) {
         let desiredKeys = Set(desired.map(\.key))
         let changedKeys = Set(animatedMediaOverlays.keys).symmetricDifference(desiredKeys)
-        defer { invalidateReactionPosters(for: changedKeys) }
+        defer { invalidateOverlaidPosters(for: changedKeys) }
         for key in Array(animatedMediaOverlays.keys)
         where !desiredKeys.contains(key) {
             animatedMediaOverlays.removeValue(forKey: key)?
@@ -735,17 +732,18 @@ extension NativeTimelineCanvasView {
         reconcileAnimatedMediaOverlays(reduceMotion: reduceMotion)
     }
 
-    func animatedReactionIDs(for row: NativeMessageTimelineItem.Identifier) -> Set<String> {
+    /// The row's live reactions and stickers, whose still copies the row
+    /// leaves out: their transparent frames would show the still through.
+    func animatedOverlayRoles(for row: NativeMessageTimelineItem.Identifier) -> Set<AnimatedMediaOverlayRole> {
         Set(animatedMediaOverlays.keys.compactMap { key in
-            guard key.row == row, case let .reaction(id) = key.role else { return nil }
-            return id
+            guard key.row == row, key.role.replacesPoster else { return nil }
+            return key.role
         })
     }
 
-    private func invalidateReactionPosters(for keys: Set<AnimatedMediaOverlayKey>) {
+    private func invalidateOverlaidPosters(for keys: Set<AnimatedMediaOverlayKey>) {
         let rows = Set(keys.compactMap { key -> NativeMessageTimelineItem.Identifier? in
-            guard case .reaction = key.role else { return nil }
-            return key.row
+            key.role.replacesPoster ? key.row : nil
         })
         for row in rows {
             invalidateBitmap(row)
@@ -761,7 +759,7 @@ extension NativeTimelineCanvasView {
             overlay.removeFromSuperview()
         }
         animatedMediaOverlays.removeAll()
-        invalidateReactionPosters(for: removedKeys)
+        invalidateOverlaidPosters(for: removedKeys)
     }
 
     static let maximumActivityIndicatorCount = 32
@@ -954,126 +952,6 @@ extension NativeTimelineCanvasView {
             overlay.removeFromSuperview()
         }
         inlineVideoOverlays.removeAll()
-    }
-
-    static let maximumLottieStickerOverlayCount = 4
-
-    func reconcileLottieStickerOverlays(reduceMotion: Bool) {
-        var desired: [DesiredLottieStickerOverlay] = []
-        desired.reserveCapacity(Self.maximumLottieStickerOverlayCount)
-
-        guard var index = rowIndex(at: max(0, visibleRect.minY)) else {
-            removeLottieStickerOverlays()
-            return
-        }
-        while items.indices.contains(index),
-              displayedRowOrigin(at: index) < visibleRect.maxY
-        {
-            let identifier = items[index].identifier
-            if let urls = lottieStickerRows[identifier],
-               layouts.indices.contains(index),
-               case let .message(row, _, _) = items[index]
-            {
-                for (sticker, frame) in zip(
-                    row.message.stickers,
-                    layouts[index].stickerFrames
-                ) {
-                    guard sticker.format == .lottie,
-                          let url = sticker.mediaURL,
-                          urls.contains(url)
-                    else { continue }
-                    desired.append(DesiredLottieStickerOverlay(
-                        key: LottieStickerOverlayKey(
-                            row: identifier,
-                            stickerID: sticker.id,
-                            url: url
-                        ),
-                        frame: frame.offsetBy(
-                            dx: 0,
-                            dy: displayedRowOrigin(at: index)
-                        ),
-                        opacity: CGFloat(MessageOutboxPresentation.mediaOpacity(
-                            for: row.message.outboxState
-                        ))
-                    ))
-                    if desired.count == Self.maximumLottieStickerOverlayCount {
-                        break
-                    }
-                }
-            }
-            if desired.count == Self.maximumLottieStickerOverlayCount {
-                break
-            }
-            index += 1
-        }
-
-        let desiredKeys = Set(desired.map(\.key))
-        for key in Array(lottieStickerOverlays.keys)
-        where !desiredKeys.contains(key) {
-            guard let overlay = lottieStickerOverlays.removeValue(forKey: key)
-            else { continue }
-            overlay.stop()
-            overlay.removeFromSuperview()
-        }
-        for item in desired {
-            let overlay: NativeTimelineLottieStickerOverlay
-            if let existing = lottieStickerOverlays[item.key] {
-                overlay = existing
-            } else {
-                overlay = NativeTimelineLottieStickerOverlay(frame: item.frame)
-                addSubview(
-                    overlay,
-                    positioned: .below,
-                    relativeTo: mediaViewerHost
-                )
-                lottieStickerOverlays[item.key] = overlay
-            }
-            overlay.frame = item.frame
-            overlay.alphaValue = item.opacity
-            overlay.display(item.key.url, reduceMotion: reduceMotion)
-        }
-    }
-
-    func positionLottieStickerOverlays() {
-        var removed: [LottieStickerOverlayKey] = []
-        for (key, overlay) in lottieStickerOverlays {
-            guard let index = items.firstIndex(where: {
-                $0.identifier == key.row
-            }),
-               layouts.indices.contains(index),
-               case let .message(row, _, _) = items[index],
-               let stickerIndex = row.message.stickers.firstIndex(where: {
-                   $0.id == key.stickerID && $0.mediaURL == key.url
-               }),
-               layouts[index].stickerFrames.indices.contains(stickerIndex)
-            else {
-                overlay.stop()
-                overlay.removeFromSuperview()
-                removed.append(key)
-                continue
-            }
-            overlay.frame = layouts[index].stickerFrames[stickerIndex]
-                .offsetBy(
-                    dx: 0,
-                    dy: displayedRowOrigin(at: index)
-                )
-            overlay.alphaValue = CGFloat(
-                MessageOutboxPresentation.mediaOpacity(
-                    for: row.message.outboxState
-                )
-            )
-        }
-        for key in removed {
-            lottieStickerOverlays[key] = nil
-        }
-    }
-
-    func removeLottieStickerOverlays() {
-        for overlay in lottieStickerOverlays.values {
-            overlay.stop()
-            overlay.removeFromSuperview()
-        }
-        lottieStickerOverlays.removeAll()
     }
 
     struct DesiredSpoilerOverlay {

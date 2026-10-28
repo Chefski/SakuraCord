@@ -57,18 +57,6 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
         let url: URL
     }
 
-    struct LottieStickerOverlayKey: Hashable {
-        let row: NativeMessageTimelineItem.Identifier
-        let stickerID: String
-        let url: URL
-    }
-
-    struct DesiredLottieStickerOverlay {
-        let key: LottieStickerOverlayKey
-        let frame: CGRect
-        let opacity: CGFloat
-    }
-
     enum AnimatedMediaOverlayRole: Hashable {
         case authorAvatar
         case authorAvatarDecoration
@@ -95,6 +83,14 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
                 true
             default:
                 false
+            }
+        }
+
+        /// Whether the row paints nothing beneath this overlay once it is live.
+        var replacesPoster: Bool {
+            switch self {
+            case .sticker, .reaction: true
+            default: false
             }
         }
     }
@@ -330,12 +326,8 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
         [NativeMessageTimelineItem.Identifier: Set<NativeTimelineMediaKey>] = [:]
     var inlineVideoRows:
         [NativeMessageTimelineItem.Identifier: Set<URL>] = [:]
-    var lottieStickerRows:
-        [NativeMessageTimelineItem.Identifier: Set<URL>] = [:]
     var inlineVideoOverlays:
         [InlineVideoOverlayKey: NativeTimelineInlineVideoOverlay] = [:]
-    var lottieStickerOverlays:
-        [LottieStickerOverlayKey: NativeTimelineLottieStickerOverlay] = [:]
     var animatedMediaOverlays:
         [AnimatedMediaOverlayKey: NativeTimelineAnimatedMediaOverlay] = [:]
     var voiceMessageOverlay: NativeTimelineVoiceMessageOverlay?
@@ -544,7 +536,7 @@ enum NativeTimelineRowPainter {
         reactionCountTransitions:
             [String: NativeTimelineReactionCountTransition] = [:],
         pollPresentation: NativeTimelinePollPresentation = .init(),
-        animatedReactionIDs: Set<String> = []
+        animatedOverlayRoles: Set<NativeTimelineCanvasView.AnimatedMediaOverlayRole> = []
     ) {
         NSGraphicsContext.saveGraphicsState()
         let transform = NSAffineTransform()
@@ -622,7 +614,7 @@ enum NativeTimelineRowPainter {
                     revealedTextSpoilerState,
                 spoilerRevealStore: spoilerRevealStore,
                 pollPresentation: pollPresentation,
-                animatedReactionIDs: animatedReactionIDs,
+                animatedOverlayRoles: animatedOverlayRoles,
                 reactionCountTransitions: reactionCountTransitions
             ))
         }

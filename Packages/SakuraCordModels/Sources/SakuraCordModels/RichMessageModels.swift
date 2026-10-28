@@ -310,6 +310,8 @@ public enum StickerFormat: Int, Codable, Hashable, Sendable {
     case apng = 2
     case lottie = 3
     case gif = 4
+
+    public var isAnimated: Bool { self != .png }
 }
 
 public struct MessageSticker: Identifiable, Codable, Hashable, Sendable {
