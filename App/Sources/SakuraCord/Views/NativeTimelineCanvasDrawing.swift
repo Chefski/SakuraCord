@@ -217,7 +217,6 @@ extension NativeTimelineCanvasView {
         reconcileBeginningSelectionOverlay()
         positionInlineVideoOverlays()
         reconcileVoiceMessageOverlay()
-        positionLottieStickerOverlays()
         reconcileActivityIndicators()
         positionSpoilerOverlays()
         componentChoiceOverlay?.repositionWithAnchor()
@@ -337,15 +336,12 @@ extension NativeTimelineCanvasView {
         suppressesHoverPresentation = true
         finishSendTransitions()
         // Pause native playback once without destroying its presentation.
-        // Recreating AVPlayer and Lottie overlays on each reconciliation
+        // Recreating AVPlayer overlays on each reconciliation
         // produced the benchmark's regular FAST/pause cadence, while removing
         // them made otherwise loaded videos and stickers blink out as soon as
         // scrolling began. Retaining the bounded overlays preserves their
         // current frames and avoids both costs.
         for overlay in inlineVideoOverlays.values {
-            overlay.pauseForScroll()
-        }
-        for overlay in lottieStickerOverlays.values {
             overlay.pauseForScroll()
         }
         for overlay in animatedMediaOverlays.values {
@@ -545,7 +541,6 @@ extension NativeTimelineCanvasView {
         positionAnimatedMediaOverlays()
         positionInlineVideoOverlays()
         reconcileVoiceMessageOverlay()
-        positionLottieStickerOverlays()
         reconcileActivityIndicators()
         positionSpoilerOverlays()
     }
@@ -594,10 +589,8 @@ extension NativeTimelineCanvasView {
             animatedMediaReconcileTask = nil
             animatedMediaRows.removeAll()
             inlineVideoRows.removeAll()
-            lottieStickerRows.removeAll()
             removeInlineVideoOverlays()
             removeVoiceMessageOverlay()
-            removeLottieStickerOverlays()
             removeAnimatedMediaOverlays()
             removeActivityIndicators()
             removeSpoilerOverlays()

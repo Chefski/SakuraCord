@@ -1112,6 +1112,12 @@ enum NativeTimelineMediaDecoder {
         _ data: Data,
         maximumPixelDimension: Int
     ) -> CGImage? {
+        if let lottie = LottieStickerFrameRenderer(
+            data: data,
+            maximumPixelDimension: maximumPixelDimension
+        ) {
+            return lottie.frame(at: 0)
+        }
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
             return nil
         }

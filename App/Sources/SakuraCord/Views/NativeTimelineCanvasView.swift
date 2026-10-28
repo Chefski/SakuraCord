@@ -57,18 +57,6 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
         let url: URL
     }
 
-    struct LottieStickerOverlayKey: Hashable {
-        let row: NativeMessageTimelineItem.Identifier
-        let stickerID: String
-        let url: URL
-    }
-
-    struct DesiredLottieStickerOverlay {
-        let key: LottieStickerOverlayKey
-        let frame: CGRect
-        let opacity: CGFloat
-    }
-
     enum AnimatedMediaOverlayRole: Hashable {
         case authorAvatar
         case authorAvatarDecoration
@@ -330,12 +318,8 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
         [NativeMessageTimelineItem.Identifier: Set<NativeTimelineMediaKey>] = [:]
     var inlineVideoRows:
         [NativeMessageTimelineItem.Identifier: Set<URL>] = [:]
-    var lottieStickerRows:
-        [NativeMessageTimelineItem.Identifier: Set<URL>] = [:]
     var inlineVideoOverlays:
         [InlineVideoOverlayKey: NativeTimelineInlineVideoOverlay] = [:]
-    var lottieStickerOverlays:
-        [LottieStickerOverlayKey: NativeTimelineLottieStickerOverlay] = [:]
     var animatedMediaOverlays:
         [AnimatedMediaOverlayKey: NativeTimelineAnimatedMediaOverlay] = [:]
     var voiceMessageOverlay: NativeTimelineVoiceMessageOverlay?

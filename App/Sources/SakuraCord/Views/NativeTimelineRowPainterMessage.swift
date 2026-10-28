@@ -693,11 +693,6 @@ extension NativeTimelineRowPainter {
             let sticker = message.stickers.indices.contains(index)
                 ? message.stickers[index]
                 : nil
-            if sticker?.format == .lottie {
-                // A bounded native Lottie overlay owns loading, playback, and
-                // reduced-motion presentation for this exact layout frame.
-                continue
-            }
             let image = sticker?.mediaURL.flatMap {
                 mediaImage(
                     for: .media($0, maximumPixelDimension: 384)

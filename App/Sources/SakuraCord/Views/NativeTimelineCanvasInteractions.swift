@@ -238,7 +238,7 @@ extension NativeTimelineCanvasView {
     ) {
         let message = row.message
         for sticker in message.stickers
-        where sticker.format == .apng || sticker.format == .gif {
+        where sticker.format == .apng || sticker.format == .gif || sticker.format == .lottie {
             if let url = sticker.mediaURL {
                 keys.insert(.media(url, maximumPixelDimension: 384))
             }
