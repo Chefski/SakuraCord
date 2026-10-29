@@ -16,6 +16,8 @@ final class AttachmentUploadProgressStore {
         /// attachments share.
         var fractions: [String: Double]
         var isDelivering = false
+        /// Storage accepted every file. Sent bytes alone do not prove that.
+        var isUploaded = false
     }
 
     private var uploads: [String: Upload] = [:]
@@ -58,6 +60,7 @@ final class AttachmentUploadProgressStore {
             upload.fractions[id] = max(current, min(1, Double(completed) / Double(total)))
         case .submitting:
             for id in upload.fractions.keys { upload.fractions[id] = 1 }
+            upload.isUploaded = true
         default:
             return
         }
@@ -68,7 +71,7 @@ final class AttachmentUploadProgressStore {
     /// Keeps the entry only when a file never reached storage.
     func fail(nonce: String) {
         guard let upload = uploads[nonce] else { return }
-        if upload.fractions.values.allSatisfy({ $0 >= 1 }) {
+        if upload.isUploaded {
             uploads[nonce] = nil
         } else {
             uploads[nonce]?.isDelivering = false

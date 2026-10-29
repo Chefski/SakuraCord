@@ -342,21 +342,23 @@ extension DiscordRESTProvider {
                 cancelledAttachmentUploads.remove(id)
             }
         }
-        // Stopping every file while the message waited sends nothing at all.
-        guard files.isEmpty || files.contains(where: { $0.id.map { !cancelledAttachmentUploads.contains($0) } ?? true }) else {
-            throw CancellationError()
-        }
+        // A file stopped while its message waited is never read, since its
+        // temporary copy may already be gone; stopping every file sends nothing.
+        let pending = files.enumerated().filter { $0.element.id.map { !cancelledAttachmentUploads.contains($0) } ?? true }
+        guard files.isEmpty || !pending.isEmpty else { throw CancellationError() }
         let generation = profileEditingGeneration
         let userID = currentUser?.id
         var prepared: [PreparedUploadFile] = []
         defer { prepared.forEach { $0.discard() } }
-        for file in files {
+        for (_, file) in pending {
             prepared.append(try await prepareUploadFile(file.url))
             try Task.checkCancellation()
             guard profileEditingGeneration == generation, currentUser?.id == userID else { throw ChatProviderError.unauthenticated }
         }
-        let files = zip(files, prepared).map {
-            AttachmentUploadFile(url: $1.url, name: $0.name, description: $0.description, id: $0.id)
+        // Progress keeps each file's position in the caller's list.
+        let fileIndices = pending.map(\.offset)
+        let files = zip(pending, prepared).map {
+            AttachmentUploadFile(url: $1.url, name: $0.element.name, description: $0.element.description, id: $0.element.id)
         }
         let descriptors = try attachmentReservationDescriptors(for: files)
         let reservation = try await reserveAttachmentSlots(
@@ -365,9 +367,9 @@ extension DiscordRESTProvider {
             fileCount: files.count,
             progress: progress
         )
-        let delegates = files.enumerated().map { index, file in
+        let delegates = zip(fileIndices, files).map { fileIndex, file in
             let delegate = AttachmentUploadTaskDelegate { sent, expected in
-                progress(.uploading(fileIndex: index, fileName: file.name, completed: sent, total: expected))
+                progress(.uploading(fileIndex: fileIndex, fileName: file.name, completed: sent, total: expected))
             }
             if let id = file.id {
                 attachmentUploadDelegates[id] = delegate
@@ -379,9 +381,10 @@ extension DiscordRESTProvider {
         let uploaded = try await withThrowingTaskGroup(of: (Int, JSONValue?).self) { group in
             for (index, (file, slot)) in zip(files, reservation.attachments).enumerated() {
                 let delegate = delegates[index]
+                let fileIndex = fileIndices[index]
                 group.addTask {
                     do {
-                        try await self.uploadAttachmentFile(file, to: slot, fileIndex: index, delegate: delegate, progress: progress)
+                        try await self.uploadAttachmentFile(file, to: slot, fileIndex: fileIndex, delegate: delegate, progress: progress)
                     } catch where delegate.isCancelled {
                         return (index, nil)
                     }

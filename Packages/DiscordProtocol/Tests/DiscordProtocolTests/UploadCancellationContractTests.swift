@@ -51,6 +51,32 @@ struct UploadCancellationContractTests {
         }
         #expect(HeldStorageURLProtocol.stoppedCount == expectedHeld)
     }
+
+    /// A file stopped while its message waits for its turn may already be
+    /// deleted, so the send must neither read nor reserve it.
+    @Test func fileStoppedBeforeItsTurnIsNeverRead() async throws {
+        HeldStorageURLProtocol.reset(holdsEveryUpload: false)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let kept = directory.appendingPathComponent("kept.bin")
+        try Data("kept".utf8).write(to: kept)
+        let files = [
+            AttachmentUploadFile(url: kept, name: "kept.bin", id: UUID()),
+            AttachmentUploadFile(url: directory.appendingPathComponent("stopped.bin"), name: "stopped.bin", id: UUID()),
+        ]
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [HeldStorageURLProtocol.self]
+        let provider = DiscordRESTProvider(
+            credentials: TestCredentialStore(), handle: CredentialHandle(accountID: "1"),
+            session: URLSession(configuration: configuration)
+        )
+        await provider.cancelAttachmentUpload(try #require(files[1].id))
+        let uploaded = try await provider.uploadAttachmentFiles(files, channelID: ChannelID(rawValue: 200), progress: { _ in })
+        #expect(HeldStorageURLProtocol.reservedNames == ["kept.bin"])
+        guard case let .object(payload) = uploaded.first, uploaded.count == 1 else { Issue.record("Missing kept attachment"); return }
+        #expect(payload["uploaded_filename"] == .string("kept-upload"))
+    }
 }
 
 /// Answers the reservation, completes the kept file's storage PUT, and holds
@@ -60,11 +86,13 @@ private final class HeldStorageURLProtocol: URLProtocol, @unchecked Sendable {
         var holdsEveryUpload = false
         var held = 0
         var stopped = 0
+        var reservedNames: [String] = []
     }
 
     private static let state = Mutex(State())
     static var heldCount: Int { state.withLock(\.held) }
     static var stoppedCount: Int { state.withLock(\.stopped) }
+    static var reservedNames: [String] { state.withLock(\.reservedNames) }
 
     static func reset(holdsEveryUpload: Bool) {
         state.withLock { $0 = State(holdsEveryUpload: holdsEveryUpload) }
@@ -84,18 +112,36 @@ private final class HeldStorageURLProtocol: URLProtocol, @unchecked Sendable {
             Self.state.withLock { $0.held += 1 }
             return
         }
-        let data = request.httpMethod == "POST"
-            ? Data(#"""
-            {"attachments":[
-              {"id":0,"upload_url":"https://upload.example/kept","upload_filename":"kept-upload"},
-              {"id":1,"upload_url":"https://upload.example/stopped","upload_filename":"stopped-upload"}
-            ]}
-            """#.utf8)
-            : Data()
+        var data = Data()
+        if request.httpMethod == "POST" {
+            let names = Self.reservedFilenames(in: request)
+            Self.state.withLock { $0.reservedNames = names }
+            let slots = names.enumerated().map { index, name in
+                let stem = (name as NSString).deletingPathExtension
+                return ["id": index, "upload_url": "https://upload.example/\(stem)", "upload_filename": "\(stem)-upload"] as [String: Any]
+            }
+            data = (try? JSONSerialization.data(withJSONObject: ["attachments": slots])) ?? Data()
+        }
         guard let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil) else { return }
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: data)
         client?.urlProtocolDidFinishLoading(self)
+    }
+
+    private static func reservedFilenames(in request: URLRequest) -> [String] {
+        var body = request.httpBody ?? Data()
+        if let stream = request.httpBodyStream {
+            stream.open()
+            defer { stream.close() }
+            var buffer = [UInt8](repeating: 0, count: 4096)
+            while stream.hasBytesAvailable {
+                let count = stream.read(&buffer, maxLength: buffer.count)
+                if count <= 0 { break }
+                body.append(buffer, count: count)
+            }
+        }
+        let files = (try? JSONSerialization.jsonObject(with: body) as? [String: Any])?["files"] as? [[String: Any]]
+        return files?.compactMap { $0["filename"] as? String } ?? []
     }
 
     override func stopLoading() {
