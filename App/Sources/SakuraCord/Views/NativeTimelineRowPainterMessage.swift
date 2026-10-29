@@ -1255,7 +1255,7 @@ extension NativeTimelineRowPainter {
             labelFrame.origin.x = max(frame.minX, pillLineEnd - labelFrame.width)
             labelFrame.size.width = pillLineEnd - labelFrame.minX
         }
-        let lineEnd = isUnread ? pillLineEnd : frame.maxX
+        let ruleEnd = isUnread ? pillLineEnd : frame.maxX
         if isUnread { drawNewMessagesPill(pill) }
         (isUnread ? MentionRed.nsColor : NSColor.labelColor.withAlphaComponent(0.16)).setFill()
         CGRect(
@@ -1275,7 +1275,7 @@ extension NativeTimelineRowPainter {
             y: frame.midY,
             width: max(
                 0,
-                lineEnd
+                ruleEnd
                     - labelFrame.maxX
                     - NativeTimelineDateSeparatorMetrics.lineSpacing
             ),
