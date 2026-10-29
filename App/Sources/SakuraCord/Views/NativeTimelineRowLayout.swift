@@ -193,6 +193,7 @@ struct NativeTimelineRowLayout {
     var forwardedSourceRegion: ForwardedSourceRegion?
     var linkedImageRegions: [LinkedImageRegion] = []
     var attachmentRegions: [AttachmentRegion] = []
+    var uploadRegions: [UploadRegion] = []
     var voiceMessageRegion: NativeTimelineVoiceMessageRegion?
     var embedFrames: [CGRect] = []
     var embedRegions: [EmbedRegion] = []
@@ -205,6 +206,11 @@ struct NativeTimelineRowLayout {
     var addReactionFrame: CGRect?
     var ephemeralRegion: EphemeralRegion?
     var failedFrame: CGRect?
+    var failedRetryFrame: CGRect?
+    /// Pointer targets for dismissing an ephemeral message, stopping an upload and retrying a failed send.
+    var deliveryActionFrames: [CGRect] {
+        [ephemeralRegion?.dismissFrame, failedRetryFrame].compactMap(\.self) + uploadRegions.map(\.cancelFrame)
+    }
     var pinnedAtFrame: CGRect?
     var pollLayout: NativeTimelinePollLayout?
     var pollResultFrame: CGRect?

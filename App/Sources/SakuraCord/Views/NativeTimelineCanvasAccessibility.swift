@@ -1012,6 +1012,28 @@ extension NativeTimelineCanvasView {
                 parent: parent
             ))
         }
+        if let frame = layout.failedRetryFrame {
+            children.append(accessibilityElement(
+                role: .button,
+                label: MessageOutboxPresentation.retryTitle,
+                frame: accessibilityChildFrame(frame, rowIndex: rowIndex),
+                parent: parent
+            ) { [weak self] in
+                self?.actions?.retry(message)
+                return true
+            })
+        }
+        for region in layout.uploadRegions {
+            children.append(accessibilityElement(
+                role: .button,
+                label: String(localized: "Cancel upload of \(region.title)"),
+                frame: accessibilityChildFrame(region.cancelFrame, rowIndex: rowIndex),
+                parent: parent
+            ) { [weak self] in
+                self?.model?.cancelAttachmentUpload(region.attachmentID, of: message)
+                return true
+            })
+        }
     }
 
     func appendTextAccessibility(

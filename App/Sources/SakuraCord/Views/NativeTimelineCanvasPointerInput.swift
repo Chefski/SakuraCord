@@ -108,9 +108,7 @@ extension NativeTimelineCanvasView {
                         cursor: .pointingHand
                     )
                 }
-                if let frame = layouts[index]
-                    .ephemeralRegion?.dismissFrame
-                {
+                for frame in layouts[index].deliveryActionFrames {
                     addCursorRect(
                         frame.offsetBy(dx: 0, dy: rowOrigin),
                         cursor: .pointingHand
@@ -509,6 +507,12 @@ extension NativeTimelineCanvasView {
         if layouts[index].translationRegion?.actionFrame?.contains(local) == true {
             return .init(messageID: messageID, kind: .translation)
         }
+        if let region = layouts[index].uploadRegions.first(where: { $0.cancelFrame.contains(local) }) {
+            return .init(messageID: messageID, kind: .cancelUpload(attachmentID: region.attachmentID))
+        }
+        if layouts[index].failedRetryFrame?.contains(local) == true {
+            return .init(messageID: messageID, kind: .retrySend)
+        }
         return nil
     }
 
@@ -729,6 +733,14 @@ extension NativeTimelineCanvasView {
         }
         if layout.translationRegion?.actionFrame?.contains(point) == true {
             model?.performMessageTranslationCaptionAction(row.message)
+            return true
+        }
+        if let region = layout.uploadRegions.first(where: { $0.cancelFrame.contains(point) }) {
+            model?.cancelAttachmentUpload(region.attachmentID, of: row.message)
+            return true
+        }
+        if layout.failedRetryFrame?.contains(point) == true {
+            actions?.retry(row.message)
             return true
         }
         if let tag = layout.serverTagRegion, tag.frame.contains(point),
@@ -1578,6 +1590,12 @@ extension NativeTimelineCanvasView {
         }
         if layout.translationRegion?.actionFrame?.contains(point) == true {
             return .translationAction(message.id)
+        }
+        if let region = layout.uploadRegions.first(where: { $0.cancelFrame.contains(point) }) {
+            return .cancelUpload(message.id, attachmentID: region.attachmentID)
+        }
+        if layout.failedRetryFrame?.contains(point) == true {
+            return .retrySend(message.id)
         }
         if let tag = layout.serverTagRegion, tag.frame.contains(point),
            let guildID = tag.presentation.identity.guildID {

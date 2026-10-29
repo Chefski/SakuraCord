@@ -94,6 +94,7 @@ extension NativeTimelineRowLayout {
             }
             let mediaFrames = layout.linkedImageRegions.map(\.frame)
                 + layout.attachmentRegions.map(\.frame)
+                + layout.uploadRegions.map(\.frame)
                 + [layout.voiceMessageRegion?.frame].compactMap { $0 }
                 + layout.embedFrames
                 + layout.stickerFrames
@@ -559,6 +560,19 @@ extension NativeTimelineRowLayout {
                     return
                 }
             }
+            if message.isUnconfirmedLocalSend, source?.attachmentUploads.tracks(nonce: message.nonce) == true {
+                if hasRichContent {
+                    verticalOffset += InterfaceScale.metric(8)
+                }
+                result.uploadRegions = NativeTimelineRowLayout.uploadRegions(
+                    for: message.attachments,
+                    origin: CGPoint(x: contentX, y: verticalOffset),
+                    maximumWidth: inlineMediaMaximumWidth
+                )
+                verticalOffset = result.uploadRegions.last?.frame.maxY ?? verticalOffset
+                hasRichContent = true
+                return
+            }
             if !usesComponentsV2, !message.attachments.isEmpty {
                 if hasRichContent {
                     verticalOffset += InterfaceScale.metric(8)
@@ -920,6 +934,18 @@ extension NativeTimelineRowLayout {
                     width: failureWidth,
                     height: failureHeight
                 )
+                if message.canRetrySending {
+                    let font = NSFont.interfacePreferredFont(forTextStyle: .caption2)
+                    let retryX = failureX + InterfaceScale.metric(16)
+                        + ceil(failureText.size().width) + InterfaceScale.metric(6)
+                    result.failedRetryFrame = CGRect(
+                        x: retryX,
+                        y: verticalOffset,
+                        width: min(NativeTimelineRowPainter.measuredTextWidth(MessageOutboxPresentation.retryTitle, font: font),
+                                   max(0, failureX + failureWidth - retryX)),
+                        height: failureHeight
+                    )
+                }
                 verticalOffset += failureHeight
             }
 

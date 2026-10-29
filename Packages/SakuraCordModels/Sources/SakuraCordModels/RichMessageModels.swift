@@ -673,7 +673,8 @@ public struct GIFPickerLanding: Codable, Hashable, Sendable {
 public enum MessageSendProgress: Equatable, Sendable {
     case preparing
     case reserving(files: Int)
-    case uploading(fileName: String, completed: Int64, total: Int64)
+    /// `fileIndex` is the file's position in the draft's attachments.
+    case uploading(fileIndex: Int, fileName: String, completed: Int64, total: Int64)
     case submitting
     case awaitingReconciliation(nonce: String)
     case completed(messageID: MessageID)
