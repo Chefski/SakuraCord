@@ -781,15 +781,18 @@ stops its PUT, or deletes the stored file with one `DELETE
 /attachments/{uploaded_filename}` attempt. The official client keeps a
 channel's staged files across conversation switches; SakuraCord clears the
 composer on a switch and so deletes them. A thread still being created stores
-its files at Send.
+its files at Send. With metadata removal off, files also wait for Send, since
+turning it on before then must still strip them.
 
 Files not stored early share one reservation at Send, then every storage PUT
 starts at once. Each file reports its own progress and can be stopped alone:
 its PUT is cancelled and the message is posted without it. Stopping every file
 posts nothing. The official client resumes a failed PUT by itself every few
 seconds; SakuraCord does not replay storage PUTs. A file whose early upload
-failed is stored again when the user sends, and a failed send's explicit Retry
-reserves and uploads again.
+failed is stored again when the user sends. A failed send keeps its stored files:
+the explicit Retry posts them again as they are, like the official client's
+resend, and discarding the message deletes them. Retry reserves and uploads only
+files that were not stored.
 
 Compression and external-host preferences live in **Settings → Features**;
 unavailable dependent controls remain visible but disabled. Both policies default

@@ -269,7 +269,11 @@ extension DiscordRESTProvider {
             messageSendTasks[key] = nil
             postingAttachmentUploads.subtract(draft.attachments.map(\.id))
         }
-        return try await task.value
+        let message = try await task.value
+        // The message now holds its files. A failed send keeps their early
+        // uploads, so Retry reuses them and discarding it deletes them.
+        for attachment in draft.attachments { attachmentPreuploads[attachment.id] = nil }
+        return message
     }
 
     func uploadAttachments(
@@ -338,13 +342,9 @@ extension DiscordRESTProvider {
         let isStopped = { (file: AttachmentUploadFile) in
             file.id.map(self.cancelledAttachmentUploads.contains) ?? false
         }
-        let ids = files.compactMap(\.id)
-        defer {
-            cancelledAttachmentUploads.subtract(ids)
-            for id in ids { attachmentPreuploads[id] = nil }
-        }
+        defer { cancelledAttachmentUploads.subtract(files.compactMap(\.id)) }
         // Files stored as they were attached go as they are. They stay listed
-        // until the send ends, so stopping one still reaches its early upload.
+        // until their message is posted, so stopping one still reaches it.
         let preuploads = files.map { $0.id.flatMap { attachmentPreuploads[$0] } }
         // A file stopped while its message waited is never read, since its
         // temporary copy may already be gone; stopping every file sends nothing.

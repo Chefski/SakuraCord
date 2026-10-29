@@ -215,12 +215,16 @@ extension AppModel {
 
     /// Like the first-party composer, starts storing checked files as soon as
     /// they are attached, so Send has only the message left to post. A thread
-    /// still being created has no channel to store them for yet.
+    /// still being created has no channel to store them for yet. With metadata
+    /// removal off, files wait for Send: turning it on before then must still
+    /// strip them, and a stored file cannot be prepared again.
     func preuploadComposerAttachments(
         _ attachments: [ForumPostAttachment],
         to destination: MessageComposerDestination
     ) {
-        guard case let .conversation(channelID) = attachmentComposerContext(for: destination) else { return }
+        guard privacySafetySettingsStore.load().removesMediaMetadata,
+              case let .conversation(channelID) = attachmentComposerContext(for: destination)
+        else { return }
         let provider = accountSession().provider
         for attachment in attachments {
             attachmentUploads.beginPreupload(attachment.id)
