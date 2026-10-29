@@ -408,6 +408,11 @@ extension NativeTimelineCanvasView {
             animation.toValue = targetOpacity
             animation.duration = duration
             animation.timingFunction = CAMediaTimingFunction(name: appearing ? .easeOut : .easeIn)
+            // A gap held for a send fades with it once the send lands.
+            if usesGap, let holdsUntil = unreadDividerGap?.holdsUntil {
+                animation.beginTime = layer.convertTime(holdsUntil, from: nil)
+                animation.fillMode = .backwards
+            }
             layer.add(animation, forKey: NativeTimelineUnreadDividerMotion.opacityKey)
         }
         // While it fades in, the row's own bitmap withholds the divider.

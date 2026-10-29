@@ -930,6 +930,12 @@ extension NativeTimelineCanvasView {
         !sendTransitions.isEmpty || isTranscriptGliding
     }
 
+    /// When the send motion on screen lands, while one is still running.
+    var sendMotionEndTime: CFTimeInterval? {
+        let end = (sendTransitions.map(\.endUptime) + [transcriptGlide?.endsAt].compactMap { $0 }).max()
+        return end.flatMap { $0 > CACurrentMediaTime() ? $0 : nil }
+    }
+
     var isTranscriptGliding: Bool {
         transcriptGlide.map { CACurrentMediaTime() < $0.endsAt } ?? false
     }

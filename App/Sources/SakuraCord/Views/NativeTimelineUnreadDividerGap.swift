@@ -104,6 +104,9 @@ struct NativeTimelineUnreadDividerGap {
     /// The closing author avatar's part below `snapshot`.
     let snapshotTail: NativeTimelineUnreadDividerSnapshot?
     var rowIndex: Int
+    /// A divider a send acknowledged stays open until the send lands, so the
+    /// message arrives where it was aimed before the space above it closes.
+    let holdsUntil: CFTimeInterval?
     var startUptime: TimeInterval?
     var frame: NativeTimelineUnreadDividerGapGeometry.Frame
 }
@@ -152,9 +155,9 @@ extension NativeTimelineCanvasView {
 
     /// Starts the divider's space opening or closing from the picture on
     /// screen before the update. Returns false when the change must apply
-    /// instantly: Reduce Motion, another motion running, the divider off
-    /// screen, a row that is new, or an update that moved more than the
-    /// divider's own space.
+    /// instantly: Reduce Motion, another motion running (a closing divider
+    /// waits out a send instead), the divider off screen, a row that is new,
+    /// or an update that moved more than the divider's own space.
     func beginUnreadDividerGap(
         from source: NativeTimelineUnreadDividerSource,
         appearing: Bool
@@ -162,8 +165,7 @@ extension NativeTimelineCanvasView {
         guard !unreadDividerReducesMotion,
               window != nil,
               rowDisclosure == nil,
-              sendTransitions.isEmpty,
-              !isTranscriptGliding,
+              !appearing || !sendTransitionBlocksInteractions,
               editingRowIndex == nil,
               let index = rowIndex(forIdentifier: source.identifier),
               layouts.indices.contains(index),
@@ -220,6 +222,7 @@ extension NativeTimelineCanvasView {
             snapshot: snapshot,
             snapshotTail: snapshotTail,
             rowIndex: index,
+            holdsUntil: appearing ? nil : sendMotionEndTime,
             frame: start
         )
         unreadDividerGapTicker.start(on: self) { [weak self] in self?.stepUnreadDividerGap() }
@@ -236,6 +239,7 @@ extension NativeTimelineCanvasView {
             finishUnreadDividerGap()
             return
         }
+        if let holdsUntil = gap.holdsUntil, CACurrentMediaTime() < holdsUntil { return }
         let now = ProcessInfo.processInfo.systemUptime
         let start = gap.startUptime ?? now
         gap.startUptime = start
