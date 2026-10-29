@@ -106,7 +106,12 @@ extension NativeTimelineRowPainter {
             color: secondary
         )
         if isFailed {
-            uploadFailure(in: region.statusFrame, color: isOutgoing ? foreground : .systemRed)
+            failureNotice(
+                String(localized: "Upload failed"),
+                in: region.statusFrame,
+                font: .interfacePreferredFont(forTextStyle: .caption1),
+                color: isOutgoing ? foreground : .systemRed
+            )
         } else {
             uploadProgressBar(
                 in: CGRect(
@@ -127,24 +132,6 @@ extension NativeTimelineRowPainter {
             color: isCancelHovered ? foreground : secondary,
             inset: 0,
             weight: .semibold
-        )
-    }
-
-    /// The failed-send footer's icon and wording, so the state reads without colour.
-    private static func uploadFailure(in frame: CGRect, color: NSColor) {
-        let iconSize = InterfaceScale.metric(12)
-        systemSymbol(
-            "exclamationmark.circle",
-            in: CGRect(x: frame.minX, y: frame.midY - iconSize / 2, width: iconSize, height: iconSize),
-            color: color,
-            inset: 0
-        )
-        let inset = InterfaceScale.metric(16)
-        text(
-            String(localized: "Upload failed"),
-            in: CGRect(x: frame.minX + inset, y: frame.minY, width: max(0, frame.width - inset), height: frame.height),
-            font: .interfacePreferredFont(forTextStyle: .caption1),
-            color: color
         )
     }
 

@@ -480,8 +480,10 @@ extension DiscordRESTProvider {
         guard !postingAttachmentUploads.contains(attachmentID) else { return false }
         cancelledAttachmentUploads.insert(attachmentID)
         attachmentUploadDelegates[attachmentID]?.cancel()
-        // Its early upload, if it has one, stops or leaves storage without holding up the stop.
-        Task { await discardPreuploadedAttachment(attachmentID) }
+        if attachmentPreuploads[attachmentID] != nil {
+            // Its early upload stops or leaves storage without holding up the stop.
+            Task { await discardPreuploadedAttachment(attachmentID) }
+        }
         return true
     }
 

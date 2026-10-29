@@ -220,11 +220,7 @@ extension AppModel {
         _ attachments: [ForumPostAttachment],
         to destination: MessageComposerDestination
     ) {
-        let channelID = switch destination {
-        case .channel: selectedChannelID
-        case .thread: threadCreation == nil ? openThread?.id : nil
-        }
-        guard let channelID else { return }
+        guard case let .conversation(channelID) = attachmentComposerContext(for: destination) else { return }
         let provider = accountSession().provider
         for attachment in attachments {
             attachmentUploads.beginPreupload(attachment.id)
@@ -241,7 +237,7 @@ extension AppModel {
     func discardPreuploads(_ attachmentIDs: [UUID]) {
         let provider = accountSession().provider
         for id in attachmentIDs {
-            attachmentUploads.endPreupload(id, stored: false)
+            attachmentUploads.forgetPreupload(id)
             Task { await provider.discardPreuploadedAttachment(id) }
         }
     }
@@ -277,11 +273,7 @@ extension AppModel {
         to destination: MessageComposerDestination,
         from conversationID: ChannelID?
     ) {
-        let currentConversationID = switch destination {
-        case .channel: selectedChannelID
-        case .thread: openThread?.id
-        }
-        guard currentConversationID == conversationID else {
+        guard attachmentComposerContext(for: destination) == conversationID.map(AttachmentComposerContext.conversation) else {
             discardPreuploads(attachments.map(\.id))
             return
         }

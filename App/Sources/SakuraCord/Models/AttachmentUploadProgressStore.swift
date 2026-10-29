@@ -21,11 +21,16 @@ final class AttachmentUploadProgressStore {
         var isUploaded = false
     }
 
+    /// A staged file's upload before its message is sent.
+    private enum Preupload: Equatable {
+        case sending(Double)
+        /// Storage accepted it, so its message posts it as it is.
+        case stored
+    }
+
     private var uploads: [String: Upload] = [:]
-    /// Staged files uploading before Send, by draft attachment ID.
-    private var preuploadFractions: [UUID: Double] = [:]
-    /// Staged files storage already accepted; their message posts them as they are.
-    private var storedPreuploads: Set<UUID> = []
+    /// By draft attachment ID.
+    private var preuploads: [UUID: Preupload] = [:]
 
     /// Whether the row of this local send shows upload cards.
     func tracks(nonce: String?) -> Bool {
@@ -44,39 +49,43 @@ final class AttachmentUploadProgressStore {
     }
 
     func beginPreupload(_ attachmentID: UUID) {
-        preuploadFractions[attachmentID] = 0
+        preuploads[attachmentID] = .sending(0)
     }
 
     /// A file whose message was already sent keeps that message's progress,
-    /// and one dropped from the composer is forgotten.
+    /// restarting it if the early upload failed.
     func endPreupload(_ attachmentID: UUID, stored: Bool) {
-        let wasUploading = preuploadFractions.removeValue(forKey: attachmentID) != nil
-        guard stored else {
-            storedPreuploads.remove(attachmentID)
-            // A sent file whose early upload failed is stored again from the start.
-            let id = attachmentID.uuidString
-            if let nonce = nonce(sending: id) {
-                uploads[nonce]?.fractions[id] = 0
-                notify(nonce: nonce, endsCancellation: false)
-            }
+        if stored {
+            if case .sending = preuploads[attachmentID] { preuploads[attachmentID] = .stored }
             return
         }
-        if wasUploading { storedPreuploads.insert(attachmentID) }
+        preuploads[attachmentID] = nil
+        // A sent file whose early upload failed is stored again from the start.
+        let id = attachmentID.uuidString
+        if let nonce = nonce(sending: id) {
+            uploads[nonce]?.fractions[id] = 0
+            notify(nonce: nonce, endsCancellation: false)
+        }
+    }
+
+    /// Drops a file removed before it was sent.
+    func forgetPreupload(_ attachmentID: UUID) {
+        preuploads[attachmentID] = nil
     }
 
     /// A send whose files are all stored already posts at once, without upload cards.
     func begin(_ draft: SendMessageDraft) {
         guard draft.voiceMessage == nil, !draft.attachments.isEmpty else { return }
         let ids = draft.attachments.map(\.id)
-        defer {
-            for id in ids {
-                preuploadFractions[id] = nil
-                storedPreuploads.remove(id)
+        defer { for id in ids { preuploads[id] = nil } }
+        guard ids.contains(where: { preuploads[$0] != .stored }) else { return }
+        uploads[draft.nonce] = Upload(fractions: Dictionary(uniqueKeysWithValues: ids.map { id in
+            let fraction: Double = switch preuploads[id] {
+            case .stored: 1
+            case let .sending(sent): sent
+            case nil: 0
             }
-        }
-        guard !ids.allSatisfy(storedPreuploads.contains) else { return }
-        uploads[draft.nonce] = Upload(fractions: Dictionary(uniqueKeysWithValues: ids.map {
-            ($0.uuidString, storedPreuploads.contains($0) ? 1 : preuploadFractions[$0] ?? 0)
+            return (id.uuidString, fraction)
         }))
     }
 
@@ -89,8 +98,8 @@ final class AttachmentUploadProgressStore {
             guard total > 0 else { return }
             let fraction = min(1, Double(completed) / Double(total))
             // Progress arrives on separate hops, so an older report can land late.
-            if let current = preuploadFractions[fileID] {
-                preuploadFractions[fileID] = max(current, fraction)
+            if case let .sending(current) = preuploads[fileID] {
+                preuploads[fileID] = .sending(max(current, fraction))
                 return
             }
             let id = fileID.uuidString
@@ -123,8 +132,7 @@ final class AttachmentUploadProgressStore {
 
     func reset() {
         uploads.removeAll()
-        preuploadFractions.removeAll()
-        storedPreuploads.removeAll()
+        preuploads.removeAll()
     }
 
     private func nonce(sending attachmentID: String) -> String? {
