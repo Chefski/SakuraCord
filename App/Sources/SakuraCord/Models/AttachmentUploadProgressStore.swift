@@ -15,7 +15,6 @@ final class AttachmentUploadProgressStore {
         /// Keyed by the draft attachment's ID, which the optimistic row's
         /// attachments share.
         var fractions: [String: Double]
-        var isDelivering = false
         /// Storage accepted every file. Sent bytes alone do not prove that.
         var isUploaded = false
     }
@@ -31,10 +30,10 @@ final class AttachmentUploadProgressStore {
         nonce.flatMap { uploads[$0]?.fractions[attachmentID] } ?? 0
     }
 
-    /// A file already in storage is part of the message being posted.
+    /// Once storage has every file, the message itself is being posted.
     func canCancel(nonce: String?, attachmentID: String) -> Bool {
-        guard let nonce, let upload = uploads[nonce], let fraction = upload.fractions[attachmentID] else { return false }
-        return !upload.isDelivering || fraction < 1
+        guard let nonce, let upload = uploads[nonce], upload.fractions[attachmentID] != nil else { return false }
+        return !upload.isUploaded
     }
 
     func begin(_ draft: SendMessageDraft) {
@@ -43,10 +42,6 @@ final class AttachmentUploadProgressStore {
             uniqueKeysWithValues: draft.attachments.map { ($0.id.uuidString, 0) }
         ))
         notify()
-    }
-
-    func setDelivering(_ isDelivering: Bool, nonce: String) {
-        uploads[nonce]?.isDelivering = isDelivering
     }
 
     func apply(_ progress: MessageSendProgress, to draft: SendMessageDraft) {
@@ -70,12 +65,8 @@ final class AttachmentUploadProgressStore {
 
     /// Keeps the entry only when a file never reached storage.
     func fail(nonce: String) {
-        guard let upload = uploads[nonce] else { return }
-        if upload.isUploaded {
-            uploads[nonce] = nil
-        } else {
-            uploads[nonce]?.isDelivering = false
-        }
+        guard uploads[nonce]?.isUploaded == true else { return }
+        uploads[nonce] = nil
         notify()
     }
 

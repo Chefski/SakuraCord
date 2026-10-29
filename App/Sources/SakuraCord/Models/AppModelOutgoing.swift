@@ -358,7 +358,6 @@ extension AppModel {
             stickers=\(outgoing.stickerIDs.count) retry=\(isRetry)
             """
         )
-        attachmentUploads.setDelivering(true, nonce: outgoing.nonce)
         do {
             let confirmed = try await session.provider.send(outgoing) { [weak self] progress in
                 Task { @MainActor in self?.attachmentUploads.apply(progress, to: outgoing) }

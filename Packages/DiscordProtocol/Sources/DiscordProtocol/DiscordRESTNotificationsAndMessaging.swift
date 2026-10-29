@@ -378,7 +378,7 @@ extension DiscordRESTProvider {
             return delegate
         }
         // Like the first-party uploader, every file goes to storage at once.
-        let uploaded = try await withThrowingTaskGroup(of: (Int, JSONValue?).self) { group in
+        let results = try await withThrowingTaskGroup(of: (Int, JSONValue?).self) { group in
             for (index, (file, slot)) in zip(files, reservation.attachments).enumerated() {
                 let delegate = delegates[index]
                 let fileIndex = fileIndices[index]
@@ -391,10 +391,12 @@ extension DiscordRESTProvider {
                     return (index, Self.uploadedAttachmentPayload(id: slot.id, file: file, uploadFilename: slot.uploadFilename))
                 }
             }
-            var uploaded = [JSONValue?](repeating: nil, count: files.count)
-            for try await (index, payload) in group { uploaded[index] = payload }
-            return uploaded.compactMap(\.self)
+            var results = [JSONValue?](repeating: nil, count: files.count)
+            for try await (index, payload) in group { results[index] = payload }
+            return results
         }
+        // A file stopped just as storage accepted it stays out of the message too.
+        let uploaded = zip(results, delegates).compactMap { payload, delegate in delegate.isCancelled ? nil : payload }
         // Stopping every file stops the message, as the first-party upload card's cancel does.
         guard files.isEmpty || !uploaded.isEmpty else { throw CancellationError() }
         return uploaded
