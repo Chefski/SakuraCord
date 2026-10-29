@@ -106,7 +106,7 @@ struct NativeTimelineUnreadDividerGap {
     var rowIndex: Int
     /// A divider a send acknowledged stays open until the send lands, so the
     /// message arrives where it was aimed before the space above it closes.
-    let holdsUntil: CFTimeInterval?
+    var waitsForSend: Bool
     var startUptime: TimeInterval?
     var frame: NativeTimelineUnreadDividerGapGeometry.Frame
 }
@@ -222,7 +222,7 @@ extension NativeTimelineCanvasView {
             snapshot: snapshot,
             snapshotTail: snapshotTail,
             rowIndex: index,
-            holdsUntil: appearing ? nil : sendMotionEndTime,
+            waitsForSend: !appearing && sendTransitionBlocksInteractions,
             frame: start
         )
         unreadDividerGapTicker.start(on: self) { [weak self] in self?.stepUnreadDividerGap() }
@@ -239,7 +239,16 @@ extension NativeTimelineCanvasView {
             finishUnreadDividerGap()
             return
         }
-        if let holdsUntil = gap.holdsUntil, CACurrentMediaTime() < holdsUntil { return }
+        if gap.waitsForSend {
+            guard !sendTransitionBlocksInteractions else { return }
+            gap.waitsForSend = false
+            unreadDividerGap = gap
+            if let fade = unreadDividerFades[gap.identifier] {
+                beginUnreadDividerFade(
+                    identifier: gap.identifier, frameInRow: fade.frameInRow, appearing: false, usesGap: true
+                )
+            }
+        }
         let now = ProcessInfo.processInfo.systemUptime
         let start = gap.startUptime ?? now
         gap.startUptime = start
