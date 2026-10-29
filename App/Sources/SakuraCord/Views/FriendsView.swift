@@ -232,7 +232,16 @@ private struct AddFriendView: View {
         let canSend = hasUsername && !friends.isSendingRequest
             && friends.addFriendNote.utf16.count <= FriendRequestNote.maximumLength
         return HStack(spacing: InterfaceScale.metric(8)) {
-            TextField("Enter a username", text: $friends.addFriendText)
+            // A single-line plain field draws its placeholder a point away from where its
+            // field editor does, so the native placeholder jumps when the field gains focus.
+            TextField(text: $friends.addFriendText, prompt: Text(verbatim: "")) { Text("Enter a username") }
+                .overlay(alignment: .leading) {
+                    Text("Enter a username")
+                        .foregroundStyle(Color(nsColor: .placeholderTextColor))
+                        .opacity(friends.addFriendText.isEmpty ? 1 : 0)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
                 .textFieldStyle(.plain)
                 .tint(SakuraCordAccentColor.color)
                 .focused($focusedField, equals: .username)
