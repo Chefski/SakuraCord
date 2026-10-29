@@ -271,8 +271,8 @@ private struct AddFriendView: View {
         }
         .padding(InterfaceScale.metric(6))
         .frame(minHeight: InterfaceScale.metric(46))
-        .contentShape(Rectangle())
-        .onTapGesture { focusFromPadding(.username) }
+        // Behind the field, so clicks inside its text stay with the native editor.
+        .background { Color.clear.contentShape(Rectangle()).onTapGesture { focusFromPadding(.username) } }
     }
 
     private func noteField(friends: FriendsState) -> some View {
@@ -292,8 +292,8 @@ private struct AddFriendView: View {
         }
         .padding(.horizontal, InterfaceScale.metric(14))
         .padding(.vertical, InterfaceScale.metric(12))
-        .contentShape(Rectangle())
-        .onTapGesture { focusFromPadding(.note) }
+        // Behind the field, so clicks inside its text stay with the native editor.
+        .background { Color.clear.contentShape(Rectangle()).onTapGesture { focusFromPadding(.note) } }
     }
 
     /// A click in a field's padding focuses that field. ProfileEditorFocusDismissal
