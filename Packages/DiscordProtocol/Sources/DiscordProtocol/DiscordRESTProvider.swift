@@ -122,6 +122,7 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
     var messageSendTasks: [String: Task<Message, Error>] = [:]
     var attachmentUploadDelegates: [UUID: AttachmentUploadTaskDelegate] = [:]
     var cancelledAttachmentUploads: Set<UUID> = []
+    var postingAttachmentUploads: Set<UUID> = []
     var cachedForumPosts: [ChannelID: [ChannelID: ForumPost]] = [:]
     var cachedForumThreadOrder: [ChannelID] = []
     var cachedJoinedThreads: [ChannelID: MessageThreadSummary] = [:]

@@ -186,7 +186,8 @@ public protocol ChatProvider: Sendable {
         async throws -> Message
     /// Stops one file of a send in progress, by its draft attachment ID. The
     /// message goes without it, or not at all once every file is stopped.
-    func cancelAttachmentUpload(_ attachmentID: UUID) async
+    /// Returns false when the file can no longer leave the message.
+    func cancelAttachmentUpload(_ attachmentID: UUID) async -> Bool
     func setPollAnswers(_ answerIDs: [Int], messageID: MessageID, channelID: ChannelID) async throws
     func pollVoters(messageID: MessageID, channelID: ChannelID, answerID: Int, after: UserID?, limit: Int) async throws -> MessagePeoplePage
     func endPoll(messageID: MessageID, channelID: ChannelID) async throws -> Message
@@ -748,7 +749,7 @@ public extension ChatProvider {
         return message
     }
 
-    func cancelAttachmentUpload(_ attachmentID: UUID) async {}
+    func cancelAttachmentUpload(_ attachmentID: UUID) async -> Bool { true }
 
     func forward(_ draft: ForwardMessageDraft) async throws -> Message {
         throw ChatProviderError.capabilityDisabled(.messageForwarding)

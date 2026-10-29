@@ -1028,19 +1028,7 @@ extension NativeTimelineCanvasView {
                 return true
             })
         }
-        for region in layout.uploadRegions
-            where model?.attachmentUploads.canCancel(nonce: message.nonce, attachmentID: region.attachmentID) == true
-        {
-            children.append(accessibilityElement(
-                role: .button,
-                label: String(localized: "Cancel upload of \(region.title)"),
-                frame: accessibilityChildFrame(region.cancelFrame, rowIndex: rowIndex),
-                parent: parent
-            ) { [weak self] in
-                self?.model?.cancelAttachmentUpload(region.attachmentID, of: message)
-                return true
-            })
-        }
+        appendUploadAccessibility(to: &children, message: message, layout: layout, rowIndex: rowIndex, parent: parent)
     }
 
     func appendTextAccessibility(

@@ -911,19 +911,28 @@ extension NativeTimelineRowLayout {
                 {
                     verticalOffset += InterfaceScale.metric(4)
                 }
+                let font = NSFont.interfacePreferredFont(forTextStyle: .caption2)
+                let failureText = NSAttributedString(
+                    string: MessageOutboxPresentation.failureText(for: message),
+                    attributes: [.font: font]
+                )
+                let retryWidth = message.canRetrySending
+                    ? NativeTimelineRowLayout.measuredTextWidth(MessageOutboxPresentation.retryTitle, font: font)
+                    : 0
+                // Retry follows the notice after the icon's column and a word gap.
+                let labelsWidth = InterfaceScale.metric(16)
+                    + NativeTimelineRowLayout.measuredTextWidth(failureText.string, font: font)
+                    + (message.canRetrySending ? InterfaceScale.metric(6) + retryWidth : 0)
                 // The notice is below the bubble, so short message content
-                // must not squeeze a moderation explanation into that bubble.
-                let failureWidth = usesBubbles && message.sendFailure != nil
+                // must not squeeze it into that bubble.
+                let failureWidth = usesBubbles
                     ? max(contentWidth, min(
+                        labelsWidth,
                         NativeTimelineBubbleLayout.maximumContentWidth(availableWidth: width),
                         isOutgoingBubble ? contentX + contentWidth - horizontalInset : ordinaryContentWidth
                     ))
                     : contentWidth
                 let failureX = isOutgoingBubble ? contentX + contentWidth - failureWidth : contentX
-                let failureText = NSAttributedString(
-                    string: MessageOutboxPresentation.failureText(for: message),
-                    attributes: [.font: NSFont.interfacePreferredFont(forTextStyle: .caption2)]
-                )
                 let failureHeight = max(InterfaceScale.metric(14), ceil(failureText.boundingRect(
                     with: CGSize(width: max(1, failureWidth - InterfaceScale.metric(16)), height: .greatestFiniteMagnitude),
                     options: [.usesLineFragmentOrigin, .usesFontLeading]
@@ -935,15 +944,11 @@ extension NativeTimelineRowLayout {
                     height: failureHeight
                 )
                 if message.canRetrySending {
-                    // Retry follows "Failed" after the icon's column and a word gap.
-                    let font = NSFont.interfacePreferredFont(forTextStyle: .caption2)
-                    let retryX = failureX + InterfaceScale.metric(16)
-                        + NativeTimelineRowLayout.measuredTextWidth(failureText.string, font: font) + InterfaceScale.metric(6)
+                    let retryX = failureX + labelsWidth - retryWidth
                     result.failedRetryFrame = CGRect(
                         x: retryX,
                         y: verticalOffset,
-                        width: min(NativeTimelineRowLayout.measuredTextWidth(MessageOutboxPresentation.retryTitle, font: font),
-                                   max(0, failureX + failureWidth - retryX)),
+                        width: min(retryWidth, max(0, failureX + failureWidth - retryX)),
                         height: failureHeight
                     )
                 }
