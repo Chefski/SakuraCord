@@ -100,6 +100,14 @@ struct CommandInvocationPopover: View {
     }
 
     var body: some View {
+        CommandLineLayout(maximumWidth: InterfaceScale.metric(326)) { content }
+        .padding(.vertical, InterfaceScale.metric(8))
+        .padding(.horizontal, InterfaceScale.metric(12))
+        // The popover first measures the spinner; let it grow to the command.
+        .onChange(of: entry?.isLoading != false) { presentationContext?.contentSizeDidChange?() }
+    }
+
+    private var content: some View {
         Group {
             switch entry {
             case let .loaded(data):
@@ -113,13 +121,6 @@ struct CommandInvocationPopover: View {
         }
         .font(.interface(.body))
         .textSelection(.enabled)
-        // Discord's 350-point bubble: one line when it fits, wrapped beyond.
-        .frame(maxWidth: InterfaceScale.metric(326), alignment: .leading)
-        .fixedSize()
-        .padding(.vertical, InterfaceScale.metric(8))
-        .padding(.horizontal, InterfaceScale.metric(12))
-        // The popover first measures the spinner; let it grow to the command.
-        .onChange(of: entry?.isLoading != false) { presentationContext?.contentSizeDidChange?() }
     }
 
     private func commandText(_ data: MessageInteractionData) -> AttributedString {
@@ -145,8 +146,9 @@ struct CommandInvocationPopover: View {
         case .user: "<@\(value)>"
         case .channel: "<#\(value)>"
         case .role: "<@&\(value)>"
+        // Like Discord, a mentionable is a role when one is known by that ID, otherwise a user.
         case .mentionable:
-            UserID(value).flatMap { model.mentionUser($0, in: message) } != nil ? "<@\(value)>" : "<@&\(value)>"
+            RoleID(value).flatMap { model.mentionRole($0, in: message) } != nil ? "<@&\(value)>" : "<@\(value)>"
         default: nil
         }
         if type == .attachment { return AttributedString("[attachment]") }
@@ -156,5 +158,22 @@ struct CommandInvocationPopover: View {
         styled.foregroundColor = SakuraCordAccentColor.color
         styled.backgroundColor = SakuraCordAccentColor.color.opacity(0.16)
         return styled
+    }
+}
+
+/// Discord's 350-point bubble: one line when the command fits, wrapped beyond.
+/// The width ignores the proposal, which is still the spinner's size when the
+/// command arrives.
+private struct CommandLineLayout: Layout {
+    let maximumWidth: CGFloat
+
+    func sizeThatFits(proposal _: ProposedViewSize, subviews: Subviews, cache _: inout ()) -> CGSize {
+        guard let content = subviews.first else { return .zero }
+        let width = min(content.sizeThatFits(.unspecified).width, maximumWidth)
+        return CGSize(width: width, height: content.sizeThatFits(ProposedViewSize(width: width, height: nil)).height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal _: ProposedViewSize, subviews: Subviews, cache _: inout ()) {
+        subviews.first?.place(at: bounds.origin, proposal: ProposedViewSize(width: bounds.width, height: nil))
     }
 }
