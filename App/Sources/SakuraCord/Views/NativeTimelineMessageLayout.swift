@@ -916,13 +916,12 @@ extension NativeTimelineRowLayout {
                     string: MessageOutboxPresentation.failureText(for: message),
                     attributes: [.font: font]
                 )
+                let noticeWidth = InterfaceScale.metric(16) + NativeTimelineRowLayout.measuredTextWidth(failureText.string, font: font)
                 let retryWidth = message.canRetrySending
                     ? NativeTimelineRowLayout.measuredTextWidth(MessageOutboxPresentation.retryTitle, font: font)
                     : 0
                 // Retry follows the notice after the icon's column and a word gap.
-                let labelsWidth = InterfaceScale.metric(16)
-                    + NativeTimelineRowLayout.measuredTextWidth(failureText.string, font: font)
-                    + (message.canRetrySending ? InterfaceScale.metric(6) + retryWidth : 0)
+                let labelsWidth = noticeWidth + (message.canRetrySending ? InterfaceScale.metric(6) + retryWidth : 0)
                 // The notice is below the bubble, so short message content
                 // must not squeeze it into that bubble.
                 let failureWidth = usesBubbles
@@ -944,7 +943,7 @@ extension NativeTimelineRowLayout {
                     height: failureHeight
                 )
                 if message.canRetrySending {
-                    let retryX = failureX + labelsWidth - retryWidth
+                    let retryX = failureX + noticeWidth + InterfaceScale.metric(6)
                     result.failedRetryFrame = CGRect(
                         x: retryX,
                         y: verticalOffset,

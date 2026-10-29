@@ -162,6 +162,7 @@ extension NativeTimelineCanvasView {
         rowIndex: Int,
         parent: NSAccessibilityElement
     ) {
+        guard !layout.uploadRegions.isEmpty else { return }
         let uploadStatus = message.outboxState == .failed ? String(localized: "Upload failed") : String(localized: "Uploading")
         for region in layout.uploadRegions {
             children.append(accessibilityElement(

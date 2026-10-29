@@ -749,7 +749,7 @@ public extension ChatProvider {
         return message
     }
 
-    func cancelAttachmentUpload(_ attachmentID: UUID) async -> Bool { true }
+    func cancelAttachmentUpload(_ attachmentID: UUID) async -> Bool { false }
 
     func forward(_ draft: ForwardMessageDraft) async throws -> Message {
         throw ChatProviderError.capabilityDisabled(.messageForwarding)

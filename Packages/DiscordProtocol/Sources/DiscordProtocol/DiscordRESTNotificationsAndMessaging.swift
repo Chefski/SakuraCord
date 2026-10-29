@@ -263,6 +263,8 @@ extension DiscordRESTProvider {
             try await performSend(draft, progress: progress)
         }
         messageSendTasks[key] = task
+        // Cleared in the job that answers the caller, so no stop is accepted
+        // between the post finishing and the caller learning of it.
         defer {
             messageSendTasks[key] = nil
             postingAttachmentUploads.subtract(draft.attachments.map(\.id))
