@@ -10,10 +10,6 @@ final class MessageInteractionDataStore {
         case loading
         case loaded(MessageInteractionData)
         case failed
-
-        var isLoading: Bool {
-            if case .loading = self { true } else { false }
-        }
     }
 
     var entries: [MessageID: Entry] = [:]
@@ -30,10 +26,6 @@ extension AppModel {
         switch store.entries[message.id] {
         case .loading, .loaded: return
         case .failed, nil: break
-        }
-        if store.entries.count >= 64,
-           let evicted = store.entries.first(where: { !$0.value.isLoading })?.key {
-            store.entries[evicted] = nil
         }
         store.entries[message.id] = .loading
         startAccountChildTask(account: accountSession()) { model, account in

@@ -44,24 +44,22 @@ struct MessageInteractionDataDTO: Decodable {
     ) -> [MessageInteractionData.Option] {
         values.map { value in
             let definition = definitions.first { $0.name == value.name }
+            let type = ApplicationCommandOptionType(rawValue: value.type)
             return MessageInteractionData.Option(
                 name: definition?.displayName ?? value.name,
-                type: ApplicationCommandOptionType(rawValue: value.type),
-                value: value.value.flatMap { displayValue($0, choices: definition?.choices ?? []) },
+                type: type,
+                value: value.value.flatMap { displayValue($0, type: type, choices: definition?.choices ?? []) },
                 options: options(value.options ?? [], definitions: definition?.options ?? [])
             )
         }
     }
 
-    private static func displayValue(_ value: JSONValue, choices: [ApplicationCommandChoice]) -> String? {
-        let choice = choices.first {
-            switch $0.value {
-            case let .string(choice): value == .string(choice)
-            case let .integer(choice): value == .number(Double(choice))
-            case let .number(choice): value == .number(choice)
-            }
-        }
-        if let choice { return choice.displayName }
+    private static func displayValue(
+        _ value: JSONValue, type: ApplicationCommandOptionType, choices: [ApplicationCommandChoice]
+    ) -> String? {
+        // Normalize like registered choices so integer and number values compare alike.
+        let normalized = ApplicationCommandIndexDecoder.ChoiceDTO(name: "", value: value).domain(optionType: type)?.value
+        if let choice = choices.first(where: { $0.value == normalized }) { return choice.displayName }
         return switch value {
         case let .string(value): value
         case let .number(value): Int64(exactly: value).map(String.init) ?? String(value)

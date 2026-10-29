@@ -30,8 +30,9 @@ extension NativeTimelineCanvasView {
         closeMessageProfilePopover()
         closeServerTagPopover()
         model.loadMessageInteractionData(for: message)
+        let messageID = message.id
         let anchor = StablePopoverAnchor(sourceView: self) { [weak self] in
-            guard let self, let index = self.visibleMessageRowIndex(for: message.id),
+            guard let self, let index = self.visibleMessageRowIndex(for: messageID),
                   let pill = layouts[index].commandInvocationRegion?.pillFrame
             else { return nil }
             return pill.offsetBy(dx: 0, dy: displayedRowOrigin(at: index))
@@ -83,7 +84,7 @@ extension StablePopoverConfiguration {
             behavior: .transient,
             animates: true,
             ignoresMouseEvents: false,
-            contentSizing: .constrained(CGSize(width: InterfaceScale.metric(350), height: InterfaceScale.metric(400))),
+            contentSizing: .constrained(CommandInvocationPopover.bubbleSize),
             stabilizesInitialContentSize: false
         )
     }
@@ -91,6 +92,10 @@ extension StablePopoverConfiguration {
 
 /// The command as typed, opened from the indicator above a bot's reply.
 struct CommandInvocationPopover: View {
+    /// Discord's bubble; a longer command wraps, then scrolls, inside it.
+    static var bubbleSize: CGSize { CGSize(width: InterfaceScale.metric(350), height: InterfaceScale.metric(400)) }
+    private static var insets: CGSize { CGSize(width: InterfaceScale.metric(12), height: InterfaceScale.metric(8)) }
+
     let model: AppModel
     let message: Message
     @Environment(\.stablePopoverPresentationContext) private var presentationContext
@@ -100,13 +105,16 @@ struct CommandInvocationPopover: View {
     }
 
     var body: some View {
-        CommandLineLayout(maximumSize: CGSize(width: InterfaceScale.metric(326), height: InterfaceScale.metric(384))) {
+        let insets = Self.insets
+        CommandLineLayout(maximumSize: CGSize(
+            width: Self.bubbleSize.width - 2 * insets.width, height: Self.bubbleSize.height - 2 * insets.height
+        )) {
             ScrollView { content }
         }
-        .padding(.vertical, InterfaceScale.metric(8))
-        .padding(.horizontal, InterfaceScale.metric(12))
-        // The popover first measures the spinner; let it grow to the command.
-        .onChange(of: entry?.isLoading != false) { presentationContext?.contentSizeDidChange?() }
+        // The popover first measures the spinner; follow the command as it arrives.
+        .onGeometryChange(for: CGSize.self, of: \.size) { _ in presentationContext?.contentSizeDidChange?() }
+        .padding(.horizontal, insets.width)
+        .padding(.vertical, insets.height)
     }
 
     private var content: some View {
@@ -144,6 +152,7 @@ struct CommandInvocationPopover: View {
     }
 
     private func valueText(_ value: String, type: ApplicationCommandOptionType) -> AttributedString {
+        if type == .attachment { return AttributedString("[attachment]") }
         let token: String? = switch type {
         case .user: "<@\(value)>"
         case .channel: "<#\(value)>"
@@ -153,7 +162,6 @@ struct CommandInvocationPopover: View {
             RoleID(value).flatMap { model.mentionRole($0, in: message) } != nil ? "<@&\(value)>" : "<@\(value)>"
         default: nil
         }
-        if type == .attachment { return AttributedString("[attachment]") }
         guard let mention = token.flatMap(RenderedMention.init(rawToken:)) else { return AttributedString(value) }
         let label = model.mentionPresentation(mention, in: message).label
         var styled = AttributedString(type == .channel ? "#\(label)" : label)
@@ -163,9 +171,9 @@ struct CommandInvocationPopover: View {
     }
 }
 
-/// Discord's 350-point bubble: one line when the command fits, wrapped beyond,
-/// scrolling past the popover's height. The size ignores the proposal, which is
-/// still the spinner's size when the command arrives.
+/// One line when the command fits, wrapped beyond, scrolling past the maximum
+/// height. The size ignores the proposal, which is still the spinner's size
+/// when the command arrives.
 private struct CommandLineLayout: Layout {
     let maximumSize: CGSize
 
