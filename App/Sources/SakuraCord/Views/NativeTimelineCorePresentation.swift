@@ -71,7 +71,6 @@ enum NativeTimelineDateSeparatorMetrics {
 enum NativeTimelineUnreadSeparatorMetrics {
     static var rowHeight: CGFloat { InterfaceScale.metric(29) }
     static var capsuleHeight: CGFloat { InterfaceScale.metric(19) }
-    static var verticalPadding: CGFloat { InterfaceScale.metric(5) }
 }
 
 /// Text rules for the timeline thread card, matching Discord's client.
