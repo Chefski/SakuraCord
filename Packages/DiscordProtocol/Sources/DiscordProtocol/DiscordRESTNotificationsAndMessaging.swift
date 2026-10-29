@@ -338,9 +338,14 @@ extension DiscordRESTProvider {
         let isStopped = { (file: AttachmentUploadFile) in
             file.id.map(self.cancelledAttachmentUploads.contains) ?? false
         }
-        defer { cancelledAttachmentUploads.subtract(files.compactMap(\.id)) }
-        // Files stored as they were attached go as they are.
-        let preuploads = files.map { $0.id.flatMap { attachmentPreuploads.removeValue(forKey: $0) } }
+        let ids = files.compactMap(\.id)
+        defer {
+            cancelledAttachmentUploads.subtract(ids)
+            for id in ids { attachmentPreuploads[id] = nil }
+        }
+        // Files stored as they were attached go as they are. They stay listed
+        // until the send ends, so stopping one still reaches its early upload.
+        let preuploads = files.map { $0.id.flatMap { attachmentPreuploads[$0] } }
         // A file stopped while its message waited is never read, since its
         // temporary copy may already be gone; stopping every file sends nothing.
         let pending = files.indices.filter { !isStopped(files[$0]) }
