@@ -358,7 +358,7 @@ extension NativeTimelineCanvasView {
         return frameInRow.offsetBy(dx: 0, dy: displayedRowOrigin(at: index))
     }
 
-    private func beginUnreadDividerFade(
+    func beginUnreadDividerFade(
         identifier: NativeMessageTimelineItem.Identifier,
         frameInRow: CGRect,
         appearing: Bool,
@@ -418,12 +418,14 @@ extension NativeTimelineCanvasView {
                 self?.finishUnreadDividerFade(identifier)
             }
         )
+        // A divider waiting for its send stays solid until the send lands.
+        let waits = usesGap && !appearing && unreadDividerGap?.waitsForSend == true
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         overlay.frame = frame
-        overlay.alphaValue = CGFloat(targetOpacity)
-        if let layer = overlay.layer {
-            layer.removeAnimation(forKey: NativeTimelineUnreadDividerMotion.opacityKey)
+        overlay.alphaValue = CGFloat(waits ? startOpacity : targetOpacity)
+        overlay.layer?.removeAnimation(forKey: NativeTimelineUnreadDividerMotion.opacityKey)
+        if !waits, let layer = overlay.layer {
             let animation = CABasicAnimation(keyPath: "opacity")
             animation.fromValue = startOpacity
             animation.toValue = targetOpacity
@@ -547,7 +549,9 @@ extension NativeMessageTimelineCoordinator {
             || newParent.presentationRevision != presentationRevision
             || conversationChanged
         guard changes else {
-            if reflowsRows { canvas.finishUnreadDividerGap() }
+            // A divider waiting for its send stays open through the send's
+            // own row updates; its rows are found again by identity.
+            if reflowsRows, canvas.unreadDividerGap?.waitsForSend != true { canvas.finishUnreadDividerGap() }
             return nil
         }
         let change = NativeTimelineUnreadDividerChange(
