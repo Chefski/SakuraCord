@@ -117,57 +117,47 @@ struct CommandInvocationPopover: View {
         .padding(.vertical, insets.height)
     }
 
-    private var content: some View {
-        Group {
-            switch entry {
-            case let .loaded(data):
-                Text(commandText(data))
-            // Discord keeps loading when it cannot read the options; the name alone invents nothing.
-            case .failed:
-                Text(verbatim: "/\(message.interactionMetadata?.displayName ?? "command")")
-            case .loading, nil:
-                ProgressView().controlSize(.small)
-            }
-        }
-        .font(.interface(.body))
-        .textSelection(.enabled)
-    }
-
-    private func commandText(_ data: MessageInteractionData) -> AttributedString {
-        var text = AttributedString("/\(data.commandName)")
-        append(data.options, to: &text)
-        return text
-    }
-
-    private func append(_ options: [MessageInteractionData.Option], to text: inout AttributedString) {
-        for option in options {
-            if option.type.isStructural {
-                text += AttributedString(" \(option.name)")
-                append(option.options, to: &text)
-                continue
-            }
-            text += AttributedString(" \(option.name): ")
-            if let value = option.value { text += valueText(value, type: option.type) }
+    @ViewBuilder private var content: some View {
+        switch entry {
+        case let .loaded(data):
+            commandText("/" + DiscordMarkdown.escaped(data.commandName) + optionsSource(data.options))
+        // Discord keeps loading when it cannot read the options; the name alone invents nothing.
+        case .failed:
+            commandText("/" + DiscordMarkdown.escaped(message.interactionMetadata?.displayName ?? "command"))
+        case .loading, nil:
+            ProgressView().controlSize(.small)
         }
     }
 
-    private func valueText(_ value: String, type: ApplicationCommandOptionType) -> AttributedString {
-        if type == .attachment { return AttributedString("[attachment]") }
-        let token: String? = switch type {
+    /// Drawn by the message text renderer, so mentions are the timeline's pills.
+    private func commandText(_ source: String) -> some View {
+        CustomEmojiRichText(
+            model: model,
+            content: source,
+            emojiSize: InterfaceScale.metric(22),
+            mentionPresentation: MessageMentionResolver(model: model, message: message).presentation
+        )
+    }
+
+    private func optionsSource(_ options: [MessageInteractionData.Option]) -> String {
+        options.map { option in
+            let name = " " + DiscordMarkdown.escaped(option.name)
+            if option.type.isStructural { return name + optionsSource(option.options) }
+            return name + "\\: " + (option.value.map { valueSource($0, type: option.type) } ?? "")
+        }.joined()
+    }
+
+    private func valueSource(_ value: String, type: ApplicationCommandOptionType) -> String {
+        switch type {
+        case .attachment: DiscordMarkdown.escaped("[attachment]")
         case .user: "<@\(value)>"
         case .channel: "<#\(value)>"
         case .role: "<@&\(value)>"
         // Like Discord, a mentionable is a role when one is known by that ID, otherwise a user.
         case .mentionable:
             RoleID(value).flatMap { model.mentionRole($0, in: message) } != nil ? "<@&\(value)>" : "<@\(value)>"
-        default: nil
+        default: DiscordMarkdown.escaped(value)
         }
-        guard let mention = token.flatMap(RenderedMention.init(rawToken:)) else { return AttributedString(value) }
-        let label = model.mentionPresentation(mention, in: message).label
-        var styled = AttributedString(type == .channel ? "#\(label)" : label)
-        styled.foregroundColor = SakuraCordAccentColor.color
-        styled.backgroundColor = SakuraCordAccentColor.color.opacity(0.16)
-        return styled
     }
 }
 

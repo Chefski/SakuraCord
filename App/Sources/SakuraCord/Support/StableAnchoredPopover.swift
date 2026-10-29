@@ -319,7 +319,13 @@ final class StablePopoverAnchorTracker {
 @MainActor
 private func applyPopoverContentSize<Content: View>(_ size: CGSize, to popover: NSPopover, hostingController: NSHostingController<Content>) {
     if hostingController.view.frame.size != size { hostingController.view.frame.size = size }
-    if popover.contentSize != size { popover.contentSize = size }
+    guard popover.contentSize != size else { return }
+    // An animated resize grows a shown bubble to one side of its anchor, then
+    // slides it back; resize at once and let the presenter re-center it.
+    let animates = popover.animates
+    if popover.isShown { popover.animates = false }
+    popover.contentSize = size
+    popover.animates = animates
 }
 
 @MainActor
@@ -551,7 +557,12 @@ struct StableAnchoredPopoverPresenter<Content: View>: NSViewRepresentable {
                 return
             }
             let presentationContext = StablePopoverPresentationContext()
-            presentationContext.contentSizeDidChange = { [weak self] in self?.scheduleRefresh() }
+            // Resize in the same pass, before AppKit draws the bubble grown to one side
+            // of its anchor; the later refresh measures state set by the caller.
+            presentationContext.contentSizeDidChange = { [weak self] in
+                self?.refreshPresentation()
+                self?.scheduleRefresh()
+            }
             presentationContext.dismiss = { [weak self] in
                 self?.dismissPresentation()
             }
@@ -667,6 +678,7 @@ struct StableAnchoredPopoverPresenter<Content: View>: NSViewRepresentable {
                   let visibleFrame = visibleScreenFrame(for: sourceFrame)
             else { return }
 
+            let shownContentSize = popover.isShown ? popover.contentSize : nil
             let initialSize: CGSize
             switch configuration.contentSizing {
             case let .fixed(size):
@@ -704,10 +716,12 @@ struct StableAnchoredPopoverPresenter<Content: View>: NSViewRepresentable {
             let anchorView = anchorTracker.anchorView
             guard anchorView.window != nil, !anchorView.bounds.isEmpty else { return }
             // Re-presenting an already shown popover interrupts native scroll elasticity.
-            // Reposition only when the anchor actually moves or the preferred edge changes.
-            if !popover.isShown || presentedEdge != placement.edge || presentedAnchorFrame != sourceFrame {
+            // Reposition only when the anchor moves, the preferred edge changes, or a
+            // resize left the bubble off-center: AppKit keeps a resized popover's origin.
+            let resized = shownContentSize.map { $0 != popover.contentSize } ?? false
+            if !popover.isShown || resized || presentedEdge != placement.edge || presentedAnchorFrame != sourceFrame {
                 let animates = configuration.animates && AppMotionPolicy.animates(.overlays)
-                if popover.isShown, configuration.reusesPresentationOnIdentityChange {
+                if popover.isShown, resized || configuration.reusesPresentationOnIdentityChange {
                     popover.animates = false
                 }
                 popover.show(relativeTo: anchorView.bounds, of: anchorView, preferredEdge: placement.edge)
