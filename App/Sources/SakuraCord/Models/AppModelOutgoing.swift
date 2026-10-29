@@ -40,6 +40,7 @@ extension AppModel {
         outgoing.attachments.removeAll { $0.id == id }
         if outgoing.attachments.isEmpty {
             composer.outbox.draftsByNonce[nonce] = nil
+            composer.outbox.withdrawWaitingDelivery(nonce: nonce)
             attachmentUploads.finish(nonce: nonce)
             removeOutgoingMessage(nonce: nonce, channelID: message.channelID)
         } else {

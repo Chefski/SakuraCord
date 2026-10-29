@@ -231,6 +231,12 @@ struct OutgoingMessageState {
         deliveryTail = delivery
     }
 
+    /// A withdrawn send stops counting against the queue limit before its turn,
+    /// which then delivers nothing.
+    mutating func withdrawWaitingDelivery(nonce: String) {
+        waitingNonces.remove(nonce)
+    }
+
     /// Leaves the waiting set; returns whether the send was confirmed meanwhile.
     mutating func beginDelivery(for turn: DeliveryTurn) -> Bool {
         guard turn.generation == deliveryGeneration else { return false }
