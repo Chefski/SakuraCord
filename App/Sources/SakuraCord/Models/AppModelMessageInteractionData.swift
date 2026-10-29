@@ -37,8 +37,14 @@ extension AppModel {
             } catch {
                 entry = .failed
             }
-            guard model.isCurrentAccountSession(account), !Task.isCancelled else { return }
-            model.messageInteractionData.entries[message.id] = entry
+            let store = model.messageInteractionData
+            guard model.isCurrentAccountSession(account), !Task.isCancelled else {
+                // A discarded read must not leave the pill loading for good;
+                // the next open reads again.
+                if case .loading? = store.entries[message.id] { store.entries[message.id] = nil }
+                return
+            }
+            store.entries[message.id] = entry
         }
     }
 }
