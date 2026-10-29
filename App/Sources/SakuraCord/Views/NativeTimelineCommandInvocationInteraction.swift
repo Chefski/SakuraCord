@@ -100,7 +100,9 @@ struct CommandInvocationPopover: View {
     }
 
     var body: some View {
-        CommandLineLayout(maximumWidth: InterfaceScale.metric(326)) { content }
+        CommandLineLayout(maximumSize: CGSize(width: InterfaceScale.metric(326), height: InterfaceScale.metric(384))) {
+            ScrollView { content }
+        }
         .padding(.vertical, InterfaceScale.metric(8))
         .padding(.horizontal, InterfaceScale.metric(12))
         // The popover first measures the spinner; let it grow to the command.
@@ -161,19 +163,20 @@ struct CommandInvocationPopover: View {
     }
 }
 
-/// Discord's 350-point bubble: one line when the command fits, wrapped beyond.
-/// The width ignores the proposal, which is still the spinner's size when the
-/// command arrives.
+/// Discord's 350-point bubble: one line when the command fits, wrapped beyond,
+/// scrolling past the popover's height. The size ignores the proposal, which is
+/// still the spinner's size when the command arrives.
 private struct CommandLineLayout: Layout {
-    let maximumWidth: CGFloat
+    let maximumSize: CGSize
 
     func sizeThatFits(proposal _: ProposedViewSize, subviews: Subviews, cache _: inout ()) -> CGSize {
         guard let content = subviews.first else { return .zero }
-        let width = min(content.sizeThatFits(.unspecified).width, maximumWidth)
-        return CGSize(width: width, height: content.sizeThatFits(ProposedViewSize(width: width, height: nil)).height)
+        let width = min(content.sizeThatFits(.unspecified).width, maximumSize.width)
+        let height = content.sizeThatFits(ProposedViewSize(width: width, height: nil)).height
+        return CGSize(width: width, height: min(height, maximumSize.height))
     }
 
     func placeSubviews(in bounds: CGRect, proposal _: ProposedViewSize, subviews: Subviews, cache _: inout ()) {
-        subviews.first?.place(at: bounds.origin, proposal: ProposedViewSize(width: bounds.width, height: nil))
+        subviews.first?.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size))
     }
 }
