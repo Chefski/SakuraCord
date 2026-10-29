@@ -789,10 +789,12 @@ starts at once. Each file reports its own progress and can be stopped alone:
 its PUT is cancelled and the message is posted without it. Stopping every file
 posts nothing. The official client resumes a failed PUT by itself every few
 seconds; SakuraCord does not replay storage PUTs. A file whose early upload
-failed is stored again when the user sends. A failed send keeps its stored files:
-the explicit Retry posts them again as they are, like the official client's
-resend, and discarding the message deletes them. Retry reserves and uploads only
-files that were not stored.
+failed is stored again when the user sends. A failed send keeps every file it
+stored: the explicit Retry posts them again as they are, like the official
+client's resend, and discarding the message deletes them. A post Discord
+rejects (4xx; an expired stored file answers 400 with code 50146, "Uploaded
+file not found") drops them instead, so Retry stores the files again. The
+official client then only asks the user to remove and re-add the file.
 
 Compression and external-host preferences live in **Settings → Features**;
 unavailable dependent controls remain visible but disabled. Both policies default

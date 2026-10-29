@@ -269,9 +269,22 @@ extension DiscordRESTProvider {
             messageSendTasks[key] = nil
             postingAttachmentUploads.subtract(draft.attachments.map(\.id))
         }
-        let message = try await task.value
-        // The message now holds its files. A failed send keeps their early
-        // uploads, so Retry reuses them and discarding it deletes them.
+        let message: Message
+        do {
+            message = try await task.value
+        } catch {
+            // Discord rejects a stored file it no longer has (code 50146 once it
+            // expires), so after a rejected post Retry stores the files again.
+            if case let ChatProviderError.transport(status, _) = error, (400 ..< 500).contains(status), status != 429 {
+                for attachment in draft.attachments {
+                    Task { await discardPreuploadedAttachment(attachment.id) }
+                }
+            }
+            throw error
+        }
+        // The message now holds its files. Any other failed send keeps them,
+        // so Retry reuses them, as the official resend does, and discarding
+        // the message deletes them.
         for attachment in draft.attachments { attachmentPreuploads[attachment.id] = nil }
         return message
     }
@@ -372,6 +385,11 @@ extension DiscordRESTProvider {
         failed.removeAll { isStopped(files[$0]) }
         let retried = try await storeAttachmentFiles(failed.map { files[$0] }, channelID: channelID, progress: progress)
         for (index, name) in zip(failed, retried) { names[index] = name }
+        // Kept like an early upload until the message is posted, so a failed
+        // send's Retry reuses the stored file and discarding it deletes it.
+        for index in fresh + failed {
+            if let id = files[index].id, let name = names[index] { attachmentPreuploads[id] = Task { name } }
+        }
         // A file stopped just as storage accepted it stays out of the message too.
         let uploaded = pending.compactMap { index in
             names[index].flatMap { isStopped(files[index]) ? nil : (files[index], $0) }
