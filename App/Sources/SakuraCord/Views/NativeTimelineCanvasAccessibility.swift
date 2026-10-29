@@ -1023,7 +1023,9 @@ extension NativeTimelineCanvasView {
                 return true
             })
         }
-        for region in layout.uploadRegions {
+        for region in layout.uploadRegions
+            where model?.attachmentUploads.canCancel(nonce: message.nonce, attachmentID: region.attachmentID) == true
+        {
             children.append(accessibilityElement(
                 role: .button,
                 label: String(localized: "Cancel upload of \(region.title)"),
