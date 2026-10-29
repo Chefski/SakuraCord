@@ -1904,8 +1904,9 @@ extension NativeMessageTimelineCoordinator {
                 bottomInset: bottomInset, verticalPadding: ChatDetailLayoutPolicy.timelineTopPadding
             )
             return TimelineScrollState(
-                // Short content rests at the reserve's edge, short of the unread distance.
-                isNearTop: contentFitsViewport
+                // Short content rests at the reserve's edge, short of the unread distance. A
+                // failed page waits for the reader, as its loader's height can flip the fit.
+                isNearTop: contentFitsViewport && !parent.earlierHistoryLoadFailed
                     || visibleRect.minY - leadingHistoryReserve < prefetchDistance(.earlier),
                 isNearBottom:
                     isAtDocumentBottom
