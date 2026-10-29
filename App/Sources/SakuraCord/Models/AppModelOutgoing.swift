@@ -37,10 +37,8 @@ extension AppModel {
         let session = accountSession()
         Task {
             // Storage can accept the last file before the stop arrives; the message then keeps it.
-            guard await session.provider.cancelAttachmentUpload(id),
-                  isCurrentAccountSession(session),
-                  attachmentUploads.canCancel(nonce: nonce, attachmentID: attachmentID)
-            else { return }
+            // An accepted stop already left the post, so a retry must not bring the file back.
+            guard await session.provider.cancelAttachmentUpload(id), isCurrentAccountSession(session) else { return }
             removeOutgoingAttachment(id, nonce: nonce, channelID: message.channelID)
         }
     }
