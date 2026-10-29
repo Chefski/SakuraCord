@@ -28,9 +28,8 @@ extension AppModel {
     func cancelAttachmentUpload(_ attachmentID: String, of message: Message) {
         guard let nonce = message.nonce,
               var outgoing = composer.outbox.draftsByNonce[nonce],
-              let id = UUID(uuidString: attachmentID),
-              outgoing.attachments.contains(where: { $0.id == id }),
-              attachmentUploads.canCancel(nonce: nonce, attachmentID: attachmentID)
+              attachmentUploads.canCancel(nonce: nonce, attachmentID: attachmentID),
+              let id = UUID(uuidString: attachmentID)
         else { return }
         // A failed send keeps no transfer; its retry starts from the edited draft.
         if outgoingState(nonce: nonce, channelID: message.channelID) != .failed {
@@ -365,7 +364,7 @@ extension AppModel {
         )
         do {
             let confirmed = try await session.provider.send(outgoing) { [weak self] progress in
-                Task { @MainActor in self?.attachmentUploads.apply(progress, to: outgoing) }
+                Task { @MainActor in self?.attachmentUploads.apply(progress, nonce: outgoing.nonce) }
             }
             guard isCurrentAccountSession(session) else { return false }
             attachmentUploads.finish(nonce: outgoing.nonce)

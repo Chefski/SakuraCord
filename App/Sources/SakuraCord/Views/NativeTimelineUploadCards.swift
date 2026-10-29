@@ -87,8 +87,8 @@ extension NativeTimelineRowPainter {
         // The name truncates first so the size always stays readable.
         let font = NSFont.interfacePreferredFont(forTextStyle: .body)
         let detail = " — " + region.detail
-        let detailWidth = min(measuredTextWidth(detail, font: font), region.titleFrame.width)
-        let titleWidth = min(measuredTextWidth(region.title, font: font), region.titleFrame.width - detailWidth)
+        let detailWidth = min(NativeTimelineRowLayout.measuredTextWidth(detail, font: font), region.titleFrame.width)
+        let titleWidth = min(NativeTimelineRowLayout.measuredTextWidth(region.title, font: font), region.titleFrame.width - detailWidth)
         var titleFrame = region.titleFrame
         titleFrame.size.width = titleWidth
         text(region.title, in: titleFrame, font: font, color: .labelColor)
@@ -155,14 +155,20 @@ extension NativeTimelineRowPainter {
 
 extension NativeTimelineCanvasView {
     @objc func attachmentUploadsDidChange(_ notification: Notification) {
-        guard let uploads = model?.attachmentUploads, notification.object as AnyObject === uploads else { return }
-        // Cached bitmaps outlive navigation, so repaint every cached row that can show progress.
-        let identifiers = bitmapCache.compactMap { identifier, cached in
-            uploads.tracks(nonce: cached.item.messageRow?.message.nonce) ? identifier : nil
+        guard notification.object as AnyObject === model?.attachmentUploads,
+              let nonce = notification.userInfo?[AttachmentUploadProgressStore.nonceKey] as? String
+        else { return }
+        // Cached bitmaps outlive navigation, so drop this send's row wherever it was cached.
+        for (identifier, cached) in bitmapCache where cached.item.messageRow?.message.nonce == nonce {
+            invalidateBitmap(identifier)
         }
-        identifiers.forEach(invalidateBitmap)
-        if !identifiers.isEmpty || layouts.contains(where: { !$0.uploadRegions.isEmpty }) {
-            setNeedsDisplay(visibleRect)
+        if var index = rowIndex(at: max(0, visibleRect.minY)) {
+            while items.indices.contains(index), displayedRowOrigin(at: index) < visibleRect.maxY {
+                if items[index].messageRow?.message.nonce == nonce { setNeedsDisplay(rowFrame(at: index)) }
+                index += 1
+            }
+        }
+        if notification.userInfo?[AttachmentUploadProgressStore.endsCancellationKey] as? Bool == true {
             reconcileAccessibilityProxiesIfActive()
         }
     }

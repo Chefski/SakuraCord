@@ -344,21 +344,19 @@ extension DiscordRESTProvider {
         }
         // A file stopped while its message waited is never read, since its
         // temporary copy may already be gone; stopping every file sends nothing.
-        let pending = files.enumerated().filter { $0.element.id.map { !cancelledAttachmentUploads.contains($0) } ?? true }
+        let pending = files.filter { $0.id.map { !cancelledAttachmentUploads.contains($0) } ?? true }
         guard files.isEmpty || !pending.isEmpty else { throw CancellationError() }
         let generation = profileEditingGeneration
         let userID = currentUser?.id
         var prepared: [PreparedUploadFile] = []
         defer { prepared.forEach { $0.discard() } }
-        for (_, file) in pending {
+        for file in pending {
             prepared.append(try await prepareUploadFile(file.url))
             try Task.checkCancellation()
             guard profileEditingGeneration == generation, currentUser?.id == userID else { throw ChatProviderError.unauthenticated }
         }
-        // Progress keeps each file's position in the caller's list.
-        let fileIndices = pending.map(\.offset)
         let files = zip(pending, prepared).map {
-            AttachmentUploadFile(url: $1.url, name: $0.element.name, description: $0.element.description, id: $0.element.id)
+            AttachmentUploadFile(url: $1.url, name: $0.name, description: $0.description, id: $0.id)
         }
         let descriptors = try attachmentReservationDescriptors(for: files)
         let reservation = try await reserveAttachmentSlots(
@@ -367,9 +365,9 @@ extension DiscordRESTProvider {
             fileCount: files.count,
             progress: progress
         )
-        let delegates = zip(fileIndices, files).map { fileIndex, file in
+        let delegates = files.map { file in
             let delegate = AttachmentUploadTaskDelegate { sent, expected in
-                progress(.uploading(fileIndex: fileIndex, fileName: file.name, completed: sent, total: expected))
+                progress(.uploading(fileID: file.id, fileName: file.name, completed: sent, total: expected))
             }
             if let id = file.id {
                 attachmentUploadDelegates[id] = delegate
@@ -381,10 +379,9 @@ extension DiscordRESTProvider {
         let results = try await withThrowingTaskGroup(of: (Int, JSONValue?).self) { group in
             for (index, (file, slot)) in zip(files, reservation.attachments).enumerated() {
                 let delegate = delegates[index]
-                let fileIndex = fileIndices[index]
                 group.addTask {
                     do {
-                        try await self.uploadAttachmentFile(file, to: slot, fileIndex: fileIndex, delegate: delegate, progress: progress)
+                        try await self.uploadAttachmentFile(file, to: slot, delegate: delegate, progress: progress)
                     } catch where delegate.isCancelled {
                         return (index, nil)
                     }
@@ -466,7 +463,6 @@ extension DiscordRESTProvider {
     func uploadAttachmentFile(
         _ file: AttachmentUploadFile,
         to slot: AttachmentSlotDTO,
-        fileIndex: Int = 0,
         delegate: AttachmentUploadTaskDelegate? = nil,
         progress: @escaping @Sendable (MessageSendProgress) -> Void
     ) async throws {
@@ -481,7 +477,7 @@ extension DiscordRESTProvider {
             if accessed { fileURL.stopAccessingSecurityScopedResource() }
         }
         let total = ((try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size]) as? NSNumber)?.int64Value ?? 0
-        progress(.uploading(fileIndex: fileIndex, fileName: file.name, completed: 0, total: total))
+        progress(.uploading(fileID: file.id, fileName: file.name, completed: 0, total: total))
         let response = try await performStorageUpload(
             fileURL: fileURL, uploadURL: uploadURL, contentType: "application/octet-stream",
             diagnosticTransport: "attachment_storage", diagnosticPath: "/attachments/\(slot.id)",
@@ -491,7 +487,7 @@ extension DiscordRESTProvider {
             throw apiDiagnostics.coalescing(ChatProviderError.invalidRequest(
                 "Discord's attachment storage rejected \(file.name)."), with: response)
         }
-        progress(.uploading(fileIndex: fileIndex, fileName: file.name, completed: total, total: total))
+        progress(.uploading(fileID: file.id, fileName: file.name, completed: total, total: total))
     }
 
     func performStorageUpload(

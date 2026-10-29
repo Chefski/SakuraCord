@@ -27,7 +27,8 @@ final class AttachmentUploadProgressStore {
     }
 
     func fraction(nonce: String?, attachmentID: String) -> Double {
-        nonce.flatMap { uploads[$0]?.fractions[attachmentID] } ?? 0
+        guard let upload = nonce.flatMap({ uploads[$0] }) else { return 0 }
+        return upload.isUploaded ? 1 : upload.fractions[attachmentID] ?? 0
     }
 
     /// Once storage has every file, the message itself is being posted.
@@ -41,50 +42,55 @@ final class AttachmentUploadProgressStore {
         uploads[draft.nonce] = Upload(fractions: Dictionary(
             uniqueKeysWithValues: draft.attachments.map { ($0.id.uuidString, 0) }
         ))
-        notify()
     }
 
-    func apply(_ progress: MessageSendProgress, to draft: SendMessageDraft) {
-        guard var upload = uploads[draft.nonce] else { return }
+    /// Progress leaves the message unchanged, so only these updates notify;
+    /// every other change here accompanies a change to the message itself.
+    func apply(_ progress: MessageSendProgress, nonce: String) {
+        guard uploads[nonce] != nil else { return }
         switch progress {
-        case let .uploading(fileIndex, _, completed, total):
-            guard draft.attachments.indices.contains(fileIndex), total > 0 else { return }
-            let id = draft.attachments[fileIndex].id.uuidString
+        case let .uploading(fileID?, _, completed, total):
+            let id = fileID.uuidString
             // Progress arrives on separate hops, so an older report can land late.
-            guard let current = upload.fractions[id] else { return }
-            upload.fractions[id] = max(current, min(1, Double(completed) / Double(total)))
+            guard total > 0, let current = uploads[nonce]?.fractions[id] else { return }
+            let fraction = min(1, Double(completed) / Double(total))
+            guard fraction > current else { return }
+            uploads[nonce]?.fractions[id] = fraction
+            notify(nonce: nonce, endsCancellation: false)
         case .submitting:
-            for id in upload.fractions.keys { upload.fractions[id] = 1 }
-            upload.isUploaded = true
+            uploads[nonce]?.isUploaded = true
+            notify(nonce: nonce, endsCancellation: true)
         default:
             return
         }
-        uploads[draft.nonce] = upload
-        notify()
     }
 
     /// Keeps the entry only when a file never reached storage.
     func fail(nonce: String) {
-        guard uploads[nonce]?.isUploaded == true else { return }
-        uploads[nonce] = nil
-        notify()
+        if uploads[nonce]?.isUploaded == true { uploads[nonce] = nil }
     }
 
     func remove(attachmentID: String, nonce: String) {
         uploads[nonce]?.fractions[attachmentID] = nil
-        notify()
     }
 
     func finish(nonce: String) {
-        guard uploads.removeValue(forKey: nonce) != nil else { return }
-        notify()
+        uploads[nonce] = nil
     }
 
     func reset() {
         uploads.removeAll()
     }
 
-    private func notify() {
-        NotificationCenter.default.post(name: Self.didChange, object: self)
+    private func notify(nonce: String, endsCancellation: Bool) {
+        NotificationCenter.default.post(
+            name: Self.didChange,
+            object: self,
+            userInfo: [Self.nonceKey: nonce, Self.endsCancellationKey: endsCancellation]
+        )
     }
+
+    static let nonceKey = "nonce"
+    /// Set when the send's files can no longer be stopped.
+    static let endsCancellationKey = "endsCancellation"
 }

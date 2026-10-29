@@ -207,9 +207,14 @@ struct NativeTimelineRowLayout {
     var ephemeralRegion: EphemeralRegion?
     var failedFrame: CGRect?
     var failedRetryFrame: CGRect?
-    /// Pointer targets for dismissing an ephemeral message, stopping an upload and retrying a failed send.
-    var deliveryActionFrames: [CGRect] {
-        [ephemeralRegion?.dismissFrame, failedRetryFrame].compactMap(\.self) + uploadRegions.map(\.cancelFrame)
+    /// A local send's upload cancels and its failed-send Retry.
+    var deliveryActions: [(frame: CGRect, kind: NativeTimelineFooterActionTarget.Kind)] {
+        uploadRegions.map { ($0.cancelFrame, .cancelUpload(attachmentID: $0.attachmentID)) }
+            + [failedRetryFrame.map { ($0, .retrySend) }].compactMap(\.self)
+    }
+
+    func deliveryAction(at point: CGPoint) -> NativeTimelineFooterActionTarget.Kind? {
+        deliveryActions.first { $0.frame.contains(point) }?.kind
     }
     var pinnedAtFrame: CGRect?
     var pollLayout: NativeTimelinePollLayout?

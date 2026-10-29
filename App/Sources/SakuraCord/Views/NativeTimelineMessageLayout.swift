@@ -935,13 +935,14 @@ extension NativeTimelineRowLayout {
                     height: failureHeight
                 )
                 if message.canRetrySending {
+                    // Retry follows "Failed" after the icon's column and a word gap.
                     let font = NSFont.interfacePreferredFont(forTextStyle: .caption2)
                     let retryX = failureX + InterfaceScale.metric(16)
-                        + ceil(failureText.size().width) + InterfaceScale.metric(6)
+                        + NativeTimelineRowLayout.measuredTextWidth(failureText.string, font: font) + InterfaceScale.metric(6)
                     result.failedRetryFrame = CGRect(
                         x: retryX,
                         y: verticalOffset,
-                        width: min(NativeTimelineRowPainter.measuredTextWidth(MessageOutboxPresentation.retryTitle, font: font),
+                        width: min(NativeTimelineRowLayout.measuredTextWidth(MessageOutboxPresentation.retryTitle, font: font),
                                    max(0, failureX + failureWidth - retryX)),
                         height: failureHeight
                     )

@@ -29,10 +29,7 @@ struct UploadCancellationContractTests {
             try await provider.uploadAttachmentFiles(files, channelID: ChannelID(rawValue: 200), progress: { _ in })
         }
         let expectedHeld = stopsEveryFile ? 2 : 1
-        for _ in 0 ..< 200 where HeldStorageURLProtocol.heldCount < expectedHeld {
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        #expect(HeldStorageURLProtocol.heldCount == expectedHeld)
+        #expect(await eventually { HeldStorageURLProtocol.heldCount == expectedHeld })
         for file in stopsEveryFile ? files : [files[1]] {
             await provider.cancelAttachmentUpload(try #require(file.id))
         }
@@ -46,10 +43,7 @@ struct UploadCancellationContractTests {
             #expect(payload["uploaded_filename"] == .string("kept-upload"))
         }
         // URLSession stops the protocol after it completes the cancelled task.
-        for _ in 0 ..< 200 where HeldStorageURLProtocol.stoppedCount < expectedHeld {
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        #expect(HeldStorageURLProtocol.stoppedCount == expectedHeld)
+        #expect(await eventually { HeldStorageURLProtocol.stoppedCount == expectedHeld })
     }
 
     /// A file stopped while its message waits for its turn may already be

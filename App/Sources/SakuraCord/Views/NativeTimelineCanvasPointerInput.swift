@@ -108,7 +108,9 @@ extension NativeTimelineCanvasView {
                         cursor: .pointingHand
                     )
                 }
-                for frame in layouts[index].deliveryActionFrames {
+                for frame in [layouts[index].ephemeralRegion?.dismissFrame].compactMap(\.self)
+                    + layouts[index].deliveryActions.map(\.frame)
+                {
                     addCursorRect(
                         frame.offsetBy(dx: 0, dy: rowOrigin),
                         cursor: .pointingHand
@@ -507,13 +509,7 @@ extension NativeTimelineCanvasView {
         if layouts[index].translationRegion?.actionFrame?.contains(local) == true {
             return .init(messageID: messageID, kind: .translation)
         }
-        if let region = layouts[index].uploadRegions.first(where: { $0.cancelFrame.contains(local) }) {
-            return .init(messageID: messageID, kind: .cancelUpload(attachmentID: region.attachmentID))
-        }
-        if layouts[index].failedRetryFrame?.contains(local) == true {
-            return .init(messageID: messageID, kind: .retrySend)
-        }
-        return nil
+        return layouts[index].deliveryAction(at: local).map { .init(messageID: messageID, kind: $0) }
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -735,13 +731,15 @@ extension NativeTimelineCanvasView {
             model?.performMessageTranslationCaptionAction(row.message)
             return true
         }
-        if let region = layout.uploadRegions.first(where: { $0.cancelFrame.contains(point) }) {
-            model?.cancelAttachmentUpload(region.attachmentID, of: row.message)
+        switch layout.deliveryAction(at: point) {
+        case let .cancelUpload(attachmentID):
+            model?.cancelAttachmentUpload(attachmentID, of: row.message)
             return true
-        }
-        if layout.failedRetryFrame?.contains(point) == true {
+        case .retrySend:
             actions?.retry(row.message)
             return true
+        default:
+            break
         }
         if let tag = layout.serverTagRegion, tag.frame.contains(point),
            let guildID = tag.presentation.identity.guildID {
@@ -1591,11 +1589,8 @@ extension NativeTimelineCanvasView {
         if layout.translationRegion?.actionFrame?.contains(point) == true {
             return .translationAction(message.id)
         }
-        if let region = layout.uploadRegions.first(where: { $0.cancelFrame.contains(point) }) {
-            return .cancelUpload(message.id, attachmentID: region.attachmentID)
-        }
-        if layout.failedRetryFrame?.contains(point) == true {
-            return .retrySend(message.id)
+        if let kind = layout.deliveryAction(at: point) {
+            return .deliveryAction(message.id, kind)
         }
         if let tag = layout.serverTagRegion, tag.frame.contains(point),
            let guildID = tag.presentation.identity.guildID {
