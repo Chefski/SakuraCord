@@ -163,6 +163,7 @@ extension NativeTimelineCanvasView {
         identifiers.forEach(invalidateBitmap)
         if !identifiers.isEmpty || layouts.contains(where: { !$0.uploadRegions.isEmpty }) {
             setNeedsDisplay(visibleRect)
+            reconcileAccessibilityProxiesIfActive()
         }
     }
 }

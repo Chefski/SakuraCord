@@ -13,6 +13,8 @@ struct NativeTimelineAccessibilityRowState: Equatable {
     let translation: MessageTranslationEntry?
     let isTranslationEnabled: Bool
     let threadPreview: Message?
+    /// Upload progress leaves the item unchanged, but ends the files' cancel.
+    let isUploadCancellable: Bool
 }
 
 nonisolated enum TimelineAccessibilityWorkPolicy {
@@ -176,7 +178,10 @@ extension NativeTimelineCanvasView {
                     model?.messageTranslationPresentation(for: $0.message)
                 },
                 isTranslationEnabled: model?.translation.settings.isEnabled == true,
-                threadPreview: item.messageRow?.message.thread.flatMap { model?.threadPreviewMessages[$0.id] }
+                threadPreview: item.messageRow?.message.thread.flatMap { model?.threadPreviewMessages[$0.id] },
+                isUploadCancellable: layouts[index].uploadRegions.contains {
+                    model?.attachmentUploads.canCancel(nonce: item.messageRow?.message.nonce, attachmentID: $0.attachmentID) == true
+                }
             )
             let frame = rowFrame(at: index)
             desired.insert(identifier)
