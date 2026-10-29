@@ -64,7 +64,8 @@ height and a 16 pt font, having no compact mode and a fixed message text size.
 A page is requested once the viewport is within 500 pt of the loaded edge, so a
 window shorter than the viewport plus 500 pt keeps loading until it fills. In an
 unread conversation the earlier edge waits until the viewport is 18 pt above the
-oldest loaded message (the scroller's 16 pt bar buffer plus 2). A jump to
+oldest loaded message (the scroller's 16 pt bar buffer plus 2), unless the loaded
+messages do not fill the viewport, which keeps loading until they do. A jump to
 a message not loaded (search, link, reply) is one `around={message}&limit=30` read,
 also into a channel with nothing loaded, which reads no newest page first.
 Jump to the first unread, when its boundary is not loaded, is one `around` read of 30

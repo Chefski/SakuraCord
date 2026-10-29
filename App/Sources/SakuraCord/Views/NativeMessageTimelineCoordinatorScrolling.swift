@@ -1899,22 +1899,19 @@ extension NativeMessageTimelineCoordinator {
                 materializedHistoryMaximumY(
                     viewportHeight: visibleRect.height
                 ) - visibleRect.maxY < prefetchDistance(.later)
+            let contentFitsViewport = !NativeMessageTimelineLayoutPolicy.showsVerticalScroller(
+                contentHeight: contentHeight, viewportHeight: visibleRect.height,
+                bottomInset: bottomInset, verticalPadding: ChatDetailLayoutPolicy.timelineTopPadding
+            )
             return TimelineScrollState(
-                isNearTop:
-                    visibleRect.minY - leadingHistoryReserve
-                    < prefetchDistance(.earlier),
+                // Short content rests at the reserve's edge, short of the unread distance.
+                isNearTop: contentFitsViewport
+                    || visibleRect.minY - leadingHistoryReserve < prefetchDistance(.earlier),
                 isNearBottom:
                     isAtDocumentBottom
                     && !parent.hasMoreLaterMessages,
                 isNearLoadedBottom: isNearLoadedBottom,
-                contentFitsViewport:
-                    !NativeMessageTimelineLayoutPolicy.showsVerticalScroller(
-                        contentHeight: contentHeight,
-                        viewportHeight: visibleRect.height,
-                        bottomInset: bottomInset,
-                        verticalPadding:
-                            ChatDetailLayoutPolicy.timelineTopPadding
-                    ),
+                contentFitsViewport: contentFitsViewport,
                 hasEstablishedInitialPosition:
                     hasEstablishedInitialPosition,
                 hasReachedNewestMessageBoundary:
