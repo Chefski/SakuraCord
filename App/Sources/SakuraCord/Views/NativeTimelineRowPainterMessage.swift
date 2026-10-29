@@ -1244,7 +1244,7 @@ extension NativeTimelineRowPainter {
             .dateTime.day().month(.wide).year()
         )
         let pill = newMessagesPillFrame(in: frame)
-        let pillLineEnd = pill.minX - InterfaceScale.metric(8)
+        let pillLineEnd = lineEnd(before: pill)
         var labelFrame = NativeTimelineDateSeparatorMetrics.labelFrame(
             for: label,
             in: frame
@@ -1295,10 +1295,12 @@ extension NativeTimelineRowPainter {
         let pill = newMessagesPillFrame(in: frame)
         drawNewMessagesPill(pill)
         MentionRed.nsColor.setFill()
-        CGRect(
-            x: frame.minX, y: frame.midY,
-            width: max(0, pill.minX - InterfaceScale.metric(8) - frame.minX), height: 1
-        ).fill()
+        CGRect(x: frame.minX, y: frame.midY, width: max(0, lineEnd(before: pill) - frame.minX), height: 1).fill()
+    }
+
+    /// Where a divider's line stops short of the NEW pill.
+    private static func lineEnd(before pill: CGRect) -> CGFloat {
+        pill.minX - InterfaceScale.metric(8)
     }
 
     private static var newMessagesPillFont: NSFont { .interfaceSystemFont(ofSize: 10, weight: .bold) }
