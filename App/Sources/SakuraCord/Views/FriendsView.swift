@@ -173,14 +173,12 @@ private struct FriendRowControls: View {
 private struct AddFriendView: View {
     private enum Field { case username, note }
 
-    /// Concentric with the capsule Send button: its 17 pt radius plus the 6 pt inset around it.
-    private static let areaCornerRadius = InterfaceScale.metric(23)
-
     let model: AppModel
     @FocusState private var focusedField: Field?
 
+    /// Concentric with the capsule Send button: its 17 pt radius plus the 6 pt inset around it.
     private var areaShape: ConcentricRectangle {
-        ConcentricRectangle(cornerRadius: Self.areaCornerRadius, style: .continuous)
+        ConcentricRectangle(cornerRadius: InterfaceScale.metric(23), style: .continuous)
     }
 
     var body: some View {
