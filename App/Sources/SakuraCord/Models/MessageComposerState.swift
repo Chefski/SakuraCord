@@ -163,6 +163,7 @@ struct OutgoingMessageState {
     private var nextOptimisticMessageRawValue = UInt64.max
     private var deliveryTail: Task<Void, Never>?
     private var waitingNonces: Set<String> = []
+    private var withdrawnNonces: Set<String> = []
     private var submissionReservations: [UUID: String] = [:]
     private var deliveryGeneration: UInt64 = 0
 
@@ -231,10 +232,16 @@ struct OutgoingMessageState {
         deliveryTail = delivery
     }
 
-    /// A withdrawn send stops counting against the queue limit before its turn,
-    /// which then delivers nothing.
-    mutating func withdrawWaitingDelivery(nonce: String) {
-        waitingNonces.remove(nonce)
+    /// A send withdrawn before its turn frees its queue position at once and
+    /// delivers nothing when the turn arrives. Returns whether it was waiting.
+    mutating func withdrawWaitingDelivery(nonce: String) -> Bool {
+        guard waitingNonces.remove(nonce) != nil else { return false }
+        withdrawnNonces.insert(nonce)
+        return true
+    }
+
+    func isWithdrawn(nonce: String) -> Bool {
+        withdrawnNonces.contains(nonce)
     }
 
     /// Leaves the waiting set; returns whether the send was confirmed meanwhile.
@@ -247,6 +254,7 @@ struct OutgoingMessageState {
     mutating func finishDelivery(for turn: DeliveryTurn) {
         guard turn.generation == deliveryGeneration else { return }
         deliveryNonces.remove(turn.nonce)
+        withdrawnNonces.remove(turn.nonce)
         if !retainsState(nonce: turn.nonce) { statesByNonce[turn.nonce] = nil }
     }
 
@@ -261,6 +269,7 @@ struct OutgoingMessageState {
         nextOptimisticMessageRawValue = UInt64.max
         deliveryTail = nil
         waitingNonces.removeAll()
+        withdrawnNonces.removeAll()
         submissionReservations.removeAll()
         statesByNonce.removeAll()
         retainedReceiptNonces.removeAll()

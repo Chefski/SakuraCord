@@ -40,7 +40,10 @@ extension AppModel {
         outgoing.attachments.removeAll { $0.id == id }
         if outgoing.attachments.isEmpty {
             composer.outbox.draftsByNonce[nonce] = nil
-            composer.outbox.withdrawWaitingDelivery(nonce: nonce)
+            // Its slowmode reservation would otherwise block new sends until its turn.
+            if composer.outbox.withdrawWaitingDelivery(nonce: nonce) {
+                composer.slowmode.end(in: message.channelID)
+            }
             attachmentUploads.finish(nonce: nonce)
             removeOutgoingMessage(nonce: nonce, channelID: message.channelID)
         } else {
@@ -300,12 +303,14 @@ extension AppModel {
             guard let self else { return false }
             defer {
                 if isCurrentAccountSession(session) {
-                    composer.slowmode.end(in: outgoing.channelID)
+                    if !composer.outbox.isWithdrawn(nonce: outgoing.nonce) {
+                        composer.slowmode.end(in: outgoing.channelID)
+                    }
                     composer.outbox.finishDelivery(for: turn)
                 }
             }
             let confirmedWhileWaiting = composer.outbox.beginDelivery(for: turn)
-            guard isCurrentAccountSession(session) else { return false }
+            guard isCurrentAccountSession(session), !composer.outbox.isWithdrawn(nonce: outgoing.nonce) else { return false }
             // A late Gateway confirmation can settle a retry while it waits;
             // sticker and poll bodies have no enforced nonce to stop a duplicate.
             if confirmedWhileWaiting
