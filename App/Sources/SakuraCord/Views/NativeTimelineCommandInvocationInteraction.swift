@@ -133,6 +133,7 @@ struct CommandInvocationPopover: View {
     private func commandText(_ source: String) -> some View {
         CustomEmojiRichText(
             model: model,
+            message: message,
             content: source,
             emojiSize: InterfaceScale.metric(22),
             mentionPresentation: MessageMentionResolver(model: model, message: message).presentation
