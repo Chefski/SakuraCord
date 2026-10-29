@@ -1,12 +1,14 @@
 import Foundation
 import SakuraCordModels
 
-/// Per-file progress of the outbox's attachment sends, kept out of
-/// observation so a byte update repaints only its timeline row.
+/// Per-file progress of attachment sends, kept out of observation so a byte
+/// update repaints only its timeline row.
 ///
-/// A send's entry lives from admission until it is confirmed or discarded.
-/// A failed send keeps it only when a file never reached storage, which is
-/// what marks that message's files as a failed upload.
+/// Like the first-party composer, a staged file starts uploading as soon as it
+/// is attached, and its progress carries over once its message is sent. A
+/// send's entry lives from admission until it is confirmed or discarded. A
+/// failed send keeps it only when a file never reached storage, which is what
+/// marks that message's files as a failed upload.
 @MainActor
 final class AttachmentUploadProgressStore {
     static let didChange = Notification.Name("AttachmentUploadProgressStore.didChange")
@@ -20,6 +22,10 @@ final class AttachmentUploadProgressStore {
     }
 
     private var uploads: [String: Upload] = [:]
+    /// Staged files uploading before Send, by draft attachment ID.
+    private var preuploadFractions: [UUID: Double] = [:]
+    /// Staged files storage already accepted; their message posts them as they are.
+    private var storedPreuploads: Set<UUID> = []
 
     /// Whether the row of this local send shows upload cards.
     func tracks(nonce: String?) -> Bool {
@@ -37,27 +43,53 @@ final class AttachmentUploadProgressStore {
         return !upload.isUploaded
     }
 
+    func beginPreupload(_ attachmentID: UUID) {
+        preuploadFractions[attachmentID] = 0
+    }
+
+    /// A file whose message was already sent keeps that message's progress.
+    func endPreupload(_ attachmentID: UUID, stored: Bool) {
+        guard preuploadFractions.removeValue(forKey: attachmentID) != nil, stored else { return }
+        storedPreuploads.insert(attachmentID)
+    }
+
+    /// A send whose files are all stored already posts at once, without upload cards.
     func begin(_ draft: SendMessageDraft) {
         guard draft.voiceMessage == nil, !draft.attachments.isEmpty else { return }
-        uploads[draft.nonce] = Upload(fractions: Dictionary(
-            uniqueKeysWithValues: draft.attachments.map { ($0.id.uuidString, 0) }
-        ))
+        let ids = draft.attachments.map(\.id)
+        defer {
+            for id in ids {
+                preuploadFractions[id] = nil
+                storedPreuploads.remove(id)
+            }
+        }
+        guard !ids.allSatisfy(storedPreuploads.contains) else { return }
+        uploads[draft.nonce] = Upload(fractions: Dictionary(uniqueKeysWithValues: ids.map {
+            ($0.uuidString, storedPreuploads.contains($0) ? 1 : preuploadFractions[$0] ?? 0)
+        }))
     }
 
     /// Progress leaves the message unchanged, so only these updates notify;
     /// every other change here accompanies a change to the message itself.
-    func apply(_ progress: MessageSendProgress, nonce: String) {
-        guard uploads[nonce] != nil else { return }
+    /// A staged file's upload reports without a nonce, also once it is sent.
+    func apply(_ progress: MessageSendProgress, nonce: String? = nil) {
         switch progress {
         case let .uploading(fileID?, _, completed, total):
-            let id = fileID.uuidString
-            // Progress arrives on separate hops, so an older report can land late.
-            guard total > 0, let current = uploads[nonce]?.fractions[id] else { return }
+            guard total > 0 else { return }
             let fraction = min(1, Double(completed) / Double(total))
-            guard fraction > current else { return }
+            // Progress arrives on separate hops, so an older report can land late.
+            if let current = preuploadFractions[fileID] {
+                preuploadFractions[fileID] = max(current, fraction)
+                return
+            }
+            let id = fileID.uuidString
+            guard let nonce = nonce ?? uploads.first(where: { $0.value.fractions[id] != nil })?.key,
+                  let current = uploads[nonce]?.fractions[id], fraction > current
+            else { return }
             uploads[nonce]?.fractions[id] = fraction
             notify(nonce: nonce, endsCancellation: false)
         case .submitting:
+            guard let nonce, uploads[nonce] != nil else { return }
             uploads[nonce]?.isUploaded = true
             notify(nonce: nonce, endsCancellation: true)
         default:
@@ -80,6 +112,8 @@ final class AttachmentUploadProgressStore {
 
     func reset() {
         uploads.removeAll()
+        preuploadFractions.removeAll()
+        storedPreuploads.removeAll()
     }
 
     private func notify(nonce: String, endsCancellation: Bool) {

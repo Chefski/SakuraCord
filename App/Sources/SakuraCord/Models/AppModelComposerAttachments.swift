@@ -147,6 +147,10 @@ extension AppModel {
         if current.contains(where: { rejectedIDs.contains($0.id) }) {
             setComposerAttachments(current.filter { !rejectedIDs.contains($0.id) }, for: destination)
         }
+        preuploadComposerAttachments(
+            composerAttachments(for: destination).filter { stagedIDs.contains($0.id) },
+            to: destination
+        )
         return true
     }
 
@@ -155,8 +159,14 @@ extension AppModel {
         guard isComposerDropEligible(destination), !Task.isCancelled else { return false }
         var attachments = composerAttachments(for: destination)
         if attachmentBatchFits(urls.count, besides: attachments.count) {
-            attachments.append(contentsOf: urls.map { ForumPostAttachment(url: $0) })
+            let added = urls.map { ForumPostAttachment(url: $0) }
+            attachments.append(contentsOf: added)
             setComposerAttachments(attachments, for: destination)
+            let addedIDs = Set(added.map(\.id))
+            preuploadComposerAttachments(
+                composerAttachments(for: destination).filter { addedIDs.contains($0.id) },
+                to: destination
+            )
         } else {
             pruneOwnedPromisedAttachmentFiles()
         }
@@ -170,6 +180,7 @@ extension AppModel {
         from destination: MessageComposerDestination
     ) {
         var attachments = composerAttachments(for: destination)
+        discardPreuploads(of: attachments.filter { $0.id == id })
         attachments.removeAll { $0.id == id }
         setComposerAttachments(attachments, for: destination)
     }
@@ -196,8 +207,45 @@ extension AppModel {
         setComposerAttachments(attachments, for: destination)
     }
 
+    /// Drops the staged files without sending them.
     func clearComposerAttachments(for destination: MessageComposerDestination) {
+        discardPreuploads(of: composerAttachments(for: destination))
         setComposerAttachments([], for: destination)
+    }
+
+    /// Like the first-party composer, starts storing checked files as soon as
+    /// they are attached, so Send has only the message left to post. A thread
+    /// still being created has no channel to store them for yet.
+    func preuploadComposerAttachments(
+        _ attachments: [ForumPostAttachment],
+        to destination: MessageComposerDestination
+    ) {
+        let channelID = switch destination {
+        case .channel: selectedChannelID
+        case .thread: threadCreation == nil ? openThread?.id : nil
+        }
+        guard let channelID else { return }
+        let provider = accountSession().provider
+        for attachment in attachments {
+            attachmentUploads.beginPreupload(attachment.id)
+            Task { [weak self] in
+                let stored = await provider.preuploadAttachment(attachment, channelID: channelID) { progress in
+                    Task { @MainActor in self?.attachmentUploads.apply(progress) }
+                }
+                self?.attachmentUploads.endPreupload(attachment.id, stored: stored)
+            }
+        }
+    }
+
+    /// Stops the early uploads of files that will not be sent.
+    func discardPreuploads(of attachments: [ForumPostAttachment]) {
+        guard !attachments.isEmpty else { return }
+        let provider = accountSession().provider
+        Task {
+            for attachment in attachments {
+                await provider.discardPreuploadedAttachment(attachment.id)
+            }
+        }
     }
 
     @discardableResult
@@ -223,6 +271,24 @@ extension AppModel {
             Array((restored + current).prefix(SendMessageDraft.maximumAttachmentCount)),
             for: destination
         )
+    }
+
+    /// Puts back the files of a send that did not take them, unless their
+    /// conversation was left meanwhile, which drops their early uploads.
+    func returnUnsentComposerAttachments(
+        _ attachments: [ForumPostAttachment],
+        to destination: MessageComposerDestination,
+        from conversationID: ChannelID?
+    ) {
+        let currentConversationID = switch destination {
+        case .channel: selectedChannelID
+        case .thread: openThread?.id
+        }
+        guard currentConversationID == conversationID else {
+            discardPreuploads(of: attachments)
+            return
+        }
+        restoreComposerAttachments(attachments, to: destination)
     }
 
     @discardableResult

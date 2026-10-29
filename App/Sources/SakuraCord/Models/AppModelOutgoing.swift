@@ -11,7 +11,10 @@ extension AppModel {
                 channelID: message.channelID
               ) == .failed
         else { return }
-        if let outgoing = composer.outbox.draftsByNonce[nonce] { discardVoiceMessageFile(for: outgoing) }
+        if let outgoing = composer.outbox.draftsByNonce[nonce] {
+            discardVoiceMessageFile(for: outgoing)
+            discardPreuploads(of: outgoing.attachments)
+        }
         composer.outbox.draftsByNonce[nonce] = nil
         composer.outbox.stickerUploadSourceURLByNonce[nonce] = nil
         attachmentUploads.finish(nonce: nonce)
@@ -35,6 +38,8 @@ extension AppModel {
         if outgoingState(nonce: nonce, channelID: message.channelID) != .failed {
             let provider = accountSession().provider
             Task { await provider.cancelAttachmentUpload(id) }
+        } else {
+            discardPreuploads(of: outgoing.attachments.filter { $0.id == id })
         }
         outgoing.attachments.removeAll { $0.id == id }
         if outgoing.attachments.isEmpty {

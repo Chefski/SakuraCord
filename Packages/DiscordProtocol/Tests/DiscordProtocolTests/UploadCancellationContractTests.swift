@@ -40,7 +40,7 @@ struct UploadCancellationContractTests {
             #expect(uploaded.count == 1)
             guard case let .object(payload) = uploaded.first else { Issue.record("Missing kept attachment"); return }
             #expect(payload["filename"] == .string("kept.bin"))
-            #expect(payload["uploaded_filename"] == .string("kept-upload"))
+            #expect(payload["uploaded_filename"] == .string("slot0/kept.bin"))
         }
         // URLSession stops the protocol after it completes the cancelled task.
         #expect(await eventually { HeldStorageURLProtocol.stoppedCount == expectedHeld })
@@ -69,7 +69,38 @@ struct UploadCancellationContractTests {
         let uploaded = try await provider.uploadAttachmentFiles(files, channelID: ChannelID(rawValue: 200), progress: { _ in })
         #expect(HeldStorageURLProtocol.reservedNames == ["kept.bin"])
         guard case let .object(payload) = uploaded.first, uploaded.count == 1 else { Issue.record("Missing kept attachment"); return }
-        #expect(payload["uploaded_filename"] == .string("kept-upload"))
+        #expect(payload["uploaded_filename"] == .string("slot0/kept.bin"))
+    }
+
+    /// A file stored as it was attached posts as it is rather than uploading
+    /// twice, and one removed from the draft is deleted from storage.
+    @Test func filesStoredOnAttachPostWithoutUploadingAgain() async throws {
+        HeldStorageURLProtocol.reset(holdsEveryUpload: false)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let attachments = try ["kept.bin", "removed.bin"].map { name in
+            let url = directory.appendingPathComponent(name)
+            try Data(name.utf8).write(to: url)
+            return ForumPostAttachment(url: url)
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [HeldStorageURLProtocol.self]
+        let provider = DiscordRESTProvider(
+            credentials: TestCredentialStore(), handle: CredentialHandle(accountID: "1"),
+            session: URLSession(configuration: configuration)
+        )
+        let channelID = ChannelID(rawValue: 200)
+        for attachment in attachments {
+            #expect(await provider.preuploadAttachment(attachment, channelID: channelID, progress: { _ in }))
+        }
+        await provider.discardPreuploadedAttachment(attachments[1].id)
+        #expect(HeldStorageURLProtocol.requests.last == "DELETE /api/v9/attachments/slot0%2Fremoved.bin")
+        let requestCount = HeldStorageURLProtocol.requests.count
+        let uploaded = try await provider.uploadForumAttachments([attachments[0]], channelID: channelID, progress: { _ in })
+        #expect(HeldStorageURLProtocol.requests.count == requestCount)
+        guard case let .object(payload) = uploaded.first, uploaded.count == 1 else { Issue.record("Missing kept attachment"); return }
+        #expect(payload["uploaded_filename"] == .string("slot0/kept.bin"))
     }
 }
 
@@ -81,12 +112,14 @@ private final class HeldStorageURLProtocol: URLProtocol, @unchecked Sendable {
         var held = 0
         var stopped = 0
         var reservedNames: [String] = []
+        var requests: [String] = []
     }
 
     private static let state = Mutex(State())
     static var heldCount: Int { state.withLock(\.held) }
     static var stoppedCount: Int { state.withLock(\.stopped) }
     static var reservedNames: [String] { state.withLock(\.reservedNames) }
+    static var requests: [String] { state.withLock(\.requests) }
 
     static func reset(holdsEveryUpload: Bool) {
         state.withLock { $0 = State(holdsEveryUpload: holdsEveryUpload) }
@@ -99,6 +132,8 @@ private final class HeldStorageURLProtocol: URLProtocol, @unchecked Sendable {
 
     override func startLoading() {
         guard let url = request.url else { return }
+        let path = URLComponents(url: url, resolvingAgainstBaseURL: false)?.percentEncodedPath ?? url.path
+        Self.state.withLock { $0.requests.append("\(request.httpMethod ?? "GET") \(path)") }
         if request.httpMethod == "PUT",
            url.lastPathComponent == "stopped" || Self.state.withLock(\.holdsEveryUpload)
         {
@@ -112,7 +147,7 @@ private final class HeldStorageURLProtocol: URLProtocol, @unchecked Sendable {
             Self.state.withLock { $0.reservedNames = names }
             let slots = names.enumerated().map { index, name in
                 let stem = (name as NSString).deletingPathExtension
-                return ["id": index, "upload_url": "https://upload.example/\(stem)", "upload_filename": "\(stem)-upload"] as [String: Any]
+                return ["id": index, "upload_url": "https://upload.example/\(stem)", "upload_filename": "slot\(index)/\(name)"] as [String: Any]
             }
             data = (try? JSONSerialization.data(withJSONObject: ["attachments": slots])) ?? Data()
         }
