@@ -154,6 +154,38 @@ extension NativeTimelineRowPainter {
 }
 
 extension NativeTimelineCanvasView {
+    /// Each card stays labelled after its cancel goes away once storage has the file.
+    func appendUploadAccessibility(
+        to children: inout [Any],
+        message: Message,
+        layout: NativeTimelineRowLayout,
+        rowIndex: Int,
+        parent: NSAccessibilityElement
+    ) {
+        guard !layout.uploadRegions.isEmpty else { return }
+        let uploadStatus = message.outboxState == .failed ? String(localized: "Upload failed") : String(localized: "Uploading")
+        for region in layout.uploadRegions {
+            children.append(accessibilityElement(
+                role: .staticText,
+                label: "\(region.title), \(region.detail)",
+                value: uploadStatus,
+                frame: accessibilityChildFrame(region.frame, rowIndex: rowIndex),
+                parent: parent
+            ))
+            guard model?.attachmentUploads.canCancel(nonce: message.nonce, attachmentID: region.attachmentID) == true
+            else { continue }
+            children.append(accessibilityElement(
+                role: .button,
+                label: String(localized: "Cancel upload of \(region.title)"),
+                frame: accessibilityChildFrame(region.cancelFrame, rowIndex: rowIndex),
+                parent: parent
+            ) { [weak self] in
+                self?.model?.cancelAttachmentUpload(region.attachmentID, of: message)
+                return true
+            })
+        }
+    }
+
     @objc func attachmentUploadsDidChange(_ notification: Notification) {
         guard notification.object as AnyObject === model?.attachmentUploads,
               let nonce = notification.userInfo?[AttachmentUploadProgressStore.nonceKey] as? String

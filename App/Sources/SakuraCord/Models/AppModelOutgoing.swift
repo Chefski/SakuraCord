@@ -13,7 +13,7 @@ extension AppModel {
         else { return }
         if let outgoing = composer.outbox.draftsByNonce[nonce] {
             discardVoiceMessageFile(for: outgoing)
-            discardPreuploads(of: outgoing.attachments)
+            discardPreuploads(outgoing.attachments.map(\.id))
         }
         composer.outbox.draftsByNonce[nonce] = nil
         composer.outbox.stickerUploadSourceURLByNonce[nonce] = nil
@@ -30,31 +30,39 @@ extension AppModel {
     /// the whole message.
     func cancelAttachmentUpload(_ attachmentID: String, of message: Message) {
         guard let nonce = message.nonce,
-              var outgoing = composer.outbox.draftsByNonce[nonce],
               attachmentUploads.canCancel(nonce: nonce, attachmentID: attachmentID),
               let id = UUID(uuidString: attachmentID)
         else { return }
         // A failed send keeps no transfer; its retry starts from the edited draft.
-        if outgoingState(nonce: nonce, channelID: message.channelID) != .failed {
-            let provider = accountSession().provider
-            Task { await provider.cancelAttachmentUpload(id) }
-        } else {
-            discardPreuploads(of: outgoing.attachments.filter { $0.id == id })
+        guard outgoingState(nonce: nonce, channelID: message.channelID) != .failed else {
+            discardPreuploads([id])
+            return removeOutgoingAttachment(id, nonce: nonce, channelID: message.channelID)
         }
+        let session = accountSession()
+        Task {
+            // Storage can accept the last file before the stop arrives; the message then keeps it.
+            // An accepted stop already left the post, so a retry must not bring the file back.
+            guard await session.provider.cancelAttachmentUpload(id), isCurrentAccountSession(session) else { return }
+            removeOutgoingAttachment(id, nonce: nonce, channelID: message.channelID)
+        }
+    }
+
+    private func removeOutgoingAttachment(_ id: UUID, nonce: String, channelID: ChannelID) {
+        guard var outgoing = composer.outbox.draftsByNonce[nonce] else { return }
         outgoing.attachments.removeAll { $0.id == id }
         if outgoing.attachments.isEmpty {
             composer.outbox.draftsByNonce[nonce] = nil
             // Its slowmode reservation would otherwise block new sends until its turn.
             if composer.outbox.withdrawWaitingDelivery(nonce: nonce) {
-                composer.slowmode.end(in: message.channelID)
+                composer.slowmode.end(in: channelID)
             }
             attachmentUploads.finish(nonce: nonce)
-            removeOutgoingMessage(nonce: nonce, channelID: message.channelID)
+            removeOutgoingMessage(nonce: nonce, channelID: channelID)
         } else {
             composer.outbox.draftsByNonce[nonce] = outgoing
-            attachmentUploads.remove(attachmentID: attachmentID, nonce: nonce)
-            mutateOutgoingMessage(nonce: nonce, channelID: message.channelID) {
-                $0.attachments.removeAll { $0.id == attachmentID }
+            attachmentUploads.remove(attachmentID: id.uuidString, nonce: nonce)
+            mutateOutgoingMessage(nonce: nonce, channelID: channelID) {
+                $0.attachments.removeAll { $0.id == id.uuidString }
             }
         }
         pruneOwnedPromisedAttachmentFiles()

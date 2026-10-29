@@ -186,7 +186,8 @@ public protocol ChatProvider: Sendable {
         async throws -> Message
     /// Stops one file of a send in progress, by its draft attachment ID. The
     /// message goes without it, or not at all once every file is stopped.
-    func cancelAttachmentUpload(_ attachmentID: UUID) async
+    /// Returns false when the file can no longer leave the message.
+    func cancelAttachmentUpload(_ attachmentID: UUID) async -> Bool
     /// Stores a staged file before its message is sent; returns whether
     /// storage accepted it. Its message then posts it as it is.
     func preuploadAttachment(
@@ -757,7 +758,7 @@ public extension ChatProvider {
         return message
     }
 
-    func cancelAttachmentUpload(_ attachmentID: UUID) async {}
+    func cancelAttachmentUpload(_ attachmentID: UUID) async -> Bool { false }
 
     func preuploadAttachment(
         _ attachment: ForumPostAttachment,

@@ -263,14 +263,13 @@ extension DiscordRESTProvider {
             try await performSend(draft, progress: progress)
         }
         messageSendTasks[key] = task
-        do {
-            let message = try await task.value
+        // Cleared in the job that answers the caller, so no stop is accepted
+        // between the post finishing and the caller learning of it.
+        defer {
             messageSendTasks[key] = nil
-            return message
-        } catch {
-            messageSendTasks[key] = nil
-            throw error
+            postingAttachmentUploads.subtract(draft.attachments.map(\.id))
         }
+        return try await task.value
     }
 
     func uploadAttachments(
@@ -469,11 +468,14 @@ extension DiscordRESTProvider {
 
     /// Stops one file of a message send, whether it waits for its turn or is
     /// sending. The message goes without it, or not at all once every one of
-    /// its files is stopped.
-    public func cancelAttachmentUpload(_ attachmentID: UUID) async {
+    /// its files is stopped. Refused once the message with it is being posted.
+    public func cancelAttachmentUpload(_ attachmentID: UUID) async -> Bool {
+        guard !postingAttachmentUploads.contains(attachmentID) else { return false }
         cancelledAttachmentUploads.insert(attachmentID)
         attachmentUploadDelegates[attachmentID]?.cancel()
-        await discardPreuploadedAttachment(attachmentID)
+        // Its early upload, if it has one, stops or leaves storage without holding up the stop.
+        Task { await discardPreuploadedAttachment(attachmentID) }
+        return true
     }
 
     func attachmentReservationDescriptors(

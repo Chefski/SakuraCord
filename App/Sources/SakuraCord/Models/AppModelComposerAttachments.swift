@@ -180,7 +180,7 @@ extension AppModel {
         from destination: MessageComposerDestination
     ) {
         var attachments = composerAttachments(for: destination)
-        discardPreuploads(of: attachments.filter { $0.id == id })
+        discardPreuploads([id])
         attachments.removeAll { $0.id == id }
         setComposerAttachments(attachments, for: destination)
     }
@@ -209,7 +209,7 @@ extension AppModel {
 
     /// Drops the staged files without sending them.
     func clearComposerAttachments(for destination: MessageComposerDestination) {
-        discardPreuploads(of: composerAttachments(for: destination))
+        discardPreuploads(composerAttachments(for: destination).map(\.id))
         setComposerAttachments([], for: destination)
     }
 
@@ -238,11 +238,11 @@ extension AppModel {
     }
 
     /// Stops the early uploads of files that will not be sent.
-    func discardPreuploads(of attachments: [ForumPostAttachment]) {
+    func discardPreuploads(_ attachmentIDs: [UUID]) {
         let provider = accountSession().provider
-        for attachment in attachments {
-            attachmentUploads.endPreupload(attachment.id, stored: false)
-            Task { await provider.discardPreuploadedAttachment(attachment.id) }
+        for id in attachmentIDs {
+            attachmentUploads.endPreupload(id, stored: false)
+            Task { await provider.discardPreuploadedAttachment(id) }
         }
     }
 
@@ -283,7 +283,7 @@ extension AppModel {
         case .thread: openThread?.id
         }
         guard currentConversationID == conversationID else {
-            discardPreuploads(of: attachments)
+            discardPreuploads(attachments.map(\.id))
             return
         }
         restoreComposerAttachments(attachments, to: destination)
