@@ -403,8 +403,8 @@ extension NativeTimelineCanvasView {
         CATransaction.setDisableActions(true)
         overlay.frame = frame
         overlay.alphaValue = CGFloat(waits ? startOpacity : targetOpacity)
+        overlay.layer?.removeAnimation(forKey: NativeTimelineUnreadDividerMotion.opacityKey)
         if !waits, let layer = overlay.layer {
-            layer.removeAnimation(forKey: NativeTimelineUnreadDividerMotion.opacityKey)
             let animation = CABasicAnimation(keyPath: "opacity")
             animation.fromValue = startOpacity
             animation.toValue = targetOpacity

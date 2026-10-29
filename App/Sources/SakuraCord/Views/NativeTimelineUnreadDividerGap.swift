@@ -240,7 +240,12 @@ extension NativeTimelineCanvasView {
             return
         }
         if gap.waitsForSend {
-            guard !sendTransitionBlocksInteractions else { return }
+            // Rows can change under a waiting divider, so it follows its row.
+            gap.rowIndex = index
+            guard !sendTransitionBlocksInteractions else {
+                unreadDividerGap = gap
+                return
+            }
             gap.waitsForSend = false
             unreadDividerGap = gap
             if let fade = unreadDividerFades[gap.identifier] {
