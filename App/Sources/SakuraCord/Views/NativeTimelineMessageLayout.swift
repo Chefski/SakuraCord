@@ -183,7 +183,7 @@ extension NativeTimelineRowLayout {
                     height: NativeTimelineDateSeparatorMetrics.rowHeight
                 )
                 prefixHeight += NativeTimelineDateSeparatorMetrics.rowHeight
-                result.daySeparatorIsUnread = isUnreadBoundary
+                if isUnreadBoundary { result.foldedUnreadDay = row.message.timestamp }
             } else if isUnreadBoundary {
                 result.unreadSeparatorFrame = CGRect(
                     x: horizontalInset,

@@ -144,11 +144,16 @@ struct NativeTimelineRowLayout {
     var bubbleRegion: NativeTimelineBubbleRegion?
     var highlightFrame: CGRect?
     var daySeparatorFrame: CGRect?
-    /// Discord folds the NEW divider into a date divider on the same row.
-    var daySeparatorIsUnread = false
+    /// The day of a date divider that also carries NEW: Discord folds the two
+    /// into one divider when they fall on the same row.
+    var foldedUnreadDay: Date?
     /// The rule closing a forum post's original message off from its replies.
     var postStarterDividerFrame: CGRect?
     var unreadSeparatorFrame: CGRect?
+    /// Where NEW is drawn, on its own or folded into the date divider.
+    var unreadDividerFrame: CGRect? {
+        unreadSeparatorFrame ?? (foldedUnreadDay == nil ? nil : daySeparatorFrame)
+    }
     var avatarFrame: CGRect?
     var compactTimestampFrame: CGRect?
     var authorFrame: CGRect?
@@ -221,7 +226,7 @@ struct NativeTimelineRowLayout {
                 result.daySeparatorFrame = CGRect(x: InterfaceScale.metric(12), y: offset,
                                                   width: width - InterfaceScale.metric(24), height: NativeTimelineDateSeparatorMetrics.rowHeight)
                 offset += NativeTimelineDateSeparatorMetrics.rowHeight
-                result.daySeparatorIsUnread = group.isUnreadBoundary
+                if group.isUnreadBoundary { result.foldedUnreadDay = group.day }
             } else if group.isUnreadBoundary {
                 result.unreadSeparatorFrame = CGRect(x: InterfaceScale.metric(12), y: offset,
                                                      width: width - InterfaceScale.metric(24), height: NativeTimelineUnreadSeparatorMetrics.rowHeight)

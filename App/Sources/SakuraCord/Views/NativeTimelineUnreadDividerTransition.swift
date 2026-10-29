@@ -18,6 +18,8 @@ struct NativeTimelineUnreadDividerSource {
     /// The top of the row as it was on screen, taken when the divider is about
     /// to go and the row might take an author header with it.
     let topSnapshot: NativeTimelineUnreadDividerSnapshot?
+    /// The day of the date divider NEW was folded into, when it was.
+    let foldedDay: Date?
 }
 
 /// The top of a row as painted, in pixels.
@@ -99,6 +101,11 @@ enum NativeTimelineUnreadDividerMotion {
 /// The divider painted once. It never redraws while it fades or while its
 /// container resizes.
 final class NativeTimelineUnreadDividerArtwork: NSView {
+    /// Set when NEW is folded into this day's date divider.
+    var foldedDay: Date? {
+        didSet { if foldedDay != oldValue { needsDisplay = true } }
+    }
+
     override var isFlipped: Bool { true }
     override var isOpaque: Bool { false }
 
@@ -117,7 +124,11 @@ final class NativeTimelineUnreadDividerArtwork: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     override func draw(_ dirtyRect: NSRect) {
-        NativeTimelineRowPainter.newMessagesSeparator(frame: bounds)
+        if let foldedDay {
+            NativeTimelineRowPainter.dateSeparator(date: foldedDay, frame: bounds, isUnread: true)
+        } else {
+            NativeTimelineRowPainter.newMessagesSeparator(frame: bounds)
+        }
     }
 }
 
@@ -218,7 +229,7 @@ extension NativeTimelineCanvasView {
               layouts.indices.contains(index)
         else { return nil }
         let identifier = items[index].identifier
-        let frame = layouts[index].unreadSeparatorFrame
+        let frame = layouts[index].unreadDividerFrame
         let activeGap = unreadDividerGap?.identifier == identifier ? unreadDividerGap : nil
         let top = activeGap == nil ? displayedRowOrigin(at: index) : unreadDividerGapTop
         return NativeTimelineUnreadDividerSource(
@@ -229,7 +240,8 @@ extension NativeTimelineCanvasView {
             startGap: activeGap?.frame.gap,
             topSnapshot: capturingTop && frame != nil && activeGap == nil && unreadDividerFades.isEmpty
                 ? unreadDividerTopSnapshot(at: index)
-                : nil
+                : nil,
+            foldedDay: layouts[index].foldedUnreadDay
         )
     }
 
@@ -284,7 +296,8 @@ extension NativeTimelineCanvasView {
 
     /// Opens or closes the divider's gap and fades the line inside it. Where
     /// the gap cannot move rows, an arriving divider simply fades in; a
-    /// removed one is dropped, since the next message already fills its slot.
+    /// removed one is dropped, since the next message already fills its slot,
+    /// unless it was folded into a date divider, which stays and loses NEW.
     func transitionUnreadDivider(_ change: NativeTimelineUnreadDividerChange) {
         let added = unreadDividerPlacement(forMessageID: change.addedMessageID)
         let removed = change.removed.flatMap { $0.frameInRow == nil ? nil : $0 }
@@ -295,7 +308,13 @@ extension NativeTimelineCanvasView {
             opensGap = beginUnreadDividerGap(from: source, appearing: true)
         }
         if let removed, !opensGap {
-            finishUnreadDividerFade(removed.identifier)
+            if let day = removed.foldedDay, let frame = removed.frameInRow, added?.identifier != removed.identifier {
+                beginUnreadDividerFade(
+                    identifier: removed.identifier, frameInRow: frame, appearing: false, usesGap: false, foldedDay: day
+                )
+            } else {
+                finishUnreadDividerFade(removed.identifier)
+            }
         }
         if let added {
             beginUnreadDividerFade(
@@ -343,7 +362,8 @@ extension NativeTimelineCanvasView {
         identifier: NativeMessageTimelineItem.Identifier,
         frameInRow: CGRect,
         appearing: Bool,
-        usesGap: Bool
+        usesGap: Bool,
+        foldedDay: Date? = nil
     ) {
         let existing = unreadDividerFades[identifier]
         guard window != nil,
@@ -363,6 +383,7 @@ extension NativeTimelineCanvasView {
             return overlay
         }()
         overlay.setArtworkSize(frameInRow.size)
+        overlay.artwork.foldedDay = foldedDay ?? layouts[index].foldedUnreadDay
         if let gap = unreadDividerGap, gap.identifier == identifier, !appearing {
             overlay.setSnapshot(gap.snapshot, tail: gap.snapshotTail)
         } else {
@@ -449,7 +470,7 @@ extension NativeTimelineCanvasView {
                 continue
             }
             unreadDividerFades[identifier]?.rowIndex = index
-            let frameInRow = layouts[index].unreadSeparatorFrame ?? fade.frameInRow
+            let frameInRow = layouts[index].unreadDividerFrame ?? fade.frameInRow
             let frame = unreadDividerOverlayFrame(identifier: identifier, index: index, frameInRow: frameInRow)
             fade.overlay.setArtworkSize(frameInRow.size)
             if fade.overlay.frame != frame {
@@ -458,20 +479,24 @@ extension NativeTimelineCanvasView {
         }
     }
 
-    /// Erases the divider the row just painted while its overlay fades in.
+    /// Erases the divider the row just painted while its overlay fades in. A
+    /// folded divider leaves the plain date beneath, so NEW fades in over it.
     func clearHeldUnreadDivider(
         for item: NativeMessageTimelineItem,
         layout: NativeTimelineRowLayout,
         rowFrame: CGRect
     ) {
         guard unreadDividerFades[item.identifier]?.isAppearing == true,
-              let frame = layout.unreadSeparatorFrame,
+              let frame = layout.unreadDividerFrame?.offsetBy(dx: rowFrame.minX, dy: rowFrame.minY),
               let context = NSGraphicsContext.current?.cgContext
         else { return }
         context.saveGState()
         context.setBlendMode(.clear)
-        context.fill(frame.offsetBy(dx: rowFrame.minX, dy: rowFrame.minY))
+        context.fill(frame)
         context.restoreGState()
+        if let day = layout.foldedUnreadDay {
+            NativeTimelineRowPainter.dateSeparator(date: day, frame: frame)
+        }
     }
 }
 

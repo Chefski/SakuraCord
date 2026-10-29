@@ -110,7 +110,7 @@ extension NativeTimelineRowPainter {
 
     private static func drawMessageSeparators(_ input: NativeTimelineMessageDrawInput) {
         if let frame = input.layout.daySeparatorFrame {
-            dateSeparator(date: input.row.message.timestamp, frame: frame, isUnread: input.layout.daySeparatorIsUnread)
+            dateSeparator(date: input.row.message.timestamp, frame: frame, isUnread: input.layout.foldedUnreadDay != nil)
         }
         if let frame = input.layout.unreadSeparatorFrame {
             newMessagesSeparator(frame: frame)
@@ -1243,11 +1243,16 @@ extension NativeTimelineRowPainter {
         let label = date.formatted(
             .dateTime.day().month(.wide).year()
         )
-        let labelFrame = NativeTimelineDateSeparatorMetrics.labelFrame(
+        let lineEnd = isUnread ? drawNewMessagesPill(in: frame) : frame.maxX
+        var labelFrame = NativeTimelineDateSeparatorMetrics.labelFrame(
             for: label,
             in: frame
         )
-        let lineEnd = isUnread ? drawNewMessagesPill(in: frame) : frame.maxX
+        // In a narrow timeline the centred date must still stop short of NEW.
+        if labelFrame.maxX > lineEnd {
+            labelFrame.origin.x = max(frame.minX, lineEnd - labelFrame.width)
+            labelFrame.size.width = lineEnd - labelFrame.minX
+        }
         (isUnread ? MentionRed.nsColor : NSColor.labelColor.withAlphaComponent(0.16)).setFill()
         CGRect(
             x: frame.minX,

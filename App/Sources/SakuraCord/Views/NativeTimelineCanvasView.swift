@@ -567,7 +567,7 @@ enum NativeTimelineRowPainter {
         switch item {
         case let .suppressedMessages(group):
             if let day = group.day, let frame = layout.daySeparatorFrame {
-                dateSeparator(date: day, frame: frame, isUnread: layout.daySeparatorIsUnread)
+                dateSeparator(date: day, frame: frame, isUnread: layout.foldedUnreadDay != nil)
             }
             if let frame = layout.unreadSeparatorFrame { newMessagesSeparator(frame: frame) }
             if let header = layout.suppressedHeader {
