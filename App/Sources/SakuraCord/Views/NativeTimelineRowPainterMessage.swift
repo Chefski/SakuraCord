@@ -1247,9 +1247,7 @@ extension NativeTimelineRowPainter {
             for: label,
             in: frame
         )
-        let lineEnd = isUnread
-            ? newMessagesCapsule(in: frame).minX - InterfaceScale.metric(8)
-            : frame.maxX
+        let lineEnd = isUnread ? drawNewMessagesPill(in: frame) : frame.maxX
         (isUnread ? MentionRed.nsColor : NSColor.labelColor.withAlphaComponent(0.16)).setFill()
         CGRect(
             x: frame.minX,
@@ -1285,18 +1283,14 @@ extension NativeTimelineRowPainter {
     }
 
     static func newMessagesSeparator(frame: CGRect) {
-        let capsuleFrame = newMessagesCapsule(in: frame)
+        let lineEnd = drawNewMessagesPill(in: frame)
         MentionRed.nsColor.setFill()
-        CGRect(
-            x: frame.minX,
-            y: frame.midY,
-            width: max(0, capsuleFrame.minX - InterfaceScale.metric(8) - frame.minX),
-            height: 1
-        ).fill()
+        CGRect(x: frame.minX, y: frame.midY, width: max(0, lineEnd - frame.minX), height: 1).fill()
     }
 
-    /// Draws the red NEW pill at the end of `frame`.
-    private static func newMessagesCapsule(in frame: CGRect) -> CGRect {
+    /// Draws the red NEW pill at the end of `frame` and returns where the
+    /// divider's line stops before it.
+    private static func drawNewMessagesPill(in frame: CGRect) -> CGFloat {
         let font = NSFont.interfaceSystemFont(ofSize: 10, weight: .bold)
         let labelWidth = ceil(
             measuredTextWidth("NEW", font: font) + 14
@@ -1322,7 +1316,7 @@ extension NativeTimelineRowPainter {
             alignment: .center,
             lineBreakMode: .byClipping
         )
-        return capsuleFrame
+        return capsuleFrame.minX - InterfaceScale.metric(8)
     }
 
     static func card(_ frame: CGRect, tint: NSColor) {
