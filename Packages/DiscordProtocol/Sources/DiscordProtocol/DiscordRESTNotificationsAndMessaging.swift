@@ -385,11 +385,6 @@ extension DiscordRESTProvider {
         failed.removeAll { isStopped(files[$0]) }
         let retried = try await storeAttachmentFiles(failed.map { files[$0] }, channelID: channelID, progress: progress)
         for (index, name) in zip(failed, retried) { names[index] = name }
-        // Kept like an early upload until the message is posted, so a failed
-        // send's Retry reuses the stored file and discarding it deletes it.
-        for index in fresh + failed {
-            if let id = files[index].id, let name = names[index] { attachmentPreuploads[id] = Task { name } }
-        }
         // A file stopped just as storage accepted it stays out of the message too.
         let uploaded = pending.compactMap { index in
             names[index].flatMap { isStopped(files[index]) ? nil : (files[index], $0) }
