@@ -239,12 +239,10 @@ extension AppModel {
 
     /// Stops the early uploads of files that will not be sent.
     func discardPreuploads(of attachments: [ForumPostAttachment]) {
-        guard !attachments.isEmpty else { return }
         let provider = accountSession().provider
-        Task {
-            for attachment in attachments {
-                await provider.discardPreuploadedAttachment(attachment.id)
-            }
+        for attachment in attachments {
+            attachmentUploads.endPreupload(attachment.id, stored: false)
+            Task { await provider.discardPreuploadedAttachment(attachment.id) }
         }
     }
 

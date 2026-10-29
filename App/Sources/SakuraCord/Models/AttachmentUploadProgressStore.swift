@@ -47,10 +47,21 @@ final class AttachmentUploadProgressStore {
         preuploadFractions[attachmentID] = 0
     }
 
-    /// A file whose message was already sent keeps that message's progress.
+    /// A file whose message was already sent keeps that message's progress,
+    /// and one dropped from the composer is forgotten.
     func endPreupload(_ attachmentID: UUID, stored: Bool) {
-        guard preuploadFractions.removeValue(forKey: attachmentID) != nil, stored else { return }
-        storedPreuploads.insert(attachmentID)
+        let wasUploading = preuploadFractions.removeValue(forKey: attachmentID) != nil
+        guard stored else {
+            storedPreuploads.remove(attachmentID)
+            // A sent file whose early upload failed is stored again from the start.
+            let id = attachmentID.uuidString
+            if let nonce = nonce(sending: id) {
+                uploads[nonce]?.fractions[id] = 0
+                notify(nonce: nonce, endsCancellation: false)
+            }
+            return
+        }
+        if wasUploading { storedPreuploads.insert(attachmentID) }
     }
 
     /// A send whose files are all stored already posts at once, without upload cards.
@@ -83,7 +94,7 @@ final class AttachmentUploadProgressStore {
                 return
             }
             let id = fileID.uuidString
-            guard let nonce = nonce ?? uploads.first(where: { $0.value.fractions[id] != nil })?.key,
+            guard let nonce = nonce ?? self.nonce(sending: id),
                   let current = uploads[nonce]?.fractions[id], fraction > current
             else { return }
             uploads[nonce]?.fractions[id] = fraction
@@ -114,6 +125,10 @@ final class AttachmentUploadProgressStore {
         uploads.removeAll()
         preuploadFractions.removeAll()
         storedPreuploads.removeAll()
+    }
+
+    private func nonce(sending attachmentID: String) -> String? {
+        uploads.first { $0.value.fractions[attachmentID] != nil }?.key
     }
 
     private func notify(nonce: String, endsCancellation: Bool) {
