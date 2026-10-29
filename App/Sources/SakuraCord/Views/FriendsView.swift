@@ -228,7 +228,8 @@ private struct AddFriendView: View {
 
     private func usernameRow(friends: FriendsState) -> some View {
         @Bindable var friends = friends
-        let canSend = !friends.addFriendText.isEmpty && !friends.isSendingRequest
+        let hasUsername = !friends.addFriendText.isEmpty
+        let canSend = hasUsername && !friends.isSendingRequest
             && friends.addFriendNote.utf16.count <= FriendRequestNote.maximumLength
         return HStack(spacing: InterfaceScale.metric(8)) {
             TextField("Enter a username", text: $friends.addFriendText)
@@ -259,9 +260,11 @@ private struct AddFriendView: View {
                     .contentShape(Capsule())
             }
             .buttonStyle(.plain)
-            .foregroundStyle(.white)
+            // The accent fill stays while sending so the loading dots remain visible;
+            // white text on untinted glass would vanish in light mode.
+            .foregroundStyle(hasUsername ? Color.white : Color.secondary)
             .glassEffect(
-                canSend ? .regular.tint(SakuraCordAccentColor.color).interactive() : .regular,
+                hasUsername ? .regular.tint(SakuraCordAccentColor.color).interactive() : .regular,
                 in: Capsule()
             )
             .disabled(!canSend)
