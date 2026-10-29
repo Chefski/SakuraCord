@@ -98,10 +98,24 @@ struct CommandInvocationPopover: View {
 
     let model: AppModel
     let message: Message
+    /// A command already read opens at its final size. One still loading keeps the
+    /// spinner until the bubble has opened, so its resize never cuts the animation short.
+    @State private var opensWithCommand: Bool
     @Environment(\.stablePopoverPresentationContext) private var presentationContext
 
+    init(model: AppModel, message: Message) {
+        self.model = model
+        self.message = message
+        let opensWithCommand = switch model.messageInteractionData.entries[message.id] {
+        case .loaded, .failed: true
+        case .loading, nil: false
+        }
+        _opensWithCommand = State(initialValue: opensWithCommand)
+    }
+
     private var entry: MessageInteractionDataStore.Entry? {
-        model.messageInteractionData.entries[message.id]
+        guard opensWithCommand || presentationContext?.hasFinishedPresenting != false else { return .loading }
+        return model.messageInteractionData.entries[message.id]
     }
 
     var body: some View {
