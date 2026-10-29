@@ -241,9 +241,11 @@ extension NativeTimelineCanvasView {
         }
         if gap.waitsForSend {
             // Rows can change under a waiting divider, so it follows its row.
+            let moved = gap.rowIndex != index
             gap.rowIndex = index
             guard !sendTransitionBlocksInteractions else {
                 unreadDividerGap = gap
+                if moved { redrawForRowMotion() }
                 return
             }
             gap.waitsForSend = false
