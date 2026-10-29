@@ -271,6 +271,8 @@ private struct AddFriendView: View {
         }
         .padding(InterfaceScale.metric(6))
         .frame(minHeight: InterfaceScale.metric(46))
+        .contentShape(Rectangle())
+        .onTapGesture { focusFromPadding(.username) }
     }
 
     private func noteField(friends: FriendsState) -> some View {
@@ -290,6 +292,22 @@ private struct AddFriendView: View {
         }
         .padding(.horizontal, InterfaceScale.metric(14))
         .padding(.vertical, InterfaceScale.metric(12))
+        .contentShape(Rectangle())
+        .onTapGesture { focusFromPadding(.note) }
+    }
+
+    /// A click in a field's padding focuses that field. ProfileEditorFocusDismissal
+    /// blurs the current field after any click outside it, so focus moves on the
+    /// next turn of the run loop, after that blur. Gaining focus selects the whole
+    /// field, so the caret then goes to the end, as a click beside the text would.
+    private func focusFromPadding(_ field: Field) {
+        DispatchQueue.main.async {
+            focusedField = field
+            DispatchQueue.main.async {
+                guard let editor = NSApp.keyWindow?.firstResponder as? NSTextView else { return }
+                editor.setSelectedRange(NSRange(location: (editor.string as NSString).length, length: 0))
+            }
+        }
     }
 
     private func borderColor(_ friends: FriendsState) -> Color {
