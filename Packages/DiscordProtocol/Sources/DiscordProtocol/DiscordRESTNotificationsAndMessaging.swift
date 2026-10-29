@@ -363,11 +363,13 @@ extension DiscordRESTProvider {
                     preupload.cancel()
                 }
             } catch {
-                // This explicit send stores again a file whose early upload failed.
-                if !isStopped(files[index]) { failed.append(index) }
+                failed.append(index)
             }
         }
         for (index, name) in zip(fresh, try await freshNames) { names[index] = name }
+        // This explicit send stores again a file whose early upload failed,
+        // unless it was stopped meanwhile.
+        failed.removeAll { isStopped(files[$0]) }
         let retried = try await storeAttachmentFiles(failed.map { files[$0] }, channelID: channelID, progress: progress)
         for (index, name) in zip(failed, retried) { names[index] = name }
         // A file stopped just as storage accepted it stays out of the message too.

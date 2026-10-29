@@ -265,10 +265,9 @@ extension AppModel {
         let restored = restoredAttachments.filter {
             seen.insert($0.id).inserted
         }
-        setComposerAttachments(
-            Array((restored + current).prefix(SendMessageDraft.maximumAttachmentCount)),
-            for: destination
-        )
+        let attachments = restored + current
+        setComposerAttachments(Array(attachments.prefix(SendMessageDraft.maximumAttachmentCount)), for: destination)
+        discardPreuploads(attachments.dropFirst(SendMessageDraft.maximumAttachmentCount).map(\.id))
     }
 
     /// Puts back the files of a send that did not take them, unless their
