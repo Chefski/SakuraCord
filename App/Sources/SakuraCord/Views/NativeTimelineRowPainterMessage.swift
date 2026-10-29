@@ -1243,16 +1243,20 @@ extension NativeTimelineRowPainter {
         let label = date.formatted(
             .dateTime.day().month(.wide).year()
         )
-        let lineEnd = isUnread ? drawNewMessagesPill(in: frame) : frame.maxX
+        let pill = newMessagesPillFrame(in: frame)
+        let pillLineEnd = pill.minX - InterfaceScale.metric(8)
         var labelFrame = NativeTimelineDateSeparatorMetrics.labelFrame(
             for: label,
             in: frame
         )
-        // In a narrow timeline the centred date must still stop short of NEW.
-        if labelFrame.maxX > lineEnd {
-            labelFrame.origin.x = max(frame.minX, lineEnd - labelFrame.width)
-            labelFrame.size.width = lineEnd - labelFrame.minX
+        // In a narrow timeline the date keeps clear of where NEW folds in,
+        // so it stays put while NEW fades in or out over it.
+        if labelFrame.maxX > pillLineEnd {
+            labelFrame.origin.x = max(frame.minX, pillLineEnd - labelFrame.width)
+            labelFrame.size.width = pillLineEnd - labelFrame.minX
         }
+        let lineEnd = isUnread ? pillLineEnd : frame.maxX
+        if isUnread { drawNewMessagesPill(pill) }
         (isUnread ? MentionRed.nsColor : NSColor.labelColor.withAlphaComponent(0.16)).setFill()
         CGRect(
             x: frame.minX,
@@ -1288,40 +1292,35 @@ extension NativeTimelineRowPainter {
     }
 
     static func newMessagesSeparator(frame: CGRect) {
-        let lineEnd = drawNewMessagesPill(in: frame)
+        let pill = newMessagesPillFrame(in: frame)
+        drawNewMessagesPill(pill)
         MentionRed.nsColor.setFill()
-        CGRect(x: frame.minX, y: frame.midY, width: max(0, lineEnd - frame.minX), height: 1).fill()
+        CGRect(
+            x: frame.minX, y: frame.midY,
+            width: max(0, pill.minX - InterfaceScale.metric(8) - frame.minX), height: 1
+        ).fill()
     }
 
-    /// Draws the red NEW pill at the end of `frame` and returns where the
-    /// divider's line stops before it.
-    private static func drawNewMessagesPill(in frame: CGRect) -> CGFloat {
-        let font = NSFont.interfaceSystemFont(ofSize: 10, weight: .bold)
-        let labelWidth = ceil(
-            measuredTextWidth("NEW", font: font) + 14
-        )
+    private static var newMessagesPillFont: NSFont { .interfaceSystemFont(ofSize: 10, weight: .bold) }
+
+    /// Where the red NEW pill sits at the end of a divider's `frame`.
+    private static func newMessagesPillFrame(in frame: CGRect) -> CGRect {
+        let width = ceil(measuredTextWidth("NEW", font: newMessagesPillFont) + 14)
         let height = NativeTimelineUnreadSeparatorMetrics.capsuleHeight
-        let capsuleFrame = CGRect(
-            x: frame.maxX - labelWidth,
-            y: frame.midY - height / 2,
-            width: labelWidth,
-            height: height
-        )
+        return CGRect(x: frame.maxX - width, y: frame.midY - height / 2, width: width, height: height)
+    }
+
+    private static func drawNewMessagesPill(_ pill: CGRect) {
         MentionRed.nsColor.setFill()
-        NSBezierPath(
-            roundedRect: capsuleFrame,
-            xRadius: capsuleFrame.height / 2,
-            yRadius: capsuleFrame.height / 2
-        ).fill()
+        NSBezierPath(roundedRect: pill, xRadius: pill.height / 2, yRadius: pill.height / 2).fill()
         text(
             "NEW",
-            in: capsuleFrame,
-            font: font,
+            in: pill,
+            font: newMessagesPillFont,
             color: .white,
             alignment: .center,
             lineBreakMode: .byClipping
         )
-        return capsuleFrame.minX - InterfaceScale.metric(8)
     }
 
     static func card(_ frame: CGRect, tint: NSColor) {
