@@ -1,4 +1,3 @@
-import AppKit
 import SakuraCordModels
 import SwiftUI
 
@@ -319,18 +318,7 @@ private struct TitlebarGlassButton: View {
                     .allowsHitTesting(false)
             }
             .opacity(configuration.isPressed ? 0.75 : 1)
-            // Over the titlebar, `pointerStyle` kept the arrow or the hand
-            // depending on where the pointer came from, so the button sets
-            // the pointer on every move and gives back the arrow on leaving.
-            .onContinuousHover { phase in
-                if case .active = phase {
-                    isHovered = true
-                    if isEnabled { NSCursor.pointingHand.set() }
-                } else {
-                    isHovered = false
-                    NSCursor.arrow.set()
-                }
-            }
+            .onHover { isHovered = $0 }
     }
 
     @ViewBuilder
