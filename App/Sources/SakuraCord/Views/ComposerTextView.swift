@@ -177,7 +177,7 @@ enum ComposerEmojiAttributedText {
         let mentionRanges = renderedMentionRanges(in: source)
         return matches.filter { match in
             let token = (source as NSString).substring(with: match.range)
-            let isNewMention = token.hasPrefix("<t:") || token.hasPrefix("<@$") || token == "@everyone" || token == "@here"
+            let isNewMention = token.hasPrefix("<t:") || token.hasPrefix("<@$") || token.hasPrefix("</") || token == "@everyone" || token == "@here"
             return !isNewMention || mentionRanges.contains(match.range)
         }
     }

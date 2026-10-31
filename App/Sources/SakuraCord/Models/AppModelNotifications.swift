@@ -158,6 +158,8 @@ extension AppModel {
             return gameMentions.gamesByID[mention.id]?.name ?? "Game"
         case .broadcast:
             return mention.rawToken
+        case .command:
+            return mention.commandName.map { "/\($0)" } ?? mention.rawToken
         case .timestamp:
             return DiscordTimestampToken(rawToken: mention.rawToken)?.formatted() ?? mention.rawToken
         case .channel, .channelLink:

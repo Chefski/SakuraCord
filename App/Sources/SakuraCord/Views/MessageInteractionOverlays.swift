@@ -724,6 +724,7 @@ enum MessageReplySummary {
         case .role: "@unknown-role"
         case .game: "Game"
         case .broadcast: mention.rawToken
+        case .command: mention.commandName.map { "/\($0)" } ?? mention.rawToken
         case .timestamp: DiscordTimestampToken(rawToken: mention.rawToken)?.formatted() ?? mention.rawToken
         case .channel: "#unknown-channel"
         case .channelLink: "Channel link"

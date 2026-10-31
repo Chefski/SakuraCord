@@ -47,11 +47,8 @@ struct MentionAutocompleteRow: View {
     @ViewBuilder
     private var leadingVisual: some View {
         switch suggestion.target {
-        case .unresolved:
+        case .unresolved, .game, .command:
             EmptyView()
-        case .game:
-            Image(systemName: "gamecontroller.fill")
-                .frame(width: 28, height: 28)
         case .user:
             AvatarView(name: suggestion.title, url: suggestion.avatarURL, size: InterfaceScale.metric(28))
         case .role:

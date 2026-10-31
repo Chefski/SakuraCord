@@ -431,6 +431,8 @@ struct ComposerView: View {
                 stickerPickerDismissedAt = ProcessInfo.processInfo.systemUptime
             }
         }
+        .onChange(of: commandComposer.mentionedCommand, startMentionedCommand)
+        .onChange(of: commandComposer.isLoading, startMentionedCommand)
         .onChange(of: model.builtInExpressionPickerRequest) { _, request in
             guard let request,
                   request.channelID == activeConversationID else { return }
@@ -1383,6 +1385,19 @@ private extension ComposerView {
             return false
         }
         return true
+    }
+
+    /// Starts a clicked command mention once this conversation's commands
+    /// have loaded. One that is not offered here stays typed, like Discord.
+    private func startMentionedCommand() {
+        guard let mention = commandComposer.mentionedCommand, !commandComposer.isLoading else { return }
+        commandComposer.mentionedCommand = nil
+        if let command = commandComposer.command(mentioned: mention) {
+            activateCommand(command)
+        } else if draft.isEmpty {
+            updateDraft("/\(mention.name)")
+        }
+        isFocused = true
     }
 
     private func insertMentionPickerResult(_ token: String, range: NSRange) {

@@ -338,11 +338,12 @@ import Testing
 }
 
 @Test func `new mention types stay literal in code and escaped text`() {
-    let raw = "@everyone <t:1000000:R> <@$356875221078245376>"
+    let tokens = ["@everyone", "<t:1000000:R>", "<@$356875221078245376>", "</role add:1234>"]
+    let raw = tokens.joined(separator: " ")
     for source in [
         "🌸 `\(raw)`", "**`\(raw)`**", "```swift\n\(raw)\n```",
         "* `**\(raw)**`", ">>> quote\n\n* `**\(raw)**`",
-        #"\@everyone \<t:1000000:R> \<@$356875221078245376>"#,
+        #"\@everyone \<t:1000000:R> \<@$356875221078245376> \</role add:1234>"#,
     ] {
         #expect(MessageDocument(source: source).segments == [.markdown(source)])
     }
@@ -351,7 +352,10 @@ import Testing
         guard case let .mention(mention) = segment else { return nil }
         return mention
     }
-    #expect(mentions.map(\.rawToken) == raw.split(separator: " ").map(String.init))
+    #expect(mentions.map(\.rawToken) == tokens)
+    #expect(mentions.map(\.kind) == [.broadcast, .timestamp, .game, .command])
+    #expect(mentions.last?.id == "1234")
+    #expect(mentions.last?.commandName == "role add")
 }
 
 @Test func `message document recognizes discord message links as structured mentions`() throws {

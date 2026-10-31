@@ -10,6 +10,8 @@ nonisolated enum MentionTarget: Hashable, Sendable {
     case guildNavigation(guildID: GuildID, destination: GuildNavigationMention)
     case user(UserID)
     case game(String)
+    /// A slash command by its root ID and full name, such as `role add`.
+    case command(id: String, name: String)
     case role(RoleID)
     case channel(ChannelID)
     case linkedChannel(guildID: GuildID?, channelID: ChannelID)
@@ -37,6 +39,36 @@ nonisolated struct MentionPresentation: Hashable, Identifiable, Sendable {
     /// A link to a channel, thread or forum post the account does not know.
     static let unknownChannelLinkLabel = "unknown-channel"
 
+    /// Broadcast, game, timestamp and command mentions carry everything
+    /// they show in the token itself; a game's name and icon load later.
+    private static func selfContainedPresentation(for mention: RenderedMention) -> MentionPresentation {
+        switch mention.kind {
+        case .game:
+            MentionPresentation(
+                rawToken: mention.rawToken,
+                label: "Unknown Game",
+                target: .game(mention.id),
+                systemImage: "gamecontroller.fill",
+                isGame: true
+            )
+        case .timestamp:
+            MentionPresentation(
+                rawToken: mention.rawToken,
+                label: DiscordTimestampToken(rawToken: mention.rawToken)?.formatted() ?? mention.rawToken,
+                target: .unresolved,
+                isTimestamp: true
+            )
+        case .command:
+            if let name = mention.commandName {
+                MentionPresentation(rawToken: mention.rawToken, label: "/\(name)", target: .command(id: mention.id, name: name))
+            } else {
+                unresolved(mention, label: mention.rawToken)
+            }
+        default:
+            unresolved(mention, label: mention.rawToken)
+        }
+    }
+
     static func fallback(for mention: RenderedMention) -> MentionPresentation {
         switch mention.kind {
         case .guildNavigation:
@@ -61,23 +93,8 @@ nonisolated struct MentionPresentation: Hashable, Identifiable, Sendable {
                 label: "@unknown-role",
                 target: .role(id)
             )
-        case .broadcast:
-            return unresolved(mention, label: mention.rawToken)
-        case .game:
-            return MentionPresentation(
-                rawToken: mention.rawToken,
-                label: "Unknown Game",
-                target: .game(mention.id),
-                systemImage: "gamecontroller.fill",
-                isGame: true
-            )
-        case .timestamp:
-            return MentionPresentation(
-                rawToken: mention.rawToken,
-                label: DiscordTimestampToken(rawToken: mention.rawToken)?.formatted() ?? mention.rawToken,
-                target: .unresolved,
-                isTimestamp: true
-            )
+        case .broadcast, .game, .timestamp, .command:
+            return selfContainedPresentation(for: mention)
         case .channel:
             guard let id = ChannelID(mention.id) else {
                 return unresolved(

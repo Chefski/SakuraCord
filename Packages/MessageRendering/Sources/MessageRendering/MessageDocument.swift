@@ -59,7 +59,7 @@ public struct RenderedMention: Codable, Hashable, Sendable {
     )
 
     public enum Kind: String, Codable, Hashable, Sendable {
-        case user, role, game, broadcast, timestamp, channel, channelLink, message, guildNavigation
+        case user, role, game, broadcast, timestamp, command, channel, channelLink, message, guildNavigation
     }
 
     public static let tokenPattern = [
@@ -67,6 +67,8 @@ public struct RenderedMention: Codable, Hashable, Sendable {
         #"<@!?[0-9]+>|<@&[0-9]+>|<@\$[0-9]+>|<#[0-9]+>|"#,
         #"(?<![\w@\\])@(?:everyone|here)(?!\w)|"#,
         #"<t:-?[0-9]+(?::[tTdDfFsSR])?>|"#,
+        // Discord's command mention: up to three name parts, as in `</role add:123>`.
+        #"</[-_\p{L}\p{N}\p{sc=Deva}\p{sc=Thai}]{1,32}(?: [-_\p{L}\p{N}\p{sc=Deva}\p{sc=Thai}]{1,32}){0,2}:[0-9]+>|"#,
         #"https?://(?:(?:canary|ptb|www)\.)?discord(?:app)?\.com/channels/(?:@me|[0-9]+)/[0-9]+(?:/[0-9]+)?"#
     ].joined()
 
@@ -75,6 +77,12 @@ public struct RenderedMention: Codable, Hashable, Sendable {
     public var rawToken: String
     public var messageGuildID: String?
     public var messageChannelID: String?
+
+    /// The full name of a command mention, such as `role add`.
+    public var commandName: String? {
+        guard kind == .command, let separator = rawToken.lastIndex(of: ":") else { return nil }
+        return String(rawToken[rawToken.index(rawToken.startIndex, offsetBy: 2) ..< separator])
+    }
 
     public init?(rawToken: String) {
         if rawToken.hasPrefix("<id:"), rawToken.hasSuffix(">"),
@@ -99,6 +107,17 @@ public struct RenderedMention: Codable, Hashable, Sendable {
         if let timestamp = DiscordTimestampToken(rawToken: rawToken) {
             id = String(timestamp.seconds)
             kind = .timestamp
+            self.rawToken = rawToken
+            messageGuildID = nil
+            messageChannelID = nil
+            return
+        }
+        if rawToken.hasPrefix("</"), rawToken.hasSuffix(">"),
+           let separator = rawToken.lastIndex(of: ":"),
+           let commandID = UInt64(rawToken[rawToken.index(after: separator)...].dropLast())
+        {
+            id = String(commandID)
+            kind = .command
             self.rawToken = rawToken
             messageGuildID = nil
             messageChannelID = nil
@@ -218,7 +237,7 @@ public struct MessageDocument: Hashable, Sendable {
     private static func isLiteralMention(
         _ mention: RenderedMention, range: Range<String.Index>, in source: String, codeRanges: [NSRange]
     ) -> Bool {
-        guard mention.kind == .game || mention.kind == .broadcast || mention.kind == .timestamp else { return false }
+        guard [.game, .broadcast, .timestamp, .command].contains(mention.kind) else { return false }
         let tokenRange = NSRange(range, in: source)
         if codeRanges.contains(where: { NSIntersectionRange($0, tokenRange).length > 0 }) { return true }
         var cursor = range.lowerBound

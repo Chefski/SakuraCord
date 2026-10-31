@@ -113,7 +113,7 @@ private struct AppModelMentionResolver {
         case .user: userPresentation(mention)
         case .role: rolePresentation(mention)
         case .game: gamePresentation(mention)
-        case .broadcast, .timestamp: MentionPresentation.fallback(for: mention)
+        case .broadcast, .timestamp, .command: MentionPresentation.fallback(for: mention)
         case .channel: channelPresentation(mention)
         case .channelLink: channelLinkPresentation(mention)
         case .message: messagePresentation(mention)
