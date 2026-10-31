@@ -952,7 +952,7 @@ public enum DiscordMarkdown {
         }
     }
 
-    private static func firstURL(
+    static func firstURL(
         in source: Substring, anchored: Bool = false
     ) -> (range: Range<String.Index>, url: URL)? {
         let candidates = ["https://", "http://"].compactMap { prefix -> Range<String.Index>? in

@@ -234,12 +234,17 @@ public struct MessageDocument: Hashable, Sendable {
         }
     }
 
-    private static let urlExpression = MessageRegularExpression.make(#"https?://[^\s<>]+"#)
-
-    /// A link's own text, such as `https://example.com/@here`, holds no mentions.
+    /// A link's own text, such as `https://example.com/@here`, holds no
+    /// mentions. Links end where the Markdown renderer ends them.
     private static func urlRanges(in source: String) -> [NSRange] {
         guard source.contains("://") else { return [] }
-        return urlExpression.matches(in: source, range: NSRange(source.startIndex ..< source.endIndex, in: source)).map(\.range)
+        var ranges: [NSRange] = []
+        var rest = source[...]
+        while let match = DiscordMarkdown.firstURL(in: rest) {
+            ranges.append(NSRange(match.range, in: source))
+            rest = source[match.range.upperBound...]
+        }
+        return ranges
     }
 
     private static func isLiteralMention(

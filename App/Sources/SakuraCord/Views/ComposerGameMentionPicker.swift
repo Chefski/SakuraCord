@@ -152,7 +152,9 @@ struct ComposerGameMentionPicker: View {
                 DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             }
         } catch is CancellationError {
-            return
+            // A fresh READY cancels only the provider's search; ask again.
+            guard !Task.isCancelled else { return }
+            return await search()
         } catch {
             DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             errorMessage = error.localizedDescription

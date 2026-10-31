@@ -54,12 +54,19 @@ extension AppModel {
     }
 
     func requestGameMentionDetails(id: String) {
-        guard UInt64(id) != nil,
-              !gameMentions.hydratedIDs.contains(id),
-              gameMentions.failedIDs[id].map({ $0 < .now }) ?? true
-        else { return }
+        guard isGameMentionLookupEligible(id) else { return }
         gameMentions.pendingIDs.insert(id)
-        guard gameMentions.loadTask == nil else { return }
+        startGameMentionLoad()
+    }
+
+    private func isGameMentionLookupEligible(_ id: String) -> Bool {
+        UInt64(id) != nil
+            && !gameMentions.hydratedIDs.contains(id)
+            && gameMentions.failedIDs[id].map { $0 < .now } ?? true
+    }
+
+    private func startGameMentionLoad() {
+        guard gameMentions.loadTask == nil, !gameMentions.pendingIDs.isEmpty else { return }
         gameMentions.loadTask = Task { [weak self] in
             guard let self else { return }
             try? await Task.sleep(for: .milliseconds(50))
@@ -69,8 +76,13 @@ extension AppModel {
     }
 
     private func loadPendingGameMentions() async {
-        let ids = gameMentions.pendingIDs.sorted()
+        // An ID queued again while its lookup ran may since have resolved or failed.
+        let ids = gameMentions.pendingIDs.filter(isGameMentionLookupEligible).sorted()
         gameMentions.pendingIDs.removeAll()
+        guard !ids.isEmpty else {
+            gameMentions.loadTask = nil
+            return
+        }
         let session = accountSession()
         do {
             let games = try await session.provider.profileWidgetGames(ids: ids)
@@ -95,9 +107,6 @@ extension AppModel {
             for id in ids { gameMentions.failedIDs[id] = retryAt }
         }
         gameMentions.loadTask = nil
-        if let next = gameMentions.pendingIDs.first {
-            gameMentions.pendingIDs.remove(next)
-            requestGameMentionDetails(id: next)
-        }
+        startGameMentionLoad()
     }
 }

@@ -1406,7 +1406,10 @@ private extension ComposerView {
             .onChange(of: commandComposer.mentionedCommand, startMentionedCommand)
             .onChange(of: commandComposer.isLoading, startMentionedCommand)
             .alert("Clear message?", item: $commandAwaitingClear) { command in
-                Button("Clear", role: .destructive) { activateCommand(command) }
+                Button("Clear", role: .destructive) {
+                    if isVoiceMessageActive { voiceMessage.discard(playback: model.voiceMessagePlayback) }
+                    activateCommand(command)
+                }
                 Button("Cancel", role: .cancel) {}
             } message: { _ in
                 Text("Looks like you’ve already written something. Do you want to clear it and use a command?", bundle: #bundle)
@@ -1421,7 +1424,8 @@ private extension ComposerView {
             if draft.isEmpty { updateDraft("/\(mention.name)") }
             return
         }
-        if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, attachments.isEmpty, !hasActiveCommand {
+        if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, attachments.isEmpty,
+           !hasActiveCommand, !isVoiceMessageActive {
             activateCommand(command)
         } else {
             commandAwaitingClear = command

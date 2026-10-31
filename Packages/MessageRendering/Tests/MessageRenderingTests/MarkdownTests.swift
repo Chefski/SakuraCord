@@ -357,6 +357,8 @@ import Testing
     #expect(mentions.map(\.kind) == [.broadcast, .timestamp, .game, .command])
     #expect(mentions.last?.id == "1234")
     #expect(mentions.last?.commandName == "role add")
+    let afterLink = MessageDocument(source: "[read](https://example.com)@here").segments
+    #expect(afterLink.last == .mention(RenderedMention(rawToken: "@here")!))
 }
 
 @Test func `message document recognizes discord message links as structured mentions`() throws {
