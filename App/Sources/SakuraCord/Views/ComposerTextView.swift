@@ -616,10 +616,13 @@ struct ComposerTextView: NSViewRepresentable {
             guard let textView = notification.object as? NSTextView, !isNormalizing else { return }
             updateCompositionState(from: textView)
             var raw = ComposerEmojiAttributedText.serialize(textView.attributedString())
+            // An existing pill is checked too: typing on after `@here` leaves
+            // literal text that no longer matches, and the pill must unfold.
             if !textView.hasMarkedText(),
-               ComposerEmojiAttributedText.expression.firstMatch(
-                   in: raw, range: NSRange(location: 0, length: (raw as NSString).length)
-               ) != nil
+               attachmentCount(in: textView.attributedString()) > 0
+                   || ComposerEmojiAttributedText.expression.firstMatch(
+                       in: raw, range: NSRange(location: 0, length: (raw as NSString).length)
+                   ) != nil
             {
                 let rawSelection = ComposerEmojiAttributedText.rawRange(
                     forDisplay: textView.selectedRange(), attributed: textView.attributedString()
