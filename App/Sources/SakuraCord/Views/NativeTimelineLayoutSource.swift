@@ -125,7 +125,7 @@ private struct AppModelMentionResolver {
     /// lookups for presentations that cannot contribute a media key.
     func avatarURL(_ mention: RenderedMention) -> URL? {
         if mention.kind == .game {
-            return model.gameMentions.gamesByID[mention.id].flatMap { $0.iconURL ?? $0.coverURL }
+            return model.gameMentions.gamesByID[mention.id].flatMap(\.artworkURL)
         }
         guard mention.kind == .user,
               let userID = UserID(mention.id)
@@ -143,9 +143,8 @@ private struct AppModelMentionResolver {
             rawToken: mention.rawToken,
             label: game.name,
             target: .game(game.id),
-            avatarURL: game.iconURL ?? game.coverURL,
-            systemImage: game.iconURL == nil && game.coverURL == nil ? "gamecontroller.fill" : nil,
-            isGame: true
+            avatarURL: game.artworkURL,
+            systemImage: game.artworkURL == nil ? "gamecontroller.fill" : nil
         )
     }
 

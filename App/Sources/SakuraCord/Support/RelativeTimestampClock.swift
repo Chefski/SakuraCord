@@ -66,7 +66,8 @@ final class RelativeTimestampClock {
 
 nonisolated enum TimestampMentionPresentation {
     static func tokens(in source: String) -> [DiscordTimestampToken] {
-        RichMessageAttributedText.prepare(source: source).tokens.compactMap { token in
+        guard source.contains("<t:") else { return [] }
+        return RichMessageAttributedText.prepare(source: source).tokens.compactMap { token in
             guard case let .mention(mention) = token, mention.kind == .timestamp else { return nil }
             return DiscordTimestampToken(rawToken: mention.rawToken)
         }
@@ -93,19 +94,8 @@ nonisolated enum TimestampMentionPresentation {
             sources += embed.fields.map(\.value)
             components += embed.components ?? []
         }
-        sources += componentSources(components)
-        return sources.filter { $0.contains("<t:") && !tokens(in: $0).isEmpty }
-    }
-
-    private static func componentSources(_ components: [MessageComponent]) -> [String] {
-        components.flatMap { component -> [String] in
-            switch component {
-            case let .textDisplay(_, content): [content]
-            case let .actionRow(_, children), let .container(_, _, _, children): componentSources(children)
-            case let .section(_, children, accessory): componentSources(children + (accessory.map { [$0] } ?? []))
-            default: []
-            }
-        }
+        sources += components.flatMap(\.textDisplayContents)
+        return sources.filter { !tokens(in: $0).isEmpty }
     }
 
     static func refreshed(
@@ -113,6 +103,7 @@ nonisolated enum TimestampMentionPresentation {
         source: String,
         at date: Date
     ) -> [String: MentionPresentation] {
+        guard source.contains("<t:") else { return presentations }
         var result = presentations
         for case let .mention(mention) in RichMessageAttributedText.prepare(source: source).tokens {
             guard mention.kind == .timestamp,

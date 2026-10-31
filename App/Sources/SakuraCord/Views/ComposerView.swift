@@ -1362,11 +1362,7 @@ private extension ComposerView {
                     model.rememberGameMention(game)
                     insertMentionPickerResult("<@$\(game.id)>", range: range)
                 },
-                dismiss: {
-                    mentionPicker = nil
-                    isAutocompleteDismissed = true
-                    isFocused = true
-                }
+                dismiss: dismissMentionPicker
             )
         }
     }
@@ -1374,10 +1370,7 @@ private extension ComposerView {
     private func handleMentionPickerCommand(_ command: ComposerAutocompleteCommand, picker: ComposerMentionPicker) -> Bool {
         guard case let .time(range, seconds) = picker else {
             // The game picker's search field handles its own keys.
-            if case .dismiss = command {
-                mentionPicker = nil
-                isFocused = true
-            }
+            if case .dismiss = command { dismissMentionPicker() }
             return true
         }
         let styles = ComposerTimeFormatPicker.styles
@@ -1390,12 +1383,17 @@ private extension ComposerView {
             let token = DiscordTimestampToken(seconds: seconds, style: styles[autocompleteIndex])
             insertMentionPickerResult(token.rawToken, range: range)
         case .dismiss:
-            mentionPicker = nil
-            isAutocompleteDismissed = true
+            dismissMentionPicker()
         case .previousField, .nextField, .removeField:
             return false
         }
         return true
+    }
+
+    private func dismissMentionPicker() {
+        mentionPicker = nil
+        isAutocompleteDismissed = true
+        isFocused = true
     }
 
     /// Starts a clicked command mention once this conversation's commands

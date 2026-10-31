@@ -25,10 +25,12 @@ nonisolated struct MentionPresentation: Hashable, Identifiable, Sendable {
     var avatarURL: URL?
     var colorHex: UInt32?
     var systemImage: String?
-    var isGame = false
     var isTimestamp = false
 
     var id: String { rawToken }
+    var isGame: Bool {
+        if case .game = target { true } else { false }
+    }
     var showsAvatar: Bool {
         if isGame { return avatarURL != nil }
         if case .user = target { return true }
@@ -37,6 +39,8 @@ nonisolated struct MentionPresentation: Hashable, Identifiable, Sendable {
     var isInteractive: Bool { target != .unresolved }
     /// Discord sets timestamps in the message's own weight, unlike mentions.
     var labelWeight: NSFont.Weight { isTimestamp ? .regular : .semibold }
+    /// A game's square icon keeps slightly rounded corners; avatars are round.
+    func avatarCornerRadius(size: CGFloat) -> CGFloat { isGame ? 3 : size / 2 }
 
     /// A link to a channel, thread or forum post the account does not know.
     static let unknownChannelLinkLabel = "unknown-channel"
@@ -50,8 +54,7 @@ nonisolated struct MentionPresentation: Hashable, Identifiable, Sendable {
                 rawToken: mention.rawToken,
                 label: "Unknown Game",
                 target: .game(mention.id),
-                systemImage: "gamecontroller.fill",
-                isGame: true
+                systemImage: "gamecontroller.fill"
             )
         case .timestamp:
             MentionPresentation(

@@ -155,13 +155,9 @@ extension AppModel {
                 ?? (guildID == selectedGuildID ? guildRoles : [])
             return "@\(roles.first { String($0.id.rawValue) == mention.id }?.name ?? "unknown-role")"
         case .game:
-            return gameMentions.gamesByID[mention.id]?.name ?? "Game"
-        case .broadcast:
-            return mention.rawToken
-        case .command:
-            return mention.commandName.map { "/\($0)" } ?? mention.rawToken
-        case .timestamp:
-            return DiscordTimestampToken(rawToken: mention.rawToken)?.formatted() ?? mention.rawToken
+            return gameMentions.gamesByID[mention.id]?.name ?? MentionPresentation.fallback(for: mention).label
+        case .broadcast, .command, .timestamp:
+            return MentionPresentation.fallback(for: mention).label
         case .channel, .channelLink:
             let id = ChannelID(mention.id)
             let channel = snapshot?.channels.first { $0.id == id }

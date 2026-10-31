@@ -99,10 +99,8 @@ enum MentionAttachmentRenderer {
         let color = labelColor(for: presentation)
         let usesRoleAccentFallback = usesRoleAccentFallback(for: presentation)
         let image = NSImage(size: size, flipped: false) { bounds in
-            let background = backgroundColor(
-                color: color,
-                isTimestamp: presentation.isTimestamp,
-                hovered: hovered
+            let background = color.withAlphaComponent(
+                NativeTimelineMentionAppearance.backgroundAlpha(isHovered: hovered, isTimestamp: presentation.isTimestamp)
             )
             let shape = NSBezierPath(
                 concentricRoundedRect: bounds,
@@ -195,18 +193,9 @@ enum MentionAttachmentRenderer {
         return SakuraCordAccentColor.usesAccentFallback(forRoleColorHex: presentation.colorHex)
     }
 
-    private static func backgroundColor(
-        color: NSColor,
-        isTimestamp: Bool,
-        hovered: Bool
-    ) -> NSColor {
-        color.withAlphaComponent(isTimestamp ? (hovered ? 0.18 : 0.12) : (hovered ? 0.34 : 0.18))
-    }
-
     private static func avatarPath(in rect: NSRect, for presentation: MentionPresentation) -> NSBezierPath {
-        presentation.isGame
-            ? NSBezierPath(roundedRect: rect, xRadius: 3, yRadius: 3)
-            : NSBezierPath(ovalIn: rect)
+        let radius = presentation.avatarCornerRadius(size: rect.width)
+        return NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
     }
 }
 

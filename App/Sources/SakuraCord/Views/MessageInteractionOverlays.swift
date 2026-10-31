@@ -722,10 +722,7 @@ enum MessageReplySummary {
         case .guildNavigation: GuildNavigationMention(rawValue: mention.id)?.title ?? mention.rawToken
         case .user: "@unknown-user"
         case .role: "@unknown-role"
-        case .game: "Game"
-        case .broadcast: mention.rawToken
-        case .command: mention.commandName.map { "/\($0)" } ?? mention.rawToken
-        case .timestamp: DiscordTimestampToken(rawToken: mention.rawToken)?.formatted() ?? mention.rawToken
+        case .game, .broadcast, .command, .timestamp: MentionPresentation.fallback(for: mention).label
         case .channel: "#unknown-channel"
         case .channelLink: "Channel link"
         case .message: "Message link"

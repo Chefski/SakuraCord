@@ -110,7 +110,7 @@ struct ComposerGameMentionPicker: View {
             Image(systemName: "gamecontroller.fill")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.secondary)
-            if let url = game.iconURL ?? game.coverURL {
+            if let url = game.artworkURL {
                 StaticRemoteImage(url: url, maximumPixelDimension: 96, contentMode: .fill)
             }
         }

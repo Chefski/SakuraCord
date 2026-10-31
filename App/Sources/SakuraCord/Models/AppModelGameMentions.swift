@@ -8,6 +8,16 @@ struct GameMentionState {
     var pendingIDs: Set<String> = []
     var failedIDs: [String: Date] = [:]
     var loadTask: Task<Void, Never>?
+
+    /// A game that failed to load is asked for again after this long.
+    static let retryDelay: TimeInterval = 60
+
+    mutating func store(_ games: [ProfileGame]) {
+        for game in games {
+            gamesByID[game.id] = game
+            hydratedIDs.insert(game.id)
+        }
+    }
 }
 
 extension AppModel {
@@ -24,22 +34,19 @@ extension AppModel {
 
     func hydrateGameMentionSuggestions(_ suggestions: [ProfileGame]) async throws -> [ProfileGame] {
         let missingIDs = suggestions.filter {
-            $0.iconURL == nil && $0.coverURL == nil && !gameMentions.hydratedIDs.contains($0.id)
+            $0.artworkURL == nil && !gameMentions.hydratedIDs.contains($0.id)
         }.map(\.id)
         if !missingIDs.isEmpty {
             let session = accountSession()
             let games = try await session.provider.profileWidgetGames(ids: missingIDs)
             try Task.checkCancellation()
             guard isCurrentAccountSession(session) else { throw CancellationError() }
-            for game in games {
-                gameMentions.gamesByID[game.id] = game
-                gameMentions.hydratedIDs.insert(game.id)
-            }
+            gameMentions.store(games)
             if !games.isEmpty { timelinePresentationRevision &+= 1 }
         }
         return suggestions.map { suggestion in
             guard let detailed = gameMentions.gamesByID[suggestion.id] else { return suggestion }
-            return detailed.iconURL != nil || detailed.coverURL != nil ? detailed : suggestion
+            return detailed.artworkURL != nil ? detailed : suggestion
         }
     }
 
@@ -88,11 +95,8 @@ extension AppModel {
             let games = try await session.provider.profileWidgetGames(ids: ids)
             guard !Task.isCancelled, isCurrentAccountSession(session) else { return }
             let resolved = Set(games.map(\.id))
-            for game in games {
-                gameMentions.gamesByID[game.id] = game
-                gameMentions.hydratedIDs.insert(game.id)
-            }
-            let retryAt = Date.now.addingTimeInterval(60)
+            gameMentions.store(games)
+            let retryAt = Date.now.addingTimeInterval(GameMentionState.retryDelay)
             for id in ids where !resolved.contains(id) { gameMentions.failedIDs[id] = retryAt }
             if !games.isEmpty { timelinePresentationRevision &+= 1 }
         } catch is CancellationError {
@@ -103,7 +107,7 @@ extension AppModel {
         } catch {
             guard isCurrentAccountSession(session) else { return }
             DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
-            let retryAt = Date.now.addingTimeInterval(60)
+            let retryAt = Date.now.addingTimeInterval(GameMentionState.retryDelay)
             for id in ids { gameMentions.failedIDs[id] = retryAt }
         }
         gameMentions.loadTask = nil

@@ -27,12 +27,10 @@ public struct DiscordTimestampToken: Hashable, Sendable {
             .split(separator: ":", omittingEmptySubsequences: false)
         guard (1 ... 2).contains(components.count),
               let seconds = Int64(components[0]),
-              components.count == 1 || Style(rawValue: String(components[1])) != nil
+              let style = components.count == 2 ? Style(rawValue: String(components[1])) : .longDateShortTime
         else { return nil }
         self.seconds = seconds
-        style = components.count == 2
-            ? Style(rawValue: String(components[1])) ?? .longDateShortTime
-            : .longDateShortTime
+        self.style = style
     }
 
     public var rawToken: String { "<t:\(seconds):\(style.rawValue)>" }

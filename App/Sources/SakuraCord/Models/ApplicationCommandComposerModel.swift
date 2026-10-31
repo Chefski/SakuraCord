@@ -142,7 +142,7 @@ final class ApplicationCommandComposerModel {
     func command(mentioned mention: CommandMention) -> ApplicationCommand? {
         commands.first { command in
             command.rootCommandID == mention.id
-                && ([command.name] + command.subcommandPath.map(\.name)).joined(separator: " ") == mention.name
+                && ApplicationCommandPickerEngine.untranslatedName(of: command) == mention.name
         }
     }
 

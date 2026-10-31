@@ -903,11 +903,9 @@ extension NativeTimelineRowPainter {
             // Outgoing message text is white. A black backing at this opacity
             // keeps its matching mention text readable even on a white accent.
             NSColor.black.withAlphaComponent(isHovered ? 0.65 : 0.55).setFill()
-        } else if presentation.isTimestamp {
-            color.withAlphaComponent(isHovered ? 0.18 : 0.12).setFill()
         } else {
             color.withAlphaComponent(
-                NativeTimelineMentionAppearance.backgroundAlpha(isHovered: isHovered)
+                NativeTimelineMentionAppearance.backgroundAlpha(isHovered: isHovered, isTimestamp: presentation.isTimestamp)
             ).setFill()
         }
         shape.fill()
@@ -961,16 +959,13 @@ extension NativeTimelineRowPainter {
                 drawImage(
                     image,
                     in: avatarFrame,
-                    cornerRadius: presentation.isGame ? 3 : avatarSize / 2,
+                    cornerRadius: presentation.avatarCornerRadius(size: avatarSize),
                     fillsFrame: true
                 )
             } else {
                 color.withAlphaComponent(0.38).setFill()
-                if presentation.isGame {
-                    NSBezierPath(roundedRect: avatarFrame, xRadius: 3, yRadius: 3).fill()
-                } else {
-                    NSBezierPath(ovalIn: avatarFrame).fill()
-                }
+                let radius = presentation.avatarCornerRadius(size: avatarSize)
+                NSBezierPath(roundedRect: avatarFrame, xRadius: radius, yRadius: radius).fill()
             }
             labelX = avatarFrame.maxX + metrics.leadingGap
         }
