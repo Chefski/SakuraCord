@@ -44,6 +44,7 @@ struct ComposerView: View {
     @State private var autocompleteIndex = 0
     @State private var autocompleteKeyboardSelectionRevision = 0
     @State private var isAutocompleteDismissed = false
+    @State private var commandAwaitingClear: ApplicationCommand?
     @State private var mentionPicker: ComposerMentionPicker?
     @State private var sendTransitionAnchor = ComposerSendTransitionAnchor()
     @State private var holdsPlaceholderForSendTransition = false
@@ -431,8 +432,7 @@ struct ComposerView: View {
                 stickerPickerDismissedAt = ProcessInfo.processInfo.systemUptime
             }
         }
-        .onChange(of: commandComposer.mentionedCommand, startMentionedCommand)
-        .onChange(of: commandComposer.isLoading, startMentionedCommand)
+        .background { commandMentionHandling }
         .onChange(of: model.builtInExpressionPickerRequest) { _, request in
             guard let request,
                   request.channelID == activeConversationID else { return }
@@ -1388,16 +1388,33 @@ private extension ComposerView {
     }
 
     /// Starts a clicked command mention once this conversation's commands
-    /// have loaded. One that is not offered here stays typed, like Discord.
+    /// have loaded, asking first before it replaces a written message, as
+    /// Discord does. One that is not offered here stays typed.
+    private var commandMentionHandling: some View {
+        Color.clear
+            .onChange(of: commandComposer.mentionedCommand, startMentionedCommand)
+            .onChange(of: commandComposer.isLoading, startMentionedCommand)
+            .alert("Clear message?", item: $commandAwaitingClear) { command in
+                Button("Clear", role: .destructive) { activateCommand(command) }
+                Button("Cancel", role: .cancel) {}
+            } message: { _ in
+                Text("Looks like you’ve already written something. Do you want to clear it and use a command?", bundle: #bundle)
+            }
+    }
+
     private func startMentionedCommand() {
         guard let mention = commandComposer.mentionedCommand, !commandComposer.isLoading else { return }
         commandComposer.mentionedCommand = nil
-        if let command = commandComposer.command(mentioned: mention) {
-            activateCommand(command)
-        } else if draft.isEmpty {
-            updateDraft("/\(mention.name)")
-        }
         isFocused = true
+        guard let command = commandComposer.command(mentioned: mention) else {
+            if draft.isEmpty { updateDraft("/\(mention.name)") }
+            return
+        }
+        if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, attachments.isEmpty {
+            activateCommand(command)
+        } else {
+            commandAwaitingClear = command
+        }
     }
 
     private func insertMentionPickerResult(_ token: String, range: NSRange) {

@@ -35,6 +35,8 @@ nonisolated struct MentionPresentation: Hashable, Identifiable, Sendable {
         return false
     }
     var isInteractive: Bool { target != .unresolved }
+    /// Discord sets timestamps in the message's own weight, unlike mentions.
+    var labelWeight: NSFont.Weight { isTimestamp ? .regular : .semibold }
 
     /// A link to a channel, thread or forum post the account does not know.
     static let unknownChannelLinkLabel = "unknown-channel"

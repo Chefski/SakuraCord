@@ -177,7 +177,9 @@ enum ComposerEmojiAttributedText {
         let mentionRanges = renderedMentionRanges(in: source)
         return matches.filter { match in
             let token = (source as NSString).substring(with: match.range)
-            let isNewMention = token.hasPrefix("<t:") || token.hasPrefix("<@$") || token.hasPrefix("</") || token == "@everyone" || token == "@here"
+            // Discord's composer keeps a command mention as typed text.
+            guard !token.hasPrefix("</") else { return false }
+            let isNewMention = token.hasPrefix("<t:") || token.hasPrefix("<@$") || token == "@everyone" || token == "@here"
             return !isNewMention || mentionRanges.contains(match.range)
         }
     }
