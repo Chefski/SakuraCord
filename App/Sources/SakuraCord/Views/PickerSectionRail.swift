@@ -2,9 +2,9 @@ import SakuraCordModels
 import SwiftUI
 
 enum PickerSectionRailLayout {
-    static let width: CGFloat = 46
-    static let bookmarkSize: CGFloat = 30
-    static let iconSize: CGFloat = 28
+    static var width: CGFloat { InterfaceScale.metric(46) }
+    static var bookmarkSize: CGFloat { InterfaceScale.metric(30) }
+    static var iconSize: CGFloat { InterfaceScale.metric(28) }
 }
 
 nonisolated enum PickerSectionGuildOrdering {
@@ -76,7 +76,7 @@ where Section.ID == String {
                 height: PickerSectionRailLayout.iconSize,
                 alignment: .center
             )
-            .contentShape(ConcentricRectangle(cornerRadius: 9, style: .continuous))
+            .contentShape(ConcentricRectangle(cornerRadius: InterfaceScale.metric(9), style: .continuous))
         }
         .buttonStyle(.plain)
         .focusable(false)
@@ -87,10 +87,10 @@ where Section.ID == String {
         )
         .background {
             if visibleSection == section {
-                ConcentricRectangle(cornerRadius: 9, style: .continuous)
+                ConcentricRectangle(cornerRadius: InterfaceScale.metric(9), style: .continuous)
                     .fill(Color.primary.opacity(0.13))
             } else if isHovering {
-                ConcentricRectangle(cornerRadius: 9, style: .continuous)
+                ConcentricRectangle(cornerRadius: InterfaceScale.metric(9), style: .continuous)
                     .fill(Color.primary.opacity(0.08))
             }
         }
@@ -115,7 +115,7 @@ struct PickerSectionRail<Content: View>: View {
                 // This short rail needs an exact intrinsic height: lazy estimates
                 // resize the document during top overscroll and cancel its bounce.
                 // Bookmark artwork is still mounted only while visible.
-                VStack(spacing: 2, content: content)
+                VStack(spacing: InterfaceScale.metric(2), content: content)
                     .frame(maxWidth: .infinity, alignment: .center)
             }
             .contentMargins(.vertical, 4, for: .scrollContent)
@@ -136,11 +136,11 @@ struct PickerGuildBookmarkIcon: View {
                 StaticRemoteImage(url: url, maximumPixelDimension: 64)
             } else {
                 Text(guild.name.prefix(2).uppercased())
-                    .font(.caption.weight(.bold))
+                    .font(.interface(.caption).weight(.bold))
             }
         }
-        .frame(width: 28, height: 28, alignment: .center)
+        .frame(width: InterfaceScale.metric(28), height: InterfaceScale.metric(28), alignment: .center)
         .background(Color.secondary.opacity(0.12))
-        .clipShape(ConcentricRectangle(cornerRadius: 8, style: .continuous))
+        .clipShape(ConcentricRectangle(cornerRadius: InterfaceScale.metric(8), style: .continuous))
     }
 }

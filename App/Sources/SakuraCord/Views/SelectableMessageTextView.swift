@@ -34,6 +34,9 @@ nonisolated struct MentionPresentation: Hashable, Identifiable, Sendable {
     }
     var isInteractive: Bool { target != .unresolved }
 
+    /// A link to a channel, thread or forum post the account does not know.
+    static let unknownChannelLinkLabel = "unknown-channel"
+
     static func fallback(for mention: RenderedMention) -> MentionPresentation {
         switch mention.kind {
         case .guildNavigation:
@@ -93,18 +96,18 @@ nonisolated struct MentionPresentation: Hashable, Identifiable, Sendable {
             guard let id = ChannelID(mention.id) else {
                 return unresolved(
                     mention,
-                    label: "unknown-post",
-                    systemImage: ChannelIconPresentation.forumPostSystemImage
+                    label: unknownChannelLinkLabel,
+                    systemImage: ChannelIconPresentation.systemImage(for: .unknown, isHidden: false)
                 )
             }
             return MentionPresentation(
                 rawToken: mention.rawToken,
-                label: "unknown-post",
+                label: unknownChannelLinkLabel,
                 target: .linkedChannel(
                     guildID: mention.messageGuildID.flatMap(GuildID.init),
                     channelID: id
                 ),
-                systemImage: ChannelIconPresentation.forumPostSystemImage
+                systemImage: ChannelIconPresentation.systemImage(for: .unknown, isHidden: false)
             )
         case .message:
             guard let channelID = mention.messageChannelID.flatMap(ChannelID.init),
@@ -300,7 +303,8 @@ struct SelectableMessageTextView: NSViewRepresentable {
             richTextView.attributedString().attribute(
                 .link,
                 at: charIndex,
-                effectiveRange: &linkRange
+                longestEffectiveRange: &linkRange,
+                in: NSRange(location: 0, length: richTextView.attributedString().length)
             )
             let displayedText = linkRange.length > 0
                 ? richTextView.attributedString().attributedSubstring(
@@ -447,10 +451,11 @@ nonisolated enum RichMessageAttributedText {
         baseFontSize: CGFloat? = nil,
         mentionPresentations: [String: MentionPresentation]
     ) -> NSAttributedString {
-        let resolvedBaseFontSize = baseFontSize ?? (prepared.isEmojiOnly ? emojiSize : 15)
+        let resolvedBaseFontSize = baseFontSize
+            ?? (prepared.isEmojiOnly ? emojiSize : InterfaceScale.fontSize(15))
         let baseFont = NSFont.systemFont(ofSize: resolvedBaseFontSize)
         let output = NSMutableAttributedString(
-            attributedString: DiscordMarkdown.appKitAttributed(
+            attributedString: NativeTimelineCoreText.scaledMarkdown(
                 prepared.markdownPlan,
                 baseFontSize: resolvedBaseFontSize
             )
@@ -683,9 +688,10 @@ final class RichMessageNSTextView: NSTextView {
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let mentionTrackingArea { removeTrackingArea(mentionTrackingArea) }
+        // Popovers stay non-key until clicked; their mentions still hover.
         let area = NSTrackingArea(
             rect: bounds,
-            options: [.activeInKeyWindow, .inVisibleRect, .mouseMoved, .cursorUpdate],
+            options: [.activeInActiveApp, .inVisibleRect, .mouseEnteredAndExited, .mouseMoved, .cursorUpdate],
             owner: self
         )
         addTrackingArea(area)
@@ -698,6 +704,8 @@ final class RichMessageNSTextView: NSTextView {
         updateHoveredMention(at: point)
         setHoveredLink(link(at: point)?.range)
         super.mouseMoved(with: event)
+        // NSTextView restores the I-beam on every move, even over a mention.
+        updateCursor(at: point)
     }
 
     override func mouseExited(with event: NSEvent) {
@@ -708,7 +716,10 @@ final class RichMessageNSTextView: NSTextView {
 
     override func cursorUpdate(with event: NSEvent) {
         guard WindowModalCoordinator.allowsInput(for: self) else { return }
-        let point = convert(event.locationInWindow, from: nil)
+        updateCursor(at: convert(event.locationInWindow, from: nil))
+    }
+
+    private func updateCursor(at point: NSPoint) {
         if mentionAttachment(at: point) == nil, link(at: point) == nil {
             NSCursor.iBeam.set()
         } else {
@@ -757,7 +768,8 @@ final class RichMessageNSTextView: NSTextView {
         let rawLink = attributedString().attribute(
             .link,
             at: index,
-            effectiveRange: &range
+            longestEffectiveRange: &range,
+            in: NSRange(location: 0, length: attributedString().length)
         )
         let url: URL? = switch rawLink {
         case let value as URL:

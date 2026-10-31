@@ -11,14 +11,14 @@ struct GradientThemeEditor: View {
     let presentation: Presentation
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(18)) {
             GradientThemeEditorHeader(
                 themeStore: themeStore,
                 presentation: presentation
             )
             GradientThemeControls(themeStore: themeStore)
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, InterfaceScale.metric(6))
     }
 }
 
@@ -28,15 +28,15 @@ private struct GradientThemeEditorHeader: View {
 
     var body: some View {
         HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(3)) {
                 Text(title, bundle: #bundle)
-                    .font(.title3.weight(.semibold))
+                    .font(.interface(.title3).weight(.semibold))
                 Text(subtitle, bundle: #bundle)
-                    .font(.callout)
+                    .font(.interface(.callout))
                     .foregroundStyle(.secondary)
             }
-            Spacer(minLength: 16)
-            HStack(spacing: 8) {
+            Spacer(minLength: InterfaceScale.metric(16))
+            HStack(spacing: InterfaceScale.metric(8)) {
                 ThemeRandomizeButton(themeStore: themeStore)
                     .settingsControlAnchor(.themeRandomize)
                 if case let .settings(appearance, windowOpacity) = presentation {
@@ -77,7 +77,7 @@ private struct ThemeShareCopyButton: View {
 
     var body: some View {
         Button(action: copyTheme) {
-            HStack(spacing: 7) {
+            HStack(spacing: InterfaceScale.metric(7)) {
                 if isShowingConfirmation {
                     Image(systemName: "checkmark")
                     Text("Copied", bundle: #bundle)
@@ -86,9 +86,9 @@ private struct ThemeShareCopyButton: View {
                     Text("Copy Theme", bundle: #bundle)
                 }
             }
-            .font(.callout.weight(.semibold))
+            .font(.interface(.callout).weight(.semibold))
             .foregroundStyle(Color(nsColor: .labelColor))
-            .padding(.horizontal, 14)
+            .padding(.horizontal, InterfaceScale.metric(14))
             .frame(height: ThemePickerGeometry.colorCountButtonDiameter)
             .contentShape(Capsule())
         }
@@ -134,8 +134,8 @@ private struct ThemeColorCountControls: View {
 
     var body: some View {
         let colorCount = themeStore.activeTheme.activeColorCount
-        GlassEffectContainer(spacing: 8) {
-            HStack(spacing: 8) {
+        GlassEffectContainer(spacing: InterfaceScale.metric(8)) {
+            HStack(spacing: InterfaceScale.metric(8)) {
                 ThemeColorCountButton(
                     systemImage: "minus",
                     label: "Remove gradient color",
@@ -174,7 +174,7 @@ private struct ThemeColorCountButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.body.weight(.semibold))
+                .font(.interface(.body).weight(.semibold))
                 .foregroundStyle(Color(nsColor: .labelColor))
                 .frame(
                     width: ThemePickerGeometry.colorCountButtonDiameter,
@@ -195,7 +195,7 @@ private struct GradientThemeControls: View {
     let themeStore: SakuraCordThemeStore
 
     var body: some View {
-        GlassEffectContainer(spacing: 20) {
+        GlassEffectContainer(spacing: InterfaceScale.metric(20)) {
             HStack(alignment: .center, spacing: 0) {
                 CircularThemeControl(
                     value: themeStore.activeTheme.brightness,
@@ -224,7 +224,7 @@ private struct GradientThemeControls: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 6)
+        .padding(.vertical, InterfaceScale.metric(6))
     }
 }
 
@@ -307,7 +307,7 @@ private struct ThemeHueHandle: View {
         ZStack {
             if let order {
                 Text(order, format: .number)
-                    .font(.body.weight(.bold).monospacedDigit())
+                    .font(.interface(.body).weight(.bold).monospacedDigit())
             }
         }
         .foregroundStyle(.white)
@@ -395,7 +395,7 @@ private struct ThemeIntensityControl: View {
                                 lineJoin: .round
                             )
                         )
-                        .shadow(color: .black.opacity(0.22), radius: 2)
+                        .shadow(color: .black.opacity(0.22), radius: InterfaceScale.metric(2))
                         .clipShape(IntensityTrackShape())
                 }
                 .frame(
@@ -567,7 +567,7 @@ private struct CircularThemeControl: View {
             }
 
             Image(systemName: systemImage)
-                .font(.title2.weight(.medium))
+                .font(.interface(.title2).weight(.medium))
                 .foregroundStyle(.primary.opacity(0.78))
 
             Capsule()
@@ -664,7 +664,7 @@ private struct ThemeRandomizeButton: View {
             }
         } label: {
             Image(systemName: "shuffle")
-                .font(.body.weight(.semibold))
+                .font(.interface(.body).weight(.semibold))
                 .foregroundStyle(Color(nsColor: .labelColor))
                 .rotationEffect(.degrees(rotation))
                 .frame(
@@ -689,36 +689,36 @@ private struct ThemeRandomizeButton: View {
 }
 
 nonisolated enum ThemePickerGeometry {
-    static let diameter: CGFloat = 270
+    static var diameter: CGFloat { InterfaceScale.metric(270) }
     static let colorCountButtonDiameter: CGFloat = 42
-    static let ringWidth: CGFloat = 25
+    static var ringWidth: CGFloat { InterfaceScale.metric(25) }
     static let ringGlowLineWidth: CGFloat = 3
-    static let ringGlowRadius: CGFloat = 4
+    static var ringGlowRadius: CGFloat { InterfaceScale.metric(4) }
     static let ringGlowOpacity = 0.32
-    static let hueHandleSize: CGFloat = 40
-    static let hueHandleHitSize: CGFloat = 52
-    static let intensityTrackHeight: CGFloat = 132
-    static let intensityTrackTopWidth: CGFloat = 34
-    static let intensityTrackBottomWidth: CGFloat = 18
+    static var hueHandleSize: CGFloat { InterfaceScale.metric(40) }
+    static var hueHandleHitSize: CGFloat { InterfaceScale.metric(52) }
+    static var intensityTrackHeight: CGFloat { InterfaceScale.metric(132) }
+    static var intensityTrackTopWidth: CGFloat { InterfaceScale.metric(34) }
+    static var intensityTrackBottomWidth: CGFloat { InterfaceScale.metric(18) }
     static let intensityWaveLineWidth: CGFloat = 3.5
     static let intensityWaveMinimumStrength = 0.13
     static let intensityWaveMaximumStrength = 0.84
     static let intensityWaveCount = 3.0
     static let intensityWaveSampleCount = 60
-    static let intensityHitWidth: CGFloat = 76
-    static let intensityHandleWidth: CGFloat = 58
-    static let intensityHandleHeight: CGFloat = 24
-    static let sideControlDiameter: CGFloat = 112
-    static let brightnessIndicatorWidth: CGFloat = 27
-    static let brightnessIndicatorHeight: CGFloat = 12
+    static var intensityHitWidth: CGFloat { InterfaceScale.metric(76) }
+    static var intensityHandleWidth: CGFloat { InterfaceScale.metric(58) }
+    static var intensityHandleHeight: CGFloat { InterfaceScale.metric(24) }
+    static var sideControlDiameter: CGFloat { InterfaceScale.metric(112) }
+    static var brightnessIndicatorWidth: CGFloat { InterfaceScale.metric(27) }
+    static var brightnessIndicatorHeight: CGFloat { InterfaceScale.metric(12) }
     static let brightnessTickCount = 19
-    static let brightnessTickRadius: CGFloat = 38
+    static var brightnessTickRadius: CGFloat { InterfaceScale.metric(38) }
     static let sliderDragMinimumDistance: CGFloat = 3
     static let hueHapticDivisions = 36
     static let linearHapticDivisions = 20
 
-    private static let hueRadius = (diameter - ringWidth) / 2
-    private static let brightnessRadius = brightnessTickRadius
+    private static var hueRadius: CGFloat { (diameter - ringWidth) / 2 }
+    private static var brightnessRadius: CGFloat { brightnessTickRadius }
     private static let brightnessStartAngle = 135.0
     private static let brightnessSweep = 270.0
     private static let brightnessEndpointActivationAngle = 10.0

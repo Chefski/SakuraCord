@@ -19,9 +19,13 @@ final class SlowmodeState {
 
     func remaining(in channelID: ChannelID, interval: Int, immune: Bool, now: Date = .now) -> Int {
         guard interval > 0, !immune else { return 0 }
-        let confirmedDeadline = confirmations[channelID]?.deadline ?? .distantPast
-        let deadline = serverDeadlines[channelID] ?? confirmedDeadline
+        guard let deadline = deadline(in: channelID, interval: interval, immune: immune) else { return 0 }
         return max(0, Int(ceil(deadline.timeIntervalSince(now))))
+    }
+
+    func deadline(in channelID: ChannelID, interval: Int, immune: Bool) -> Date? {
+        guard interval > 0, !immune else { return nil }
+        return serverDeadlines[channelID] ?? confirmations[channelID]?.deadline
     }
 
     func confirm(_ message: Message, interval: Int, at date: Date = .now) {

@@ -16,7 +16,6 @@ enum ColonAutocompleteSuggestionFactory {
         customValue: (DiscordEmoji) -> String,
         customSource: (DiscordEmoji) -> String? = { _ in nil },
         discordFavoriteKeys: Set<String> = [],
-        usageCounts: [String: Int] = [:],
         discordUsageScores: [String: Int] = [:],
         discordSettingsAreLoaded: Bool? = nil
     ) -> [ColonAutocompleteSuggestion] {
@@ -89,7 +88,7 @@ enum ColonAutocompleteSuggestionFactory {
                 query: query,
                 boundaryExpression: boundaryExpression
             )
-            if let frecency { score *= Double(frecency) / 100 }
+            if let frecency { score *= max(1, Double(frecency) / 100) }
             return RankedSuggestion(
                 suggestion: suggestion,
                 isFavorite: isFavorite,

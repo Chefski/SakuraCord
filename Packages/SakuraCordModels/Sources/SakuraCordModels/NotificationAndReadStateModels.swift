@@ -30,15 +30,20 @@ public struct ThreadNotificationSettings: Codable, Hashable, Sendable {
     public var flags: UInt64
     public var isMuted: Bool
     public var muteConfiguration: DiscordMuteConfiguration?
+    /// The current account's `join_timestamp`. Discord orders sidebar threads
+    /// by it, newest join first.
+    public var joinedAt: Date?
 
     public init(
         flags: UInt64 = 0,
         isMuted: Bool = false,
-        muteConfiguration: DiscordMuteConfiguration? = nil
+        muteConfiguration: DiscordMuteConfiguration? = nil,
+        joinedAt: Date? = nil
     ) {
         self.flags = flags
         self.isMuted = isMuted
         self.muteConfiguration = muteConfiguration
+        self.joinedAt = joinedAt
     }
 
     public var notificationLevel: MessageNotificationLevel {

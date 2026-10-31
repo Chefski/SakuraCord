@@ -9,6 +9,7 @@ struct AccessibilitySettingsPage: View {
 
     var body: some View {
         SettingsPageForm(page: .accessibility, state: state) {
+            motionSection
             cosmeticsSection
             readabilitySection
             voiceOverSection
@@ -35,9 +36,39 @@ struct AccessibilitySettingsPage: View {
         )
     }
 
+    private var motionSection: some View {
+        Section {
+            Toggle("Disable all animations", isOn: $value.disablesAllAnimations)
+                .tint(SakuraCordAccentColor.color)
+                .settingsControlAnchor(.accessibilityDisableAllAnimations, state: state)
+            Group {
+                Toggle("Disable sidebar and member list animations", isOn: animationBinding(\.disablesSidebarAnimations))
+                    .settingsControlAnchor(.accessibilityDisableSidebarAnimations, state: state)
+                Toggle("Disable side chat and full width animations", isOn: animationBinding(\.disablesSideChatAnimations))
+                    .settingsControlAnchor(.accessibilityDisableSideChatAnimations, state: state)
+                Toggle("Disable search, popover and overlay animations", isOn: animationBinding(\.disablesOverlayAnimations))
+                    .settingsControlAnchor(.accessibilityDisableOverlayAnimations, state: state)
+                Toggle("Disable message sending animations", isOn: animationBinding(\.disablesMessageSendingAnimations))
+                    .settingsControlAnchor(.accessibilityDisableSendAnimations, state: state)
+            }
+            .tint(SakuraCordAccentColor.color)
+            .disabled(value.disablesAllAnimations)
+        } header: {
+            Text("Motion", bundle: #bundle)
+        }
+    }
+
+    /// A category switch, which shows on while "Disable all animations" is.
+    private func animationBinding(_ keyPath: WritableKeyPath<AccessibilitySettingsSnapshot, Bool>) -> Binding<Bool> {
+        Binding(
+            get: { value.disablesAllAnimations || value[keyPath: keyPath] },
+            set: { value[keyPath: keyPath] = $0 }
+        )
+    }
+
     private var cosmeticsSection: some View {
         Section {
-            Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 10) {
+            Grid(alignment: .leading, horizontalSpacing: InterfaceScale.metric(24), verticalSpacing: InterfaceScale.metric(10)) {
                 GridRow {
                     Toggle("Profile effects", isOn: $value.disablesProfileEffects)
                         .accessibilityLabel("Disable profile effects")
@@ -63,6 +94,12 @@ struct AccessibilitySettingsPage: View {
                     Toggle("Nitro profile gradients", isOn: $value.disablesProfileGradients)
                         .accessibilityLabel("Disable nitro profile gradients")
                         .settingsControlAnchor(.accessibilityDisableProfileGradients, state: state)
+                }
+                GridRow {
+                    Toggle("Server tags", isOn: $value.disablesServerTags)
+                        .accessibilityLabel("Disable server tags")
+                        .settingsControlAnchor(.accessibilityDisableServerTags, state: state)
+                        .gridCellColumns(2)
                 }
             }
             .toggleStyle(.checkbox)
@@ -93,7 +130,7 @@ struct AccessibilitySettingsPage: View {
 
     private var voiceOverSection: some View {
         Section {
-            Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 10) {
+            Grid(alignment: .leading, horizontalSpacing: InterfaceScale.metric(24), verticalSpacing: InterfaceScale.metric(10)) {
                 GridRow {
                     Toggle("Timestamps", isOn: $value.announcesTimestamps)
                         .settingsControlAnchor(.accessibilityAnnounceTimestamp, state: state)

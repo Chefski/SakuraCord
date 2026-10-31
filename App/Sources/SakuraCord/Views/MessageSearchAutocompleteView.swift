@@ -175,9 +175,9 @@ nonisolated enum MessageSearchAutocompleteSuggestion: Identifiable, Equatable {
     }
 
     var autocompleteRowHeight: CGFloat {
-        if case .heading = self { return 24 }
-        if case .directMessageScope = self { return 34 }
-        return filterOverviewPresentation == nil ? 34 : 48
+        if case .heading = self { return InterfaceScale.metric(24) }
+        if case .directMessageScope = self { return InterfaceScale.metric(34) }
+        return filterOverviewPresentation == nil ? InterfaceScale.metric(34) : InterfaceScale.metric(48)
     }
 
     func valueSystemImage(rulesChannelID: ChannelID?) -> String? {
@@ -415,7 +415,7 @@ enum MessageSearchAutocompletePolicy {
         if query.isEmpty {
             if let guildID = model.selectedGuildID {
                 var joinedUserIDs = Set(
-                    model.snapshot?.quickSwitcherJoinedGuildMemberUserIDs[guildID] ?? []
+                    model.quickSwitcherJoinedGuildMemberUserIDs[guildID] ?? []
                 )
                 let recentMessages = model.messages.suffix(30)
                 joinedUserIDs.formUnion(recentMessages.lazy.compactMap { message in
@@ -444,9 +444,8 @@ enum MessageSearchAutocompletePolicy {
             }
         }
         if let guildID = model.selectedGuildID {
-            let snapshot = model.snapshot
             var joinedUserIDs = Set(
-                snapshot?.quickSwitcherJoinedGuildMemberUserIDs[guildID] ?? []
+                model.quickSwitcherJoinedGuildMemberUserIDs[guildID] ?? []
             )
             joinedUserIDs.formUnion(model.messages.lazy.compactMap { message in
                 message.guildID == guildID && message.guildMember != nil
@@ -471,7 +470,7 @@ enum MessageSearchAutocompletePolicy {
                 in: CharacterSet(charactersIn: "@")
             ).lowercased()
             if "me".hasPrefix(normalizedQuery), !normalizedQuery.isEmpty,
-               let currentUser = snapshot?.currentUser,
+               let currentUser = model.currentUser,
                joinedUserIDs.contains(currentUser.id)
             {
                 suggestions.removeAll {
@@ -499,7 +498,7 @@ enum MessageSearchAutocompletePolicy {
         let normalizedQuery = query.trimmingCharacters(in: CharacterSet(charactersIn: "@"))
             .lowercased()
         if "me".hasPrefix(normalizedQuery), !normalizedQuery.isEmpty,
-           let currentUser = model.snapshot?.currentUser
+           let currentUser = model.currentUser
         {
             suggestions.removeAll {
                 if case .user(_, let user) = $0 { return user.id == currentUser.id }
@@ -514,7 +513,7 @@ enum MessageSearchAutocompletePolicy {
     }
 
     private static func isBlockedOrIgnored(_ userID: UserID, model: AppModel) -> Bool {
-        model.snapshot?.blockedOrIgnoredUserIDs.contains(userID) == true
+        model.blockedOrIgnoredUserIDs.contains(userID)
     }
 
     private static func userSuggestion(
@@ -524,8 +523,7 @@ enum MessageSearchAutocompletePolicy {
     ) -> MessageSearchAutocompleteSuggestion {
         var presentedUser = user
         if model.selectedGuildID == nil,
-           let relationshipNickname = model.snapshot?
-            .relationshipNicknamesByUserID[user.id]
+           let relationshipNickname = model.relationshipNicknamesByUserID[user.id]
         {
             presentedUser.displayName = relationshipNickname
         }
@@ -609,14 +607,10 @@ enum MessageSearchAutocompletePolicy {
         model: AppModel,
         users: [User]? = nil
     ) -> ForwardDestinationSearchPolicy.Index {
-        let snapshot = model.snapshot
-        let guilds = Dictionary(
-            (snapshot?.guilds ?? []).map { ($0.id, $0) },
-            uniquingKeysWith: { _, newer in newer }
-        )
+        let guilds = model.serverRailGuildsByID
         let channels = model.messageSearchChannels
         let channelIDs = Set(channels.map(\.id))
-        let threadSource = (snapshot?.threads ?? []) + (snapshot?.activeJoinedThreads ?? [])
+        let threadSource = model.threads + model.activeJoinedThreads
         let latestThreadsByID = Dictionary(
             threadSource.map { ($0.id, $0) },
             uniquingKeysWith: { _, newer in newer }
@@ -638,18 +632,18 @@ enum MessageSearchAutocompletePolicy {
             includesUnjoinedThreads: true,
             channelStoreOrder: channels.map(\.id),
             users: users ?? model.messageSearchUsers,
-            userBoosterChannels: (snapshot?.channels ?? channels).filter { channel in
-                snapshot?.messageSearchUserBoosterChannelIDs.contains(channel.id) ?? true
+            userBoosterChannels: model.messagePresentationChannels.filter { channel in
+                model.messageSearchUserBoosterChannelIDs.contains(channel.id)
             },
             includesChannelRecipientsAsUsers: users == nil,
-            friendUserIDs: snapshot?.friendUserIDs ?? [],
-            relationshipNicknamesByUserID: snapshot?.relationshipNicknamesByUserID ?? [:],
+            friendUserIDs: model.friendUserIDs,
+            relationshipNicknamesByUserID: model.relationshipNicknamesByUserID,
             // queryAllUsers/queryDMChannels operate on UserStore records, not
             // GuildMemberStore nicknames. Guild aliases belong exclusively to
             // queryGuildUsers and otherwise create false DM matches.
             userSearchAliasesByUserID: model.selectedGuildID == nil
                 ? [:]
-                : snapshot?.userSearchAliasesByUserID ?? [:],
+                : model.userSearchAliasesByUserID,
             // UserStore contains the current account. The autocomplete layer
             // suppresses it only for Discord's special `me` query handling.
             currentUserID: nil,
@@ -665,17 +659,16 @@ enum MessageSearchAutocompletePolicy {
         model: AppModel,
         index: ForwardDestinationSearchPolicy.Index
     ) -> ForwardDestinationSearchPolicy.Index {
-        guard let snapshot = model.snapshot,
-              let selectedGuildID = model.selectedGuildID
+        guard let selectedGuildID = model.selectedGuildID
         else { return index }
-        var aliases = snapshot.userSearchAliasesByUserID
+        var aliases = model.userSearchAliasesByUserID
         let selected = [selectedGuildID]
-        let guildIDs = selected + snapshot.quickSwitcherGuildMemberAliases.keys.sorted().filter {
+        let guildIDs = selected + model.quickSwitcherGuildMemberAliases.keys.sorted().filter {
             !selected.contains($0)
         }
         for guildID in guildIDs {
-            for userID in (snapshot.quickSwitcherGuildMemberAliases[guildID] ?? [:]).keys.sorted() {
-                guard let alias = snapshot.quickSwitcherGuildMemberAliases[guildID]?[userID],
+            for userID in (model.quickSwitcherGuildMemberAliases[guildID] ?? [:]).keys.sorted() {
+                guard let alias = model.quickSwitcherGuildMemberAliases[guildID]?[userID],
                       aliases[userID, default: []].contains(where: {
                           $0.localizedCaseInsensitiveCompare(alias) == .orderedSame
                       }) == false
@@ -739,9 +732,9 @@ struct MessageSearchAutocompleteView: View {
                 )
                 .frame(width: width)
                 .frame(height: autocompleteHeight(for: result.suggestions))
-                .glassEffect(.regular, in: .rect(cornerRadius: 12))
-                .shadow(color: .black.opacity(0.18), radius: 14, y: 7)
-                .padding(.top, 8)
+                .glassEffect(.regular, in: .rect(cornerRadius: InterfaceScale.metric(12)))
+                .shadow(color: .black.opacity(0.18), radius: InterfaceScale.metric(14), y: 7)
+                .padding(.top, InterfaceScale.metric(8))
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
@@ -764,9 +757,7 @@ struct MessageSearchAutocompleteView: View {
     private func autocompleteHeight(
         for suggestions: [MessageSearchAutocompleteSuggestion]
     ) -> CGFloat {
-        min(420, 10 + suggestions.reduce(0) { height, suggestion in
-            height + suggestion.autocompleteRowHeight + 2
-        })
+        min(InterfaceScale.metric(420), MessageSearchAutocompleteCanvas.contentHeight(for: suggestions))
     }
 
     private func synchronizeSelection(_ result: MessageSearchAutocompletePolicy.Result) {
@@ -936,8 +927,14 @@ private struct MessageSearchAutocompleteList: NSViewRepresentable {
 }
 
 private final class MessageSearchAutocompleteCanvas: NSView {
-    private static let inset: CGFloat = 6
-    private static let spacing: CGFloat = 2
+    private static var inset: CGFloat { InterfaceScale.metric(6) }
+    private static var spacing: CGFloat { InterfaceScale.metric(2) }
+
+    /// The rows' total height, matching the canvas frame computed in `update`.
+    static func contentHeight(for rows: [MessageSearchAutocompleteSuggestion]) -> CGFloat {
+        let rowsHeight = rows.reduce(0) { $0 + $1.autocompleteRowHeight }
+        return inset * 2 + rowsHeight + spacing * CGFloat(max(0, rows.count - 1))
+    }
 
     override var isFlipped: Bool { true }
 
@@ -1078,13 +1075,13 @@ private final class MessageSearchAutocompleteCanvas: NSView {
         let rect = rowRect(at: index)
         if row.id == selectedID, row.isSelectable {
             NSColor.labelColor.withAlphaComponent(0.09).setFill()
-            NSBezierPath(roundedRect: rect, xRadius: 6, yRadius: 6).fill()
+            NSBezierPath(roundedRect: rect, xRadius: InterfaceScale.metric(6), yRadius: InterfaceScale.metric(6)).fill()
         }
         if !row.isSelectable {
             drawText(
                 row.title,
-                rect: rect.insetBy(dx: 8, dy: 4),
-                font: .systemFont(ofSize: 12, weight: .semibold),
+                rect: rect.insetBy(dx: InterfaceScale.metric(8), dy: InterfaceScale.metric(4)),
+                font: .interfaceSystemFont(ofSize: 12, weight: .semibold),
                 color: .labelColor.withAlphaComponent(0.72)
             )
             return
@@ -1101,7 +1098,7 @@ private final class MessageSearchAutocompleteCanvas: NSView {
         let systemImage = row.channelPresentation.flatMap {
             channelSystemImagesByID[$0.id]
         } ?? row.valueSystemImage(rulesChannelID: nil)
-        let iconRect = CGRect(x: rect.minX + 8, y: rect.minY + 6, width: 22, height: 22)
+        let iconRect = CGRect(x: rect.minX + InterfaceScale.metric(8), y: rect.minY + InterfaceScale.metric(6), width: InterfaceScale.metric(22), height: InterfaceScale.metric(22))
         if let avatar {
             drawAvatar(name: avatar.name, url: avatar.url, in: iconRect)
         } else if let systemImage {
@@ -1109,15 +1106,15 @@ private final class MessageSearchAutocompleteCanvas: NSView {
             if let overlay = row.valueOverlaySystemImage {
                 drawSystemImage(
                     overlay,
-                    in: CGRect(x: iconRect.maxX - 9, y: iconRect.minY - 1, width: 11, height: 11),
+                    in: CGRect(x: iconRect.maxX - InterfaceScale.metric(9), y: iconRect.minY - 1, width: InterfaceScale.metric(11), height: InterfaceScale.metric(11)),
                     pointSize: 8
                 )
             }
         }
         let hasLeadingIcon = avatar != nil || systemImage != nil
         let textX = hasLeadingIcon ? iconRect.maxX + 8 : rect.minX + 10
-        let titleFont = NSFont.systemFont(ofSize: 14, weight: .medium)
-        let usernameFont = NSFont.systemFont(ofSize: 12, weight: .regular)
+        let titleFont = NSFont.interfaceSystemFont(ofSize: 14, weight: .medium)
+        let usernameFont = NSFont.interfaceSystemFont(ofSize: 12, weight: .regular)
         let username = row.userPresentation?.username
         let usernameWidth = username.map {
             min(
@@ -1131,9 +1128,9 @@ private final class MessageSearchAutocompleteCanvas: NSView {
         )
         let titleRect = CGRect(
             x: textX,
-            y: rect.minY + 8,
+            y: rect.minY + InterfaceScale.metric(8),
             width: max(0, titleWidth),
-            height: 18
+            height: InterfaceScale.metric(18)
         )
         drawText(
             row.title,
@@ -1145,10 +1142,10 @@ private final class MessageSearchAutocompleteCanvas: NSView {
             drawText(
                 username,
                 rect: CGRect(
-                    x: titleRect.maxX + 6,
-                    y: rect.minY + 9,
+                    x: titleRect.maxX + InterfaceScale.metric(6),
+                    y: rect.minY + InterfaceScale.metric(9),
                     width: usernameWidth,
-                    height: 17
+                    height: InterfaceScale.metric(17)
                 ),
                 font: usernameFont,
                 color: .labelColor.withAlphaComponent(0.70)
@@ -1161,19 +1158,19 @@ private final class MessageSearchAutocompleteCanvas: NSView {
         presentation: MessageSearchAutocompleteSuggestion.FilterOverviewPresentation,
         in rect: CGRect
     ) {
-        let iconRect = CGRect(x: rect.minX + 9, y: rect.minY + 13, width: 22, height: 22)
+        let iconRect = CGRect(x: rect.minX + InterfaceScale.metric(9), y: rect.minY + InterfaceScale.metric(13), width: InterfaceScale.metric(22), height: InterfaceScale.metric(22))
         drawSystemImage(presentation.systemImage, in: iconRect)
         let textX = iconRect.maxX + 10
         drawText(
             row.title,
-            rect: CGRect(x: textX, y: rect.minY + 5, width: rect.maxX - textX - 10, height: 19),
-            font: .systemFont(ofSize: 14, weight: .medium),
+            rect: CGRect(x: textX, y: rect.minY + InterfaceScale.metric(5), width: rect.maxX - textX - InterfaceScale.metric(10), height: InterfaceScale.metric(19)),
+            font: .interfaceSystemFont(ofSize: 14, weight: .medium),
             color: .labelColor
         )
         drawText(
             presentation.detail,
-            rect: CGRect(x: textX, y: rect.minY + 25, width: rect.maxX - textX - 10, height: 17),
-            font: .systemFont(ofSize: 12, weight: .semibold),
+            rect: CGRect(x: textX, y: rect.minY + InterfaceScale.metric(25), width: rect.maxX - textX - InterfaceScale.metric(10), height: InterfaceScale.metric(17)),
+            font: .interfaceSystemFont(ofSize: 12, weight: .semibold),
             color: .labelColor.withAlphaComponent(0.62)
         )
     }
@@ -1182,17 +1179,17 @@ private final class MessageSearchAutocompleteCanvas: NSView {
         _ presentation: MessageSearchAutocompleteSuggestion.DirectMessageScopePresentation,
         in rect: CGRect
     ) {
-        let searchRect = CGRect(x: rect.minX + 8, y: rect.minY + 6, width: 22, height: 22)
+        let searchRect = CGRect(x: rect.minX + InterfaceScale.metric(8), y: rect.minY + InterfaceScale.metric(6), width: InterfaceScale.metric(22), height: InterfaceScale.metric(22))
         drawSystemImage("magnifyingglass", in: searchRect)
-        let actionFont = NSFont.systemFont(ofSize: 14, weight: .medium)
+        let actionFont = NSFont.interfaceSystemFont(ofSize: 14, weight: .medium)
         let actionWidth = ceil((presentation.action as NSString).size(
             withAttributes: [.font: actionFont]
         ).width)
         let actionRect = CGRect(
-            x: searchRect.maxX + 8,
-            y: rect.minY + 8,
+            x: searchRect.maxX + InterfaceScale.metric(8),
+            y: rect.minY + InterfaceScale.metric(8),
             width: actionWidth,
-            height: 18
+            height: InterfaceScale.metric(18)
         )
         drawText(
             presentation.action,
@@ -1201,10 +1198,10 @@ private final class MessageSearchAutocompleteCanvas: NSView {
             color: .labelColor
         )
         let avatarRect = CGRect(
-            x: actionRect.maxX + 8,
-            y: rect.minY + 6,
-            width: 22,
-            height: 22
+            x: actionRect.maxX + InterfaceScale.metric(8),
+            y: rect.minY + InterfaceScale.metric(6),
+            width: InterfaceScale.metric(22),
+            height: InterfaceScale.metric(22)
         )
         drawAvatar(
             name: presentation.avatar.name,
@@ -1214,12 +1211,12 @@ private final class MessageSearchAutocompleteCanvas: NSView {
         drawText(
             presentation.username,
             rect: CGRect(
-                x: avatarRect.maxX + 7,
-                y: rect.minY + 8,
-                width: max(0, rect.maxX - avatarRect.maxX - 17),
-                height: 18
+                x: avatarRect.maxX + InterfaceScale.metric(7),
+                y: rect.minY + InterfaceScale.metric(8),
+                width: max(0, rect.maxX - avatarRect.maxX - InterfaceScale.metric(17)),
+                height: InterfaceScale.metric(18)
             ),
-            font: .systemFont(ofSize: 14, weight: .semibold),
+            font: .interfaceSystemFont(ofSize: 14, weight: .semibold),
             color: .labelColor
         )
     }
@@ -1274,8 +1271,8 @@ private final class MessageSearchAutocompleteCanvas: NSView {
             context.fillEllipse(in: rect)
             drawText(
                 String(name.prefix(1)).uppercased(),
-                rect: rect.offsetBy(dx: 0, dy: 5),
-                font: .systemFont(ofSize: 10, weight: .semibold),
+                rect: rect.offsetBy(dx: 0, dy: InterfaceScale.metric(5)),
+                font: .interfaceSystemFont(ofSize: 10, weight: .semibold),
                 color: .white,
                 alignment: .center
             )

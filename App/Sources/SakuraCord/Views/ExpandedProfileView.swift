@@ -14,18 +14,36 @@ struct ExpandedProfileView: View {
     }
 
     var body: some View {
+        Group {
+            if let reason = model.profileSuppression(presentation) {
+                SuppressedProfileGate(model: model, presentation: presentation, reason: reason, layout: .expanded)
+                    .overlay(alignment: .topTrailing) {
+                        HoverCloseButton(help: "Close Profile", accessibilityIdentifier: "expanded-profile-close") { modal?() }
+                            .padding(InterfaceScale.metric(10))
+                    }
+            } else {
+                expandedContent
+            }
+        }
+        .windowModalSize(width: 820, height: 720)
+    }
+
+    private var expandedContent: some View {
         ProfileExpandedSurface(profile: presentation.profile, profileContent: {
-            ProfilePresentationContent(presentation: presentation, layout: .expanded, maximumPopoverHeight: 720)
+            ProfilePresentationContent(presentation: presentation, layout: .expanded, maximumPopoverHeight: InterfaceScale.metric(720), userMenu: {
+                UserContextMenu.make(for: presentation.member.user, context: .init(guildID: presentation.guildID, ignoreLocation: .profile), model: model)
+            })
         }, widgets: {
             widgetBoard
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipped()
                 .overlay(alignment: .topTrailing) {
                     HoverCloseButton(help: "Close Profile", accessibilityIdentifier: "expanded-profile-close") { modal?() }
-                        .padding(10)
+                        .padding(InterfaceScale.metric(10))
                 }
         })
         .environment(\.profileCosmeticPolicy, model.cosmeticPolicy)
+        .environment(\.serverTagCardModel, model)
         .windowModalSize(width: 820, height: 720)
         .background(ProfileVerticalScrollInput())
         .accessibilityElement(children: .contain)
@@ -51,10 +69,10 @@ struct ExpandedProfileView: View {
                             }
                         }
                     )
-                    .padding(.top, 12)
+                    .padding(.top, InterfaceScale.metric(12))
             }
         } else if presentation.isLoading {
-            ProgressView("Loading widgets…").padding(48)
+            ProgressView("Loading widgets…").padding(InterfaceScale.metric(48))
         } else if let error = presentation.errorMessage {
             ContentUnavailableView {
                 Label("Couldn't Load Widgets", systemImage: "exclamationmark.triangle")

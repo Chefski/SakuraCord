@@ -5,14 +5,18 @@ extension AppModel {
         forwardDestinationHistory = []
         workspaceNavigationOverlay = nil
         guard launchMode == .normal else { return }
-        UserDefaults.standard.removeObject(
+        PRBuildProfile.defaults.removeObject(
             forKey: forwardDestinationHistoryDefaultsKey
         )
     }
 
     func clearLocallyLearnedEmojiRanking() {
-        clearLocalEmojiRecents()
-        resetLocalEmojiRanking()
+        // These obsolete local-only rankings are no longer read. Pending uses
+        // belong to Discord-synchronized settings, not disposable learning.
+        guard persistsEmojiPreferences else { return }
+        for key in ["dev.sakuracord.emoji-recents", "dev.sakuracord.emoji-usage", "dev.sakuracord.favorite-emojis"] {
+            PRBuildProfile.defaults.removeObject(forKey: key)
+        }
     }
 
     func clearLocalActivity() async throws {
@@ -35,6 +39,8 @@ extension AppModel {
         guard let database = session.database else {
             throw LocalPrivacyActionError.noActiveAccount
         }
+        translation.resetDraft(.channel)
+        translation.resetDraft(.thread)
         let previousDraftChannelIDs = quickSwitcherDraftChannelIDs
         quickSwitcherDraftChannelIDs = []
         do {

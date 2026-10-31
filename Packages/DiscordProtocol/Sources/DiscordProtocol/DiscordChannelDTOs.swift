@@ -18,12 +18,16 @@ struct ThreadMemberDTO: Decodable {
     var flags: UInt64?
     var muted: Bool?
     var muteConfig: MuteConfigDTO?
+    var joinTimestamp: String?
+    var member: GuildMemberDTO?
+    var presence: GuildPresenceDTO?
 
     enum CodingKeys: String, CodingKey {
         case id
         case userID = "user_id"
-        case flags, muted
+        case flags, muted, member, presence
         case muteConfig = "mute_config"
+        case joinTimestamp = "join_timestamp"
     }
 
     var domain: ThreadNotificationSettings {
@@ -34,7 +38,8 @@ struct ThreadMemberDTO: Decodable {
                 DiscordMuteConfiguration(
                     endTime: $0.endTime.flatMap(DiscordDate.parse)
                 )
-            }
+            },
+            joinedAt: joinTimestamp.flatMap(DiscordDate.parse)
         )
     }
 }
@@ -128,6 +133,7 @@ struct ChannelDTO: Decodable {
     var parentID: String?
     var position: Int?
     var recipients: [UserDTO]?
+    var blockedUserWarningDismissed: Bool?
     var recipientIDs: [String]?
     var permissionOverwrites: [PermissionOverwriteDTO]?
     var memberListID: String?
@@ -139,14 +145,18 @@ struct ChannelDTO: Decodable {
     var memberCount: Int?
     var totalMessageSent: Int?
     var threadMetadata: ThreadMetadataDTO?
+    var lastNonMessageActivityTimestamp: String?
     var appliedTags: [String]?
     var flags: UInt64?
     var member: ThreadMemberDTO?
-    var availableTags: [ForumTagDTO]?
-    var defaultReactionEmoji: DefaultReactionDTO?
-    var defaultSortOrder: Int?
-    var defaultForumLayout: Int?
-    var defaultTagSetting: String?
+    // Forum and media channel metadata is decoded leniently: guild channel
+    // lists are lossy per channel, so one unexpected tag or reaction shape
+    // would otherwise drop the whole forum from the sidebar.
+    var availableTags: LossyValue<LossyList<ForumTagDTO>>?
+    var defaultReactionEmoji: LossyValue<DefaultReactionDTO>?
+    var defaultSortOrder: LossyValue<Int>?
+    var defaultForumLayout: LossyValue<Int>?
+    var defaultTagSetting: LossyValue<String>?
     var defaultAutoArchiveDuration: Int?
     var defaultThreadRateLimitPerUser: Int?
     var rateLimitPerUser: Int?
@@ -179,11 +189,13 @@ struct ChannelDTO: Decodable {
         case name, icon, topic, type, nsfw
         case parentID = "parent_id"
         case position, recipients
+        case blockedUserWarningDismissed = "blocked_user_warning_dismissed"
         case recipientIDs = "recipient_ids"
         case permissionOverwrites = "permission_overwrites"
         case memberListID = "member_list_id"
         case lastMessageID = "last_message_id"
         case lastPinTimestamp = "last_pin_timestamp"
+        case lastNonMessageActivityTimestamp = "last_non_message_activity_timestamp"
         case ownerID = "owner_id"
         case owner, flags, member
         case embeddedMessage = "message"
@@ -276,19 +288,20 @@ struct ChannelDTO: Decodable {
             categoryPosition: categoryPosition,
             isAgeRestricted: nsfw ?? false,
             recipients: users,
+            blockedUserWarningDismissed: blockedUserWarningDismissed ?? false,
             permissionOverwrites: permissionOverwrites?.map(\.domain),
             memberListID: memberListID,
             lastMessageID: lastMessageID.flatMap(MessageID.init),
             lastPinTimestamp: lastPinTimestamp.flatMap(DiscordDate.parse),
             flags: flags ?? 0,
-            availableTags: availableTags?.compactMap(\.domain) ?? [],
-            defaultReaction: defaultReactionEmoji.map {
+            availableTags: availableTags?.value?.elements.compactMap(\.domain) ?? [],
+            defaultReaction: defaultReactionEmoji?.value.map {
                 ForumDefaultReaction(emojiID: $0.emojiID, emojiName: $0.emojiName)
             },
-            defaultSortOrder: defaultSortOrder.flatMap(ForumSortOrder.init(rawValue:)),
-            defaultForumLayout: defaultForumLayout.flatMap(ForumLayout.init(rawValue:))
+            defaultSortOrder: defaultSortOrder?.value.flatMap(ForumSortOrder.init(rawValue:)),
+            defaultForumLayout: defaultForumLayout?.value.flatMap(ForumLayout.init(rawValue:))
                 ?? .defaultLayout,
-            defaultTagMatch: defaultTagSetting.flatMap(ForumTagMatch.init(rawValue:)) ?? .matchSome,
+            defaultTagMatch: defaultTagSetting?.value.flatMap(ForumTagMatch.init(rawValue:)) ?? .matchSome,
             defaultAutoArchiveDuration: defaultAutoArchiveDuration,
             defaultThreadRateLimitPerUser: defaultThreadRateLimitPerUser,
             rateLimitPerUser: rateLimitPerUser ?? 0,
@@ -328,7 +341,9 @@ struct ChannelDTO: Decodable {
                 autoArchiveDuration: threadMetadata?.autoArchiveDuration,
                 totalMessageSent: totalMessageSent ?? messageCount ?? 0,
                 notificationSettings: member?.domain,
-                rateLimitPerUser: rateLimitPerUser ?? 0
+                rateLimitPerUser: rateLimitPerUser ?? 0,
+                lastNonMessageActivityAt: lastNonMessageActivityTimestamp.flatMap(DiscordDate.parse),
+                isPrivate: type == 12
             ),
             owner: ownerUser ?? firstMessage?.author,
             firstMessage: firstMessage,

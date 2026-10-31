@@ -2,6 +2,14 @@ import Foundation
 import SakuraCordModels
 
 extension DiscordRESTProvider {
+    public func dismissIgnoredGroupWarning(in channelID: ChannelID) async throws {
+        guard let account = currentUser?.id else { throw ChatProviderError.unauthenticated }
+        try await requestEmpty("/channels/\(channelID)/blocked-user-warning-dismissal", method: "POST")
+        guard currentUser?.id == account, var channel = privateChannel(id: channelID) else { return }
+        channel.blockedUserWarningDismissed = true
+        upsertPrivateChannel(channel)
+    }
+
     public func channels(in guildID: GuildID?) async throws -> [Channel] {
         if let cached = cachedChannels[guildID] {
             return cached
@@ -47,9 +55,25 @@ extension DiscordRESTProvider {
             var channel = channel
             channel.position = (channels.lazy.map(\.position).max() ?? -1) + 1
             channels.append(channel)
+            // A newly created or reopened DM joins the activity ordering. A
+            // message-less group DM ranks by its own snowflake, so it leads.
+            // Search discoveries may leave an unsorted tail, so re-sort as
+            // READY_SUPPLEMENTAL does rather than assuming sorted input.
+            channels = Self.orderedPrivateChannels(channels)
         }
         cachedChannels[nil] = channels
         continuation?.yield(.channelsChanged(guildID: nil, channels: channels))
+        continuation?.yield(.privateMembersChanged(privateMembersInChannelOrder()))
+    }
+
+    /// Removes a DM or group and publishes the list once; an already removed
+    /// channel is left alone, so a later `CHANNEL_DELETE` does no extra work.
+    func removePrivateChannel(_ channelID: ChannelID) {
+        guard cachedChannels[nil]?.contains(where: { $0.id == channelID }) == true else { return }
+        privateChannelRevisions[channelID, default: 0] &+= 1
+        cachedChannels[nil]?.removeAll { $0.id == channelID }
+        lazyPrivateChannelIDs.remove(channelID)
+        continuation?.yield(.channelsChanged(guildID: nil, channels: cachedChannels[nil] ?? []))
         continuation?.yield(.privateMembersChanged(privateMembersInChannelOrder()))
     }
 
@@ -110,7 +134,9 @@ extension DiscordRESTProvider {
             guard recipients != channel.recipients else { continue }
             channels[index].recipients = recipients
             if !channel.hasExplicitName {
-                let recipientName = recipients.map(\.displayName).joined(separator: ", ")
+                let recipientName = recipients
+                    .map { cachedRelationshipNicknamesByUserID[$0.id] ?? $0.displayName }
+                    .joined(separator: ", ")
                 if !recipientName.isEmpty {
                     channels[index].name = recipientName
                 } else if channel.kind == .groupDirectMessage,
@@ -151,13 +177,18 @@ extension DiscordRESTProvider {
         var seen: Set<UserID> = []
         return membersWithCurrentStatus((cachedChannels[nil] ?? []).flatMap(\.recipients).compactMap { user in
             guard seen.insert(user.id).inserted else { return nil }
-            if var member = cachedPrivateMembersByID[user.id] {
-                // READY presence records only contain a partial user. Keep DM
-                // identity sourced from the hydrated private-channel recipient.
-                member.user = user
-                return member
+            var member = cachedPrivateMembersByID[user.id]
+                ?? Member(user: user, roleName: "Direct Message", status: .offline)
+            // READY presence records only contain a partial user. Keep DM
+            // identity sourced from the hydrated private-channel recipient.
+            member.user = user
+            // Private conversations show a friend nickname in place of the
+            // name, as a guild nickname does in its server.
+            if let nickname = cachedRelationshipNicknamesByUserID[user.id] {
+                member.globalDisplayName = user.displayName
+                member.user.displayName = nickname
             }
-            return Member(user: user, roleName: "Direct Message", status: .offline)
+            return member
         })
     }
 
@@ -191,11 +222,11 @@ extension DiscordRESTProvider {
     }
 
     static func orderedPrivateChannels(_ channels: [Channel]) -> [Channel] {
-        channels.sorted { lhs, rhs in
-            let lhsActivity = lhs.lastMessageID?.rawValue ?? lhs.id.rawValue
-            let rhsActivity = rhs.lastMessageID?.rawValue ?? rhs.id.rawValue
-            return lhsActivity > rhsActivity
-        }
+        channels.sorted { privateChannelActivity($0) > privateChannelActivity($1) }
+    }
+
+    private static func privateChannelActivity(_ channel: Channel) -> UInt64 {
+        channel.lastMessageID?.rawValue ?? channel.id.rawValue
     }
 
     static func coalescingChannelSnapshots(_ previous: ClientEvent, _ next: ClientEvent) -> ClientEvent? {
@@ -241,6 +272,9 @@ extension DiscordRESTProvider {
         }
         cachedChannels[guildID] = channels
         continuation?.yield(.channelsChanged(guildID: guildID, channels: channels))
+        if discardInaccessibleMemberLists(guildID: guildID) {
+            publishMembers(guildID: guildID, members: [], groups: [])
+        }
     }
 
     static func domainChannels(_ values: [ChannelDTO], guildID: GuildID) throws -> [Channel] {

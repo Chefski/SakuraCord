@@ -9,6 +9,10 @@ public final class OpusCodec: @unchecked Sendable {
     public static let maximumPacketSize = 1275
 
     public nonisolated static var pcmFormat: AVAudioFormat {
+        pcmFormat(channels: channels)
+    }
+
+    public nonisolated static func pcmFormat(channels: AVAudioChannelCount) -> AVAudioFormat {
         AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
             sampleRate: sampleRate,
@@ -17,13 +21,16 @@ public final class OpusCodec: @unchecked Sendable {
         )!
     }
 
+    /// The deinterleaved Float32 layout `encode` accepts and `decode` returns.
+    public let pcmFormat: AVAudioFormat
     private let encoderOpusFormat: AVAudioFormat
     private let decoderOpusFormat: AVAudioFormat
     private let encoder: AVAudioConverter
     private let decoder: AVAudioConverter
     private let lock = NSLock()
 
-    public init(bitRate: Int = 64000) throws {
+    public init(bitRate: Int = 64000, channels: AVAudioChannelCount = OpusCodec.channels) throws {
+        let pcmFormat = Self.pcmFormat(channels: channels)
         var encoderDescription = AudioStreamBasicDescription(
             mSampleRate: Self.sampleRate,
             mFormatID: kAudioFormatOpus,
@@ -31,7 +38,7 @@ public final class OpusCodec: @unchecked Sendable {
             mBytesPerPacket: 0,
             mFramesPerPacket: Self.frameSamples,
             mBytesPerFrame: 0,
-            mChannelsPerFrame: Self.channels,
+            mChannelsPerFrame: channels,
             mBitsPerChannel: 0,
             mReserved: 0
         )
@@ -39,12 +46,13 @@ public final class OpusCodec: @unchecked Sendable {
         decoderDescription.mFramesPerPacket = 0
         guard let encoderOpusFormat = AVAudioFormat(streamDescription: &encoderDescription),
               let decoderOpusFormat = AVAudioFormat(streamDescription: &decoderDescription),
-              let encoder = AVAudioConverter(from: Self.pcmFormat, to: encoderOpusFormat),
-              let decoder = AVAudioConverter(from: decoderOpusFormat, to: Self.pcmFormat)
+              let encoder = AVAudioConverter(from: pcmFormat, to: encoderOpusFormat),
+              let decoder = AVAudioConverter(from: decoderOpusFormat, to: pcmFormat)
         else {
             throw OpusCodecError.converterUnavailable
         }
         encoder.bitRate = bitRate
+        self.pcmFormat = pcmFormat
         self.encoderOpusFormat = encoderOpusFormat
         self.decoderOpusFormat = decoderOpusFormat
         self.encoder = encoder
@@ -56,7 +64,7 @@ public final class OpusCodec: @unchecked Sendable {
     }
 
     private func encodeLocked(_ buffer: AVAudioPCMBuffer) throws -> Data {
-        guard buffer.format == Self.pcmFormat,
+        guard buffer.format == pcmFormat,
               buffer.frameLength == Self.frameSamples
         else {
             throw OpusCodecError.invalidPCMFrame
@@ -109,7 +117,7 @@ public final class OpusCodec: @unchecked Sendable {
             )
         }
         guard let output = AVAudioPCMBuffer(
-            pcmFormat: Self.pcmFormat,
+            pcmFormat: pcmFormat,
             frameCapacity: packetSamples
         ) else { throw OpusCodecError.noOutput(status: -1, bytes: 0) }
         var supplied = false

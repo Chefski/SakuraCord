@@ -4,7 +4,7 @@ extension ComposerIcon {
     var image: Image {
         switch self {
         case .gif: Image("gif.square", bundle: .module)
-        case .sticker: SakuraCordSystemSymbol.stickerFillImage
+        case .sticker: SakuraCordSystemSymbol.stickerImage
         case .emoji: SakuraCordSystemSymbol.emojiFaceGrinningImage
         }
     }
@@ -31,7 +31,7 @@ struct ComposerIconView: View {
             ComposerActionButton(
                 icon: icon.image,
                 help: icon.help,
-                iconSize: icon == .gif ? 20 : 19,
+                iconSize: 19,
                 size: appearance.accessoryButtonSize,
                 appearance: appearance,
                 action: action

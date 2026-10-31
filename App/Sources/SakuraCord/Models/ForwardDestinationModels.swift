@@ -3,12 +3,12 @@ import SakuraCordModels
 import SwiftUI
 
 nonisolated enum ForwardPickerLayoutMetrics {
-    static let width: CGFloat = 480
-    static let height: CGFloat = 679
-    static let outerInset: CGFloat = 24
-    static let cornerRadius: CGFloat = 16
-    static let rowHeight: CGFloat = 48
-    static let selectionDiameter: CGFloat = 20
+    static var width: CGFloat { InterfaceScale.metric(480) }
+    static var height: CGFloat { InterfaceScale.metric(679) }
+    static var outerInset: CGFloat { InterfaceScale.metric(24) }
+    static var cornerRadius: CGFloat { InterfaceScale.metric(16) }
+    static var rowHeight: CGFloat { InterfaceScale.metric(48) }
+    static var selectionDiameter: CGFloat { InterfaceScale.metric(20) }
 }
 
 nonisolated enum ForwardDestinationID: Hashable {

@@ -216,9 +216,6 @@ extension DirectMessageProviderContractTests {
         await #expect(throws: ChatProviderError.self) { try await session.provider.updateInboxTab(.unread) }
         #expect(DirectMessageURLProtocol.requests.suffix(2).map(\.method) == ["PATCH", "GET"])
         #expect(await !session.provider.requestSafetyCircuitIsOpen)
-        #expect(DiscordRESTProvider.isSafetyStop(
-            status: 400, discordCode: 50105, method: "PATCH", data: Data(), path: "/users/@me/settings-proto/2"
-        ))
         await session.provider.disconnect()
     }
 

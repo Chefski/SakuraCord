@@ -13,6 +13,7 @@ extension AccountReadStateModel {
     }
 
     struct UnreadPresentationProjection: Equatable, Sendable {
+        var unreadConversationCount: Int
         var unreadByChannelID: [ChannelID: Bool]
         var mentionsByChannelID: [ChannelID: Int]
         var newForumPostsByChannelID: [ChannelID: Int]
@@ -26,14 +27,150 @@ extension AccountReadStateModel {
 
     nonisolated struct UnreadPresentationSource: Sendable {
         let entries: [ChannelID: Entry]
+        let activeJoinedThreadIDs: Set<ChannelID>
         let policy: UnreadPolicySource
         let forumPostArchivedByID: [ChannelID: Bool]
+        let forumVisitBoundaryByID: [ChannelID: MessageID]
+        let guildJoinedAtByID: [GuildID: Date]
+
+        /// Aggregate indicators must point to a current channel or a thread
+        /// the sidebar can surface. Retained read history is not membership.
+        func isAggregateConversation(_ entry: Entry) -> Bool {
+            policy.channelByID[entry.channelID] != nil
+                || (forumPostArchivedByID[entry.channelID] != true && isListedThread(entry))
+        }
+
+        /// Whether the entry's mention count is presented. Discord's
+        /// `ReadState.canHaveMentions` keeps a thread's count hidden until the
+        /// account is a member of the active thread, so a ping in a post the
+        /// user has not joined must not reach the server badge or any row.
+        /// Membership comes only from the joined catalogue, so a stale archive
+        /// flag cannot hide a joined thread.
+        func countsMentions(_ entry: Entry) -> Bool {
+            policy.channelByID[entry.channelID] != nil
+                || entry.guildID == nil
+                || isListedThread(entry)
+        }
+
+        func presentedMentionCount(_ entry: Entry) -> Int {
+            entry.mentionCount > 0 && countsMentions(entry) ? entry.mentionCount : 0
+        }
+
+        private func isListedThread(_ entry: Entry) -> Bool {
+            AccountReadStateModel.isListedThread(
+                entry,
+                parentChannel: entry.parentID.flatMap { policy.channelByID[$0] },
+                parentEntry: entry.parentID.flatMap { entries[$0] },
+                isActiveJoined: activeJoinedThreadIDs.contains(entry.channelID)
+            )
+        }
+
+        func unreadGuildID(for entry: Entry) -> GuildID? {
+            isAggregateConversation(entry) ? entry.guildID : nil
+        }
+
+        /// The forum a new post counts toward. Like Discord's sidebar count,
+        /// only active posts the user has neither joined nor opened count.
+        func newForumPostParentID(of entry: Entry) -> ChannelID? {
+            guard let parentID = entry.parentID,
+                  forumPostArchivedByID[entry.channelID] != true,
+                  !activeJoinedThreadIDs.contains(entry.channelID),
+                  !entry.hasAuthoritativeReadState,
+                  let parent = entries[parentID],
+                  parent.kind == .forum,
+                  AccountReadStateModel.isNewForumPost(
+                      entry.channelID,
+                      in: parent,
+                      visitBoundary: forumVisitBoundaryByID[parentID],
+                      guildJoinedAt: parent.guildID.flatMap { guildJoinedAtByID[$0] }
+                  )
+            else { return nil }
+            return parentID
+        }
+
+        /// Forums whose sidebar count includes a post. A never-read forum's
+        /// seeded boundary hides those posts from its own unread state, so
+        /// acknowledgement eligibility checks both.
+        func forumsWithNewPosts() -> Set<ChannelID> {
+            Set(entries.values.lazy
+                .filter { $0.isAccessible && !policy.isGuildResourceChannel($0) }
+                .compactMap(newForumPostParentID(of:)))
+        }
+
+        /// The server a forum's unseen posts light, honouring its mutes.
+        func guildLitByNewPosts(inForum forumID: ChannelID, now: Date) -> GuildID? {
+            guard let forum = entries[forumID],
+                  forum.isAccessible,
+                  let guildID = policy.channelByID[forumID]?.guildID
+            else { return nil }
+            let effectivePolicy = policy.effectivePolicy(for: forum, now: now)
+            guard !effectivePolicy.categoryMuted,
+                  !effectivePolicy.guildMuted,
+                  !effectivePolicy.channelMuted,
+                  effectivePolicy.showsUnread
+            else { return nil }
+            return guildID
+        }
+
+        /// Scalar form of `projection().unreadByGuildID[guildID]`.
+        func guildUnread(_ guildID: GuildID, now: Date) -> Bool {
+            var checkedForumIDs: Set<ChannelID> = []
+            for entry in entries.values {
+                guard entry.isAccessible,
+                      !policy.isGuildResourceChannel(entry)
+                else { continue }
+                if entry.countsAsUnreadConversation,
+                   unreadGuildID(for: entry) == guildID,
+                   policy.contributesOwnGuildUnread(
+                       entry,
+                       effectivePolicy: policy.effectivePolicy(for: entry, now: now)
+                   )
+                {
+                    return true
+                }
+                if let forumID = newForumPostParentID(of: entry),
+                   checkedForumIDs.insert(forumID).inserted,
+                   guildLitByNewPosts(inForum: forumID, now: now) == guildID
+                {
+                    return true
+                }
+            }
+            return false
+        }
 
         func projection(
             now: Date = .now,
             cancelsCooperatively: Bool = false,
             cancellationCheck: @Sendable () -> Bool = { Task.isCancelled }
         ) -> UnreadPresentationProjection? {
+            projection(
+                of: entries.values,
+                now: now,
+                cancelsCooperatively: cancelsCooperatively,
+                cancellationCheck: cancellationCheck
+            )
+        }
+
+        /// The projection of one server's conversations, or of direct
+        /// messages for `nil`. Every value it holds for that scope equals the
+        /// full projection's; account-wide totals cover only the scope.
+        func projection(
+            scope guildID: GuildID?,
+            now: Date = .now
+        ) -> UnreadPresentationProjection? {
+            projection(
+                of: entries.values.lazy.filter { $0.guildID == guildID },
+                now: now
+            )
+        }
+
+        private func projection(
+            of scope: some Sequence<Entry>,
+            now: Date,
+            cancelsCooperatively: Bool = false,
+            cancellationCheck: @Sendable () -> Bool = { Task.isCancelled }
+        ) -> UnreadPresentationProjection? {
+            var unreadConversationIDs: Set<ChannelID> = []
             var unreadByChannelID: [ChannelID: Bool] = [:]
             var mentionsByChannelID: [ChannelID: Int] = [:]
             var newForumPostsByChannelID: [ChannelID: Int] = [:]
@@ -43,10 +180,10 @@ extension AccountReadStateModel {
             var directMessageUnread = false
             var directMessageMentions = 0
             var totalMentions = 0
-            unreadByChannelID.reserveCapacity(entries.count)
-            mentionsByChannelID.reserveCapacity(entries.count)
+            unreadByChannelID.reserveCapacity(scope.underestimatedCount)
+            mentionsByChannelID.reserveCapacity(scope.underestimatedCount)
 
-            for (offset, entry) in entries.values.enumerated() {
+            for (offset, entry) in scope.enumerated() {
                 if cancelsCooperatively,
                    offset.isMultiple(of: 64),
                    cancellationCheck()
@@ -56,12 +193,12 @@ extension AccountReadStateModel {
                 let channelID = entry.channelID
                 let isEligible = entry.isAccessible
                     && !policy.isGuildResourceChannel(entry)
-                let channelMentions = isEligible ? entry.mentionCount : 0
+                let channelMentions = isEligible ? presentedMentionCount(entry) : 0
                 var channelUnread = false
                 var contributesToGuildUnread = false
                 if isEligible,
                    entry.isUnread,
-                   entry.kind != .voice || entry.mentionCount > 0
+                   entry.kind != .voice || channelMentions > 0
                 {
                     // Both row and guild presentation use the same
                     // notification hierarchy. Resolve it once per entry.
@@ -69,18 +206,24 @@ extension AccountReadStateModel {
                         for: entry,
                         now: now
                     )
-                    channelUnread = entry.mentionCount > 0
-                        || (!effectivePolicy.guildMuted
-                            && !effectivePolicy.presentationChannelMuted
-                            && effectivePolicy.showsUnread)
-                    contributesToGuildUnread = !effectivePolicy.categoryMuted
-                        && (entry.mentionCount > 0
-                            || (!effectivePolicy.guildMuted
-                                && !effectivePolicy.channelMuted
-                                && effectivePolicy.showsUnread))
+                    channelUnread = policy.presentsUnread(
+                        entry,
+                        mentionCount: channelMentions,
+                        effectivePolicy: effectivePolicy
+                    )
+                    contributesToGuildUnread = policy.contributesOwnGuildUnread(
+                        entry,
+                        effectivePolicy: effectivePolicy
+                    )
                 }
                 mentionsByChannelID[channelID] = channelMentions
                 unreadByChannelID[channelID] = channelUnread
+                if channelUnread,
+                   entry.kind != .forum || channelMentions > 0,
+                   isAggregateConversation(entry)
+                {
+                    unreadConversationIDs.insert(channelID)
+                }
                 totalMentions += channelMentions
                 if entry.kind == .directMessage
                     || entry.kind == .groupDirectMessage
@@ -93,13 +236,13 @@ extension AccountReadStateModel {
                     mentionsByGuildID[guildID, default: 0] += channelMentions
                 }
                 if contributesToGuildUnread,
-                   let guildID = policy.channelByID[channelID]?.guildID
+                   let guildID = unreadGuildID(for: entry)
                 {
                     unreadByGuildID[guildID] = true
                 }
                 if isEligible,
-                   entry.isUnread,
-                   entry.kind != .voice || entry.mentionCount > 0,
+                   entry.countsAsUnreadConversation && isAggregateConversation(entry)
+                    || newForumPostParentID(of: entry) != nil,
                    let guildID = entry.guildID,
                    let parentID = entry.parentID
                 {
@@ -110,21 +253,20 @@ extension AccountReadStateModel {
                     )
                 }
 
-                guard let parentID = entry.parentID,
-                      forumPostArchivedByID[channelID] != true,
-                      !entry.hasAuthoritativeReadState,
-                      let parent = entries[parentID],
-                      parent.kind == .forum,
-                      parent.hasAuthoritativeReadState
-                else { continue }
-                let boundary = parent.lastAcknowledgedMessageID
-                    ?? MessageID(rawValue: 0)
-                if MessageID(rawValue: channelID.rawValue) > boundary {
-                    newForumPostsByChannelID[parentID, default: 0] += 1
+                if isEligible, let forumID = newForumPostParentID(of: entry) {
+                    newForumPostsByChannelID[forumID, default: 0] += 1
+                }
+            }
+
+            for forumID in newForumPostsByChannelID.keys {
+                if let guildID = guildLitByNewPosts(inForum: forumID, now: now) {
+                    unreadByGuildID[guildID] = true
+                    unreadConversationIDs.insert(forumID)
                 }
             }
 
             return UnreadPresentationProjection(
+                unreadConversationCount: unreadConversationIDs.count,
                 unreadByChannelID: unreadByChannelID,
                 mentionsByChannelID: mentionsByChannelID,
                 newForumPostsByChannelID: newForumPostsByChannelID,
@@ -179,8 +321,6 @@ extension AccountReadStateModel {
             let inheritedChannelMuted = directMuted
                 || parentMuted
                 || activeMute(ancestorOverride, now: now)
-            let presentationOverrideMuted = directMuted
-                || (parentIsConversation && parentMuted)
             let categoryMuted = activeMute(categoryOverride, now: now)
             let guildDefault = isDirectMessage
                 ? .allMessages
@@ -216,7 +356,9 @@ extension AccountReadStateModel {
             let channelMuted = inheritedChannelMuted
                 || threadMuted
                 || threadLevel == .nothing
-            let presentationChannelMuted = presentationOverrideMuted
+            // A joined thread's unread ignores its parent's mute, as in
+            // Discord's thread row and GuildReadStateStore.
+            let presentationChannelMuted = directMuted
                 || threadMuted
                 || threadLevel == .nothing
             let showsUnread = showsUnread(
@@ -276,6 +418,43 @@ extension AccountReadStateModel {
             return level == .allMessages
         }
 
+        /// Whether an unread entry presents as unread. Discord shows a joined
+        /// thread unread unless the thread or server is muted; its parent's
+        /// and server's unread settings do not apply.
+        func presentsUnread(
+            _ entry: Entry,
+            mentionCount: Int,
+            effectivePolicy: EffectivePolicy
+        ) -> Bool {
+            let isThread = channelByID[entry.channelID] == nil && entry.parentID != nil
+            return mentionCount > 0
+                || (!effectivePolicy.guildMuted
+                    && !effectivePolicy.presentationChannelMuted
+                    && (isThread || effectivePolicy.showsUnread))
+        }
+
+        /// Whether an entry's own unread lights its server. A forum's own
+        /// boundary trails its newest post, so a forum lights the server only
+        /// through mentions, its unseen posts and its joined threads.
+        func contributesOwnGuildUnread(
+            _ entry: Entry,
+            effectivePolicy: EffectivePolicy
+        ) -> Bool {
+            if channelByID[entry.channelID] == nil, entry.parentID != nil {
+                return presentsUnread(
+                    entry,
+                    mentionCount: entry.mentionCount,
+                    effectivePolicy: effectivePolicy
+                )
+            }
+            return !effectivePolicy.categoryMuted
+                && (entry.mentionCount > 0
+                    || (entry.kind != .forum
+                        && !effectivePolicy.guildMuted
+                        && !effectivePolicy.channelMuted
+                        && effectivePolicy.showsUnread))
+        }
+
         func isGuildResourceChannel(_ entry: Entry) -> Bool {
             Self.isGuildResourceChannel(entry, channelByID: channelByID)
         }
@@ -318,6 +497,16 @@ extension AccountReadStateModel {
         var mentionedChannelIDs: [ChannelID]
     }
 
+    nonisolated struct UnreadNavigationState: Equatable, Sendable {
+        var guildID: GuildID?
+        var parentID: ChannelID?
+        var kind: ChannelKindValue
+        var isAccessible: Bool
+        var isUnread: Bool
+        var hasMentions: Bool
+        var threadNotificationSettings: ThreadNotificationSettings?
+    }
+
     nonisolated struct Entry: Equatable, Sendable {
         var channelID: ChannelID
         var guildID: GuildID?
@@ -328,17 +517,41 @@ extension AccountReadStateModel {
         var lastAcknowledgedMessageID: MessageID?
         var mentionCount: Int
         var unreadMessageCount: Int
-        var pendingAcknowledgementID: MessageID?
         var flags: UInt64?
         var lastViewed: Int?
         var threadNotificationSettings: ThreadNotificationSettings?
         var isAccessible: Bool
         var hasAuthoritativeReadState: Bool
 
+        var unreadNavigationState: UnreadNavigationState {
+            UnreadNavigationState(
+                guildID: guildID,
+                parentID: parentID,
+                kind: kind,
+                isAccessible: isAccessible,
+                isUnread: isUnread,
+                hasMentions: mentionCount > 0,
+                threadNotificationSettings: threadNotificationSettings
+            )
+        }
+
+        /// Discord's `getTrackedAckMessageId`: a server or local
+        /// acknowledgement, never the boundary seeded for an omitted read state.
+        var trackedAcknowledgedMessageID: MessageID? {
+            hasAuthoritativeReadState ? lastAcknowledgedMessageID : nil
+        }
+
         var isUnread: Bool {
             guard let latestUnreadMessageID else { return false }
             guard let lastAcknowledgedMessageID else { return true }
             return latestUnreadMessageID > lastAcknowledgedMessageID
+        }
+
+        /// Unread that marks a server or category. Voice channels and a
+        /// forum's own boundary count only through mentions.
+        var countsAsUnreadConversation: Bool {
+            isUnread
+                && ((kind != .voice && kind != .forum) || mentionCount > 0)
         }
     }
 
@@ -348,15 +561,19 @@ extension AccountReadStateModel {
         var initialPositionEstablished = false
         var windowIsActive = false
         var hasReachedReadBoundary = false
-        var blocksAutomaticAcknowledgement = false
+        /// Newest message of an unread run that passive viewing must not
+        /// acknowledge. The hold lapses once that message is acknowledged by
+        /// any path, so it needs no separate release when read elsewhere.
+        var heldThroughMessageID: MessageID?
+        /// Mark Unread's hold, which, as in Discord, scrolling does not release.
+        var isHeldUntilSelectionChange = false
 
-        var canAcknowledge: Bool {
+        var meetsViewingConditions: Bool {
             isPresented
                 && initialHistoryLoaded
                 && initialPositionEstablished
                 && windowIsActive
                 && hasReachedReadBoundary
-                && !blocksAutomaticAcknowledgement
         }
     }
 
@@ -372,6 +589,8 @@ extension AccountReadStateModel {
         var accepted: Bool
         var mentionKind: MentionKind
         var shouldNotify: Bool
+        var requiresUnreadPresentationRefresh = false
+        var acknowledgesOwnMessage = false
     }
 
     struct AcknowledgementMetadata: Equatable, Sendable {

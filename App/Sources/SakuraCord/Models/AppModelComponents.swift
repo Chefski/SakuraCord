@@ -15,14 +15,7 @@ extension AppModel {
             }
             return
         }
-        guard let applicationID = message.applicationID
-            ?? message.application.flatMap({ ApplicationID($0.id) })
-            ?? message.interactionMetadata?.applicationID.flatMap(ApplicationID.init)
-            // Ordinary bot messages have no interaction/application envelope.
-            // Incoming webhooks are message-scoped identities, not bot apps.
-            ?? (message.author.isBot && message.webhookID == nil
-                ? ApplicationID(rawValue: message.author.id.rawValue) : nil)
-        else {
+        guard let applicationID = componentApplicationID(of: message) else {
             updateComponentPresentation {
                 $0.errors[key] = "This message doesn’t identify the app that owns it."
             }
@@ -62,6 +55,16 @@ extension AppModel {
                 $0.errors[key] = error.localizedDescription
             }
         }
+    }
+
+    func componentApplicationID(of message: Message) -> ApplicationID? {
+        message.applicationID
+            ?? message.application.flatMap { ApplicationID($0.id) }
+            ?? message.interactionMetadata?.applicationID.flatMap(ApplicationID.init)
+            // Ordinary bot messages have no interaction/application envelope.
+            // Incoming webhooks are message-scoped identities, not bot apps.
+            ?? (message.author.isBot && message.webhookID == nil
+                ? ApplicationID(rawValue: message.author.id.rawValue) : nil)
     }
 
     func updateComponentPresentation(_ change: (inout ComponentInteractionPresentationState) -> Void) {
@@ -238,7 +241,7 @@ extension AppModel {
         in guildID: GuildID?,
         channelTypes: [Int]
     ) -> [Channel] {
-        let source = snapshot?.channels ?? visibleChannels
+        let source = currentUser == nil ? visibleChannels : messagePresentationChannels
         return source.filter { channel in
             (guildID == nil || channel.guildID == guildID)
                 && (channelTypes.isEmpty

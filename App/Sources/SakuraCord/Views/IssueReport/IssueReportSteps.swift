@@ -20,7 +20,7 @@ struct IssueReportDescribeStep: View {
     private var store: IssueReportStore { model.issueReports }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(8)) {
             IssueReportKindPicker(kind: store.kind) { kind in
                 withAnimation(.snappy(duration: 0.3)) { store.switchKind(to: kind) }
             }
@@ -49,7 +49,7 @@ struct IssueReportDescribeStep: View {
     }
 
     private var titleField: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(6)) {
             IssueReportFieldHeader(
                 label: "Title", count: store.value("title").count,
                 maximum: IssueReportForm.titleLengthRange.upperBound
@@ -60,7 +60,7 @@ struct IssueReportDescribeStep: View {
                 axis: .vertical
             )
             .textFieldStyle(.plain)
-            .font(.system(size: 18, weight: .medium))
+            .font(.interfaceSystem(size: 18, weight: .medium))
             .lineLimit(1 ... 3)
             .tint(SakuraCordAccentColor.color)
             .focused($focus, equals: .title)
@@ -79,18 +79,18 @@ private struct IssueReportKindPicker: View {
     @Namespace private var glass
 
     var body: some View {
-        GlassEffectContainer(spacing: 6) {
-            HStack(spacing: 6) {
+        GlassEffectContainer(spacing: InterfaceScale.metric(6)) {
+            HStack(spacing: InterfaceScale.metric(6)) {
                 ForEach(IssueReportKind.allCases, id: \.self) { option in
                     Button { select(option) } label: {
-                        HStack(spacing: 6) {
+                        HStack(spacing: InterfaceScale.metric(6)) {
                             Image(systemName: IssueReportKindBadge.symbol(option))
-                                .frame(width: 18, height: 18)
+                                .frame(width: InterfaceScale.metric(18), height: InterfaceScale.metric(18))
                             Text(option == .bug ? "Bug" : "Feature")
                         }
-                            .font(.callout.weight(.semibold))
+                            .font(.interface(.callout).weight(.semibold))
                             .foregroundStyle(option == kind ? .white : .primary)
-                            .frame(maxWidth: .infinity, minHeight: 34)
+                            .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(34))
                             .contentShape(Capsule())
                     }
                     .buttonStyle(.plain)
@@ -103,7 +103,7 @@ private struct IssueReportKindPicker: View {
                 }
             }
         }
-        .padding(.bottom, 2)
+        .padding(.bottom, InterfaceScale.metric(2))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Report type")
     }
@@ -114,16 +114,16 @@ private struct IssueReportVersionNotice: View {
     let store: IssueReportStore
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: InterfaceScale.metric(12)) {
             Image(systemName: "arrow.triangle.2.circlepath")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.interfaceSystem(size: 15, weight: .semibold))
                 .foregroundStyle(.orange)
-                .frame(width: 32, height: 32)
+                .frame(width: InterfaceScale.metric(32), height: InterfaceScale.metric(32))
                 .glassEffect(.regular.tint(.orange.opacity(0.25)), in: Circle())
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Update and retest first").font(.callout.weight(.semibold))
-                Text(message).font(.caption).foregroundStyle(.secondary)
-                HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(4)) {
+                Text("Update and retest first").font(.interface(.callout).weight(.semibold))
+                Text(message).font(.interface(.caption)).foregroundStyle(.secondary)
+                HStack(spacing: InterfaceScale.metric(8)) {
                     Button("Check for Updates") {
                         AppDelegate.current?.updateController.checkForUpdates()
                     }
@@ -135,7 +135,7 @@ private struct IssueReportVersionNotice: View {
                     .fixedSize()
                 }
                 .controlSize(.small)
-                .padding(.top, 2)
+                .padding(.top, InterfaceScale.metric(2))
             }
             Spacer(minLength: 0)
         }
@@ -156,23 +156,23 @@ private struct IssueReportSimilarCard: View {
     private var store: IssueReportStore { model.issueReports }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(6)) {
             Label("Already reported?", systemImage: "square.on.square.dashed")
-                .font(.callout.weight(.semibold))
-                .padding(.horizontal, 6)
+                .font(.interface(.callout).weight(.semibold))
+                .padding(.horizontal, InterfaceScale.metric(6))
             Text("Follow a match instead and you’ll get the same updates.")
-                .font(.caption)
+                .font(.interface(.caption))
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 6)
-                .padding(.bottom, 2)
+                .padding(.horizontal, InterfaceScale.metric(6))
+                .padding(.bottom, InterfaceScale.metric(2))
             ForEach(store.similar) { report in
-                HStack(spacing: 10) {
-                    VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: InterfaceScale.metric(10)) {
+                    VStack(alignment: .leading, spacing: InterfaceScale.metric(2)) {
                         Text("#\(report.number) · \(report.title)").lineLimit(2)
-                        Text(details(report)).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                        Text(details(report)).font(.interface(.caption)).foregroundStyle(.secondary).lineLimit(2)
                     }
-                    Spacer(minLength: 8)
-                    HoverActionButton(systemImage: "arrow.up.right", help: "Open on the Tracker", diameter: 28) {
+                    Spacer(minLength: InterfaceScale.metric(8))
+                    HoverActionButton(systemImage: "arrow.up.right", help: "Open on the Tracker", diameter: InterfaceScale.metric(28)) {
                         NSWorkspace.shared.open(report.trackerUrl)
                     }
                     if report.open {
@@ -182,16 +182,16 @@ private struct IssueReportSimilarCard: View {
                             .disabled(store.isSubmitting)
                     }
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
+                .padding(.horizontal, InterfaceScale.metric(10))
+                .padding(.vertical, InterfaceScale.metric(8))
                 .background(
                     .background.opacity(0.5),
                     in: RoundedRectangle(cornerRadius: IssueReportMetrics.controlRadius, style: .continuous)
                 )
             }
         }
-        .padding(8)
-        .padding(.top, 4)
+        .padding(InterfaceScale.metric(8))
+        .padding(.top, InterfaceScale.metric(4))
         .background(
             SakuraCordAccentColor.color.opacity(0.1),
             in: RoundedRectangle(cornerRadius: IssueReportMetrics.rowRadius, style: .continuous)
@@ -261,7 +261,7 @@ struct IssueReportDetailsStep: View {
     private var store: IssueReportStore { model.issueReports }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(8)) {
             ForEach(store.fields(on: 2)) { field in
                 IssueReportFieldView(store: store, privacy: model.uploadPrivacyPreparation, field: field, focus: $focus)
                 if field.kind == .files, store.kind == .bug {
@@ -282,17 +282,17 @@ private struct IssueReportDiagnosticsCard: View {
     @State private var apiLogEntries = IssueReportDiagnostics.retainedAPILogEntryCount
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                Text("Diagnostics").font(.callout.weight(.semibold))
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(4)) {
+            HStack(spacing: InterfaceScale.metric(6)) {
+                Text("Diagnostics").font(.interface(.callout).weight(.semibold))
                 Spacer()
                 Label("Filled in by SakuraCord", systemImage: "sparkles")
-                    .font(.caption)
+                    .font(.interface(.caption))
                     .foregroundStyle(.secondary)
             }
-            .padding(.horizontal, 8)
-            .padding(.top, 6)
-            .padding(.bottom, 2)
+            .padding(.horizontal, InterfaceScale.metric(8))
+            .padding(.top, InterfaceScale.metric(6))
+            .padding(.bottom, InterfaceScale.metric(2))
             IssueReportToggleRow(
                 symbol: "desktopcomputer",
                 title: "System information",
@@ -316,10 +316,10 @@ private struct IssueReportDiagnosticsCard: View {
                 isAvailable: panicSave != nil
             )
             Text("Diagnostics leave out message text, tokens, IDs, and URLs. Everything you attach is public.")
-                .font(.caption)
+                .font(.interface(.caption))
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
+                .padding(.horizontal, InterfaceScale.metric(8))
+                .padding(.vertical, InterfaceScale.metric(6))
         }
         .issueReportRow(padding: 8)
         .onAppear {
@@ -360,7 +360,7 @@ struct IssueReportReviewStep: View {
     private var store: IssueReportStore { model.issueReports }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(8)) {
             identity
             summary(step: .describe, rows: describeRows)
             summary(step: .details, rows: detailRows)
@@ -368,29 +368,29 @@ struct IssueReportReviewStep: View {
                 "Reports are public on GitHub, the tracker, and the SakuraCord Discord server.",
                 systemImage: "globe"
             )
-            .font(.caption)
+            .font(.interface(.caption))
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 4)
+            .padding(.horizontal, InterfaceScale.metric(14))
+            .padding(.vertical, InterfaceScale.metric(4))
         }
     }
 
     private var identity: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: InterfaceScale.metric(12)) {
             AvatarView(
                 name: model.currentUser?.displayName ?? "",
                 url: model.currentUser?.avatarURL,
-                size: 40
+                size: InterfaceScale.metric(40)
             )
             VStack(alignment: .leading, spacing: 1) {
-                Text("Filing as \(model.currentUser?.displayName ?? "you")").font(.callout.weight(.semibold))
+                Text("Filing as \(model.currentUser?.displayName ?? "you")").font(.interface(.callout).weight(.semibold))
                 Text("Discord shares your username and ID with the SakuraCord tracker. Your Discord account token stays on this Mac.")
-                    .font(.caption)
+                    .font(.interface(.caption))
                     .foregroundStyle(.secondary)
             }
-            Spacer(minLength: 8)
+            Spacer(minLength: InterfaceScale.metric(8))
             Image(systemName: "checkmark.shield.fill")
-                .font(.system(size: 20))
+                .font(.interfaceSystem(size: 20))
                 .foregroundStyle(SakuraCordAccentColor.color)
                 .symbolEffect(.bounce, value: store.step)
                 .accessibilityHidden(true)
@@ -440,17 +440,17 @@ struct IssueReportReviewStep: View {
     }
 
     private func summary(step: IssueReportStore.Step, rows: [(String, String)]) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(10)) {
             HStack {
-                Text(step == .describe ? "Description" : "Details").font(.callout.weight(.semibold))
+                Text(step == .describe ? "Description" : "Details").font(.interface(.callout).weight(.semibold))
                 Spacer()
                 Button("Edit") { navigate(false) { store.go(to: step) } }
                     .buttonStyle(.glass)
                     .controlSize(.small)
             }
             ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(row.0).font(.caption).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: InterfaceScale.metric(2)) {
+                    Text(row.0).font(.interface(.caption)).foregroundStyle(.secondary)
                     Text(row.1).lineLimit(4).textSelection(.enabled)
                 }
             }

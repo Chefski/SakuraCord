@@ -9,7 +9,7 @@ nonisolated enum ReactionHoverDetailPolicy {
     static let usesNativePopover = true
     static let permitsIndependentPresentations = true
     static let tracksExactPillBounds = true
-    static let maximumContentSize = CGSize(width: 400, height: 600)
+    static var maximumContentSize: CGSize { CGSize(width: InterfaceScale.metric(400), height: InterfaceScale.metric(600)) }
 }
 
 nonisolated struct ReactionHoverAnchorSnapshot: Equatable, Sendable {

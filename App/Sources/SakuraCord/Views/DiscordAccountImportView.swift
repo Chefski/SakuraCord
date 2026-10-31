@@ -23,7 +23,7 @@ struct DiscordAccountImportView: View {
     )
 
     var body: some View {
-        VStack(spacing: 28) {
+        VStack(spacing: InterfaceScale.metric(28)) {
             header
             Group {
                 switch state {
@@ -42,7 +42,7 @@ struct DiscordAccountImportView: View {
             }
             if let errorMessage {
                 Text(errorMessage)
-                    .font(.callout)
+                    .font(.interface(.callout))
                     .foregroundStyle(.red)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
@@ -53,23 +53,23 @@ struct DiscordAccountImportView: View {
     }
 
     private var header: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: InterfaceScale.metric(10)) {
             Text("Import from Discord")
-                .font(.title2.bold())
+                .font(.interface(.title2).bold())
                 .foregroundStyle(.primary)
             Text("Bring an account already signed in on this Mac.")
-                .font(.subheadline)
+                .font(.interface(.subheadline))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .multilineTextAlignment(.center)
-        .padding(.horizontal, 36)
+        .padding(.horizontal, InterfaceScale.metric(36))
         .frame(maxWidth: .infinity)
         .overlay(alignment: .topLeading) {
             Button(action: goBack) {
                 Image(systemName: "chevron.left")
-                    .font(.body.weight(.semibold))
-                    .frame(width: 18, height: 18)
+                    .font(.interface(.body).weight(.semibold))
+                    .frame(width: InterfaceScale.metric(18), height: InterfaceScale.metric(18))
             }
             .buttonStyle(.glass)
             .buttonBorderShape(.circle)
@@ -82,38 +82,38 @@ struct DiscordAccountImportView: View {
     }
 
     private var loadingAccounts: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: InterfaceScale.metric(12)) {
             VStack(spacing: 0) {
                 ForEach(0 ..< 3) { _ in
-                    HStack(spacing: 14) {
-                        Circle().fill(.quaternary).frame(width: 48, height: 48)
-                        RoundedRectangle(cornerRadius: 4)
+                    HStack(spacing: InterfaceScale.metric(14)) {
+                        Circle().fill(.quaternary).frame(width: InterfaceScale.metric(48), height: InterfaceScale.metric(48))
+                        RoundedRectangle(cornerRadius: InterfaceScale.metric(4))
                             .fill(.quaternary)
-                            .frame(width: 150, height: 12)
+                            .frame(width: InterfaceScale.metric(150), height: InterfaceScale.metric(12))
                         Spacer()
                     }
-                    .padding(.horizontal, 18)
-                    .frame(height: 76)
+                    .padding(.horizontal, InterfaceScale.metric(18))
+                    .frame(height: InterfaceScale.metric(76))
                 }
             }
             .background(.regularMaterial, in: rowShape)
             .authenticationLoading(true, in: rowShape)
             .accessibilityHidden(true)
             Text("Finding your accounts…")
-                .font(.callout)
+                .font(.interface(.callout))
                 .foregroundStyle(.secondary)
         }
     }
 
     private func accountList(_ accounts: [DiscordImportAccount]) -> some View {
-        VStack(spacing: 16) {
+        VStack(spacing: InterfaceScale.metric(16)) {
             VStack(spacing: 0) {
                 ForEach(Array(accounts.enumerated()), id: \.element.id) { index, account in
                     if index > 0 {
                         Rectangle()
                             .fill(Color(nsColor: .separatorColor).opacity(0.72))
                             .frame(height: 1)
-                            .padding(.leading, 80)
+                            .padding(.leading, InterfaceScale.metric(80))
                     }
                     accountRow(account)
                 }
@@ -121,7 +121,7 @@ struct DiscordAccountImportView: View {
             .background(.regularMaterial, in: rowShape)
             .overlay { rowShape.stroke(.primary.opacity(0.11), lineWidth: 1) }
             Text(importingAccountID == nil ? "Choose an account to continue." : "Signing in…")
-                .font(.callout)
+                .font(.interface(.callout))
                 .foregroundStyle(.secondary)
                 .contentTransition(.numericText())
         }
@@ -129,19 +129,19 @@ struct DiscordAccountImportView: View {
 
     private func accountRow(_ account: DiscordImportAccount) -> some View {
         let isImporting = importingAccountID == account.id
-        return HStack(spacing: 14) {
-            AvatarView(name: account.username, url: account.avatarURL, size: 48,
+        return HStack(spacing: InterfaceScale.metric(14)) {
+            AvatarView(name: account.username, url: account.avatarURL, size: InterfaceScale.metric(48),
                        maximumPixelDimension: 96, animates: false)
             Text(account.username)
-                .font(.body.weight(.semibold))
+                .font(.interface(.body).weight(.semibold))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
-            Spacer(minLength: 12)
+            Spacer(minLength: InterfaceScale.metric(12))
             if isImporting {
                 Text("Signing in…")
-                    .font(.caption)
+                    .font(.interface(.caption))
                     .foregroundStyle(.secondary)
-                    .frame(width: 78)
+                    .frame(width: InterfaceScale.metric(78))
             } else {
                 Button("Import") { selectAccount(account) }
                     .buttonStyle(.glass)
@@ -149,26 +149,26 @@ struct DiscordAccountImportView: View {
                     .controlSize(.large)
                     .tint(SakuraCordAccentColor.color)
                     .disabled(importingAccountID != nil || isTransitioning)
-                    .frame(width: 78)
+                    .frame(width: InterfaceScale.metric(78))
                     .accessibilityLabel("Import \(account.username)")
             }
         }
-        .padding(.horizontal, 18)
-        .frame(height: 76)
+        .padding(.horizontal, InterfaceScale.metric(18))
+        .frame(height: InterfaceScale.metric(76))
         .authenticationLoading(isImporting, in: rowShape)
         .accessibilityValue(isImporting ? "Signing in" : "")
         .accessibilityElement(children: .contain)
     }
 
     private var emptyState: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: InterfaceScale.metric(16)) {
             Image(systemName: "checkmark.circle")
-                .font(.system(size: 36, weight: .light))
+                .font(.interfaceSystem(size: 36, weight: .light))
                 .foregroundStyle(SakuraCordAccentColor.color)
             Text("You're all set.")
-                .font(.headline)
+                .font(.interface(.headline))
             Text("All accounts signed in to Discord are already in SakuraCord.")
-                .font(.callout)
+                .font(.interface(.callout))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
             Button("Back to sign in", action: goBack)
@@ -177,16 +177,16 @@ struct DiscordAccountImportView: View {
                 .controlSize(.large)
                 .tint(SakuraCordAccentColor.color)
         }
-        .frame(maxWidth: .infinity, minHeight: 210)
+        .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(210))
     }
 
     private func failureState(_ message: String) -> some View {
-        VStack(spacing: 18) {
+        VStack(spacing: InterfaceScale.metric(18)) {
             Image(systemName: "person.crop.circle.badge.exclamationmark")
-                .font(.system(size: 36, weight: .light))
+                .font(.interfaceSystem(size: 36, weight: .light))
                 .foregroundStyle(.secondary)
             Text(message)
-                .font(.callout)
+                .font(.interface(.callout))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
@@ -196,6 +196,6 @@ struct DiscordAccountImportView: View {
                 .controlSize(.large)
                 .tint(SakuraCordAccentColor.color)
         }
-        .frame(maxWidth: .infinity, minHeight: 210)
+        .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(210))
     }
 }

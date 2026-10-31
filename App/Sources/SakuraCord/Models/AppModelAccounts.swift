@@ -40,25 +40,6 @@ nonisolated enum BootstrapInitialGuildPolicy {
 }
 
 extension AppModel {
-    static func loadEmojiRecents(usageCounts: [String: Int]) -> [String] {
-        UserDefaults.standard.removeObject(
-            forKey: "dev.sakuracord.favorite-emojis"
-        )
-        if let stored = UserDefaults.standard.stringArray(
-            forKey: "dev.sakuracord.emoji-recents"
-        ) {
-            return stored
-        }
-        let migrated = usageCounts.sorted {
-            $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value
-        }.prefix(50).map(\.key)
-        UserDefaults.standard.set(
-            migrated,
-            forKey: "dev.sakuracord.emoji-recents"
-        )
-        return migrated
-    }
-
     var isOfflineTesting: Bool {
         launchMode == .offlineTesting
     }
@@ -81,6 +62,15 @@ extension AppModel {
         }
     }
 
+    func markSavedAccountSignInRequired(_ accountID: String) async {
+        await savedAccountStore.markSignInRequired(accountID: accountID)
+        if let index = savedAccounts.firstIndex(where: { $0.accountID == accountID }),
+           !savedAccounts[index].requiresSignIn
+        {
+            savedAccounts[index].signInRequiredAt = .now
+        }
+    }
+
     func switchAccount(to accountID: String) async -> Bool {
         guard accountID != activeAccountID else { return true }
         let preservesWorkspace = sessionState == .workspace
@@ -100,6 +90,7 @@ extension AppModel {
                 errorMessage = "That saved Discord account is no longer available."
                 return false
             }
+            SettingsConversationRestorationStore.shared.prepareAccountSwitch(to: accountID)
             return await connectAuthenticatedAccount(
                 handle,
                 preservesInteractivePresentation: preservesWorkspace
@@ -132,6 +123,7 @@ extension AppModel {
             authenticatedProviderFactory(handle, installationID)
         }
         await nextProvider.updateClientAppState(isFocused: applicationIsActive)
+        await nextProvider.setCaptchaHandler { [weak self] in await self?.solveCaptcha($0) }
         do {
             // Enumerating Keychain item attributes reveals the account handle
             // without necessarily authorizing access to its secret. Preparing
@@ -249,9 +241,11 @@ extension AppModel {
         activeAccountID = handle.accountID
         didAttemptSessionRestore = true
         commandComposer.configureFrecencyScope(handle.accountID)
+        configureEmojiFrecency(scope: handle.accountID)
     }
 
     func resetAccountPresentationState() {
+        resetVoiceMessages()
         unreadPresentationRefreshTask?.cancel()
         unreadPresentationRefreshTask = nil
         unreadPresentationPreparationTask?.cancel()
@@ -288,8 +282,7 @@ extension AppModel {
         soundboardState.activePlaybackTokens = [:]
         soundboardState.cardAnimations = []
         discordFavoriteEmojiKeys = []
-        discordFrequentlyUsedEmojiKeys = []
-        discordEmojiUsageScores = [:]
+        refreshEmojiFrecencyPresentation()
         discordGuildAndChannelUsageScores = [:]
         discordSyncedGuildAndChannelUsageScores = [:]
         discordGuildAndChannelUsage = [:]
@@ -302,11 +295,14 @@ extension AppModel {
         didAttemptDiscordEmojiSettings = false
         voiceStates = [:]
         privateCallsByChannel = [:]
+        reconcilePrivateCallSounds()
         visibleChannels = []
         unreadCategoryIDsByGuild = [:]
         selectedChannel = nil
         selectedGuildID = nil
         selectedChannelID = nil
+        discardSideConversationContext()
+        resetMessageSearches()
         conversationNavigationHistory = ConversationNavigationHistory()
         replaceSelectedMessages(with: [])
         hasCompletedInitialMessageLoad = false
@@ -315,11 +311,15 @@ extension AppModel {
         hasMoreLaterMessages = false
         messageCache = [:]
         pinnedMessages.clear(notifying: self)
+        threadBrowser.clear()
         inbox.clear(notifying: self)
         messageCacheOrder = []
         messageRowCache = [:]
         messageRowCacheOrder = []
         hasMoreCache = [:]
+        detachedMessageWindows = [:]
+        contiguousHistoryBoundaries = [:]
+        threadWindow.cachedCursors = [:]
         threadPreviewMessages = [:]
         threadPreviewParentIDs = [:]
         membersByGuildID = [:]
@@ -327,6 +327,7 @@ extension AppModel {
         profileCustomStatusUserID = nil
         presentedProfileGame = nil
         memberListsByGuildID = [:]
+        threadMembersByID = [:]
         memberListGroupsByGuildID = [:]
         memberListViewportRequest = nil
         lastMemberListVisibleRange = nil
@@ -418,6 +419,7 @@ extension AppModel {
         commandComposer.configureFrecencyScope(
             launchMode == .offlineTesting ? "offline" : "signed-out"
         )
+        configureEmojiFrecency(scope: launchMode == .offlineTesting ? "offline" : "signed-out")
         let signedOutProvider: any ChatProvider =
             launchMode == .offlineTesting ? MockChatProvider() : SignedOutChatProvider()
         supportedCapabilities = []
@@ -451,6 +453,7 @@ extension AppModel {
         )
         if launchMode == .normal {
             DiscordRESTProvider.removePendingStatusEdit(accountID: accountID)
+            DiscordFrecencyStore.removePendingEmojiUsage(scope: accountID)
             do {
                 try await clearCaches(accountID)
             } catch {
@@ -461,6 +464,7 @@ extension AppModel {
 
     func resetAccountScopedLoadsAndForumState() async {
         cancelAccountChildTasks()
+        resetAllTranslations()
         resetPendingCreatedMessages()
         resetTimelineLiveScrolling()
         clearReactionMutationState()
@@ -478,27 +482,14 @@ extension AppModel {
         replyingTo = nil
         threadReplyingTo = nil
         conversationRefreshJournals.removeAll(keepingCapacity: false)
+        scopedRefreshJournals.removeAll(keepingCapacity: false)
         memberLoadTask?.cancel()
         memberLoadTask = nil
         memberLoadGeneration &+= 1
         cancelConversationNavigation()
-        gifSearchTask?.cancel()
-        gifSearchTask = nil
-        gifPickerLoadTask?.cancel()
-        gifPickerLoadTask = nil
-        gifPickerLoadGeneration &+= 1
-        gifResults = []
-        gifCategories = []
-        gifTrendingPreviewURL = nil
-        favoriteGIFs = []
-        isLoadingGIFs = false
-        isLoadingGIFPicker = false
-        gifFavoriteMutationURL = nil
-        gifErrorMessage = nil
-        gameMentionLoadTask?.cancel()
-        gameMentionLoadTask = nil
-        gameMentionsByID = [:]
-        gameMentionHydration = .init()
+        resetGIFPicker()
+        gameMentions.loadTask?.cancel()
+        gameMentions = GameMentionState()
         attachmentCompactionGeneration &+= 1
         attachmentCompactionTask?.cancel()
         attachmentCompactionTask = nil
@@ -517,6 +508,12 @@ extension AppModel {
             commandComposer.resetForChannelChange()
             commandComposer.memberSearchCache = [:]
         }
+        emojiSettingsLoadTask?.cancel()
+        emojiSettingsLoadTask = nil
+        emojiFrecencySaveTask?.cancel()
+        emojiFrecencySaveTask = nil
+        deferredEmojiSettings = nil
+        emojiSettingsDataVersion = nil
         commandFrecencyLoadTask?.cancel()
         commandFrecencyLoadTask = nil
         commandFrecencyFlushTask?.cancel()
@@ -551,9 +548,10 @@ extension AppModel {
         stickerUserSettings = StickerUserSettings()
         isLoadingStickerPicker = false
         stickerPickerErrorMessage = nil
-        loadingReactionReactors = []
-        failedReactionReactorLoads = [:]
+        resetReactionReactorLoads()
         resetForumLoadAndPresentationState()
+        for outgoing in composer.outbox.draftsByNonce.values { discardVoiceMessageFile(for: outgoing) }
+        attachmentUploads.reset()
         await composer.reset()
     }
 }

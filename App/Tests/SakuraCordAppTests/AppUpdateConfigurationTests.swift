@@ -352,3 +352,106 @@ private func productionUpdateInfo() -> [String: Any] {
         "SURequireSignedFeed": true
     ]
 }
+
+@Test("a PR build follows its own signed feed with normal automatic checking")
+func pullRequestTrackAllowsAutomaticUpdates() {
+    var info = productionUpdateInfo()
+    info["SakuraCordPullRequestBuildID"] = "pr-42-run-9000-attempt-1"
+    info["SakuraCordBuildSwitchingProtocol"] = 1
+    let configuration = AppUpdateConfiguration(
+        infoDictionary: info,
+        bundleIdentifier: AppUpdateConfiguration.canonicalBundleIdentifier
+    )
+    #expect(configuration.isEnabled)
+    #expect(configuration.unavailabilityReason == nil)
+    #expect(configuration.installedPullRequestBuildID == "pr-42-run-9000-attempt-1")
+    #expect(configuration.pullRequestFeedURL?.absoluteString == "https://github.com/SakuraCordApp/Builds/releases/download/pr-42/appcast.xml")
+
+    info["SUEnableAutomaticChecks"] = false
+    #expect(AppUpdateConfiguration(
+        infoDictionary: info,
+        bundleIdentifier: AppUpdateConfiguration.canonicalBundleIdentifier
+    ).unavailabilityReason == .automaticChecksNotEnabled)
+}
+
+@Test("incomplete PR protocol metadata disables installation", arguments: ["identity", "protocol"])
+func invalidPreviewMetadataDisablesUpdates(_ invalidField: String) {
+    var info = productionUpdateInfo()
+    info["SakuraCordPullRequestBuildID"] = invalidField == "identity" ? "../Accounts" : "pr-42-run-9000-attempt-1"
+    info["SakuraCordBuildSwitchingProtocol"] = invalidField == "protocol" ? 0 : 1
+    let configuration = AppUpdateConfiguration(
+        infoDictionary: info,
+        bundleIdentifier: AppUpdateConfiguration.canonicalBundleIdentifier
+    )
+    #expect(!configuration.isEnabled)
+    #expect(configuration.unavailabilityReason == .invalidPreviewMetadata)
+}
+
+@MainActor
+@Test("PR feed selection does not inherit the saved return track's downgrade comparator")
+func pullRequestFeedIgnoresSavedReturnTrack() {
+    var info = productionUpdateInfo()
+    info["SakuraCordPullRequestBuildID"] = "pr-42-run-9000-attempt-1"
+    info["SakuraCordBuildSwitchingProtocol"] = 1
+    info[AppUpdateConfiguration.releaseTrackInfoKey] = "nightly"
+    info[AppUpdateConfiguration.versionDowngradeInfoKey] = true
+    let defaults = InMemoryPreferences()
+    defaults.set("regular", forKey: AppUpdateReleaseTrack.preferenceKey)
+    let controller = AppUpdateController(
+        configuration: AppUpdateConfiguration(infoDictionary: info, bundleIdentifier: AppUpdateConfiguration.canonicalBundleIdentifier),
+        defaults: defaults
+    )
+    #expect(controller.releaseTrack == .regular)
+    #expect(controller.activeTrackTitle == "PR #42")
+    #expect(controller.currentFeedURL?.absoluteString == "https://github.com/SakuraCordApp/Builds/releases/download/pr-42/appcast.xml")
+}
+
+@Test("return checkpoint restores the previous preference on cancellation or unchanged PR restart")
+func releaseReturnCheckpointRollsBack() {
+    let defaults = InMemoryPreferences()
+    defaults.set("nightly", forKey: AppUpdateReleaseTrack.preferenceKey)
+    PendingReleaseReturn.checkpoint(track: .regular, version: "200", defaults: defaults)
+    #expect(defaults.string(forKey: AppUpdateReleaseTrack.preferenceKey) == "regular")
+    PendingReleaseReturn.rollback(defaults: defaults)
+    #expect(defaults.string(forKey: AppUpdateReleaseTrack.preferenceKey) == "nightly")
+    #expect(PendingReleaseReturn.load(from: defaults) == nil)
+
+    PendingReleaseReturn.checkpoint(track: .regular, version: "200", defaults: defaults)
+    var info = productionUpdateInfo()
+    info["SakuraCordPullRequestBuildID"] = "pr-42-run-9000-attempt-1"
+    info["SakuraCordBuildSwitchingProtocol"] = 1
+    PendingReleaseReturn.reconcile(
+        configuration: AppUpdateConfiguration(infoDictionary: info, bundleIdentifier: AppUpdateConfiguration.canonicalBundleIdentifier),
+        defaults: defaults
+    )
+    #expect(defaults.string(forKey: AppUpdateReleaseTrack.preferenceKey) == "nightly")
+}
+
+@Test("successful return and subsequent older-release updates retain the chosen track", arguments: ["200", "300"])
+func releaseReturnCheckpointSurvivesInstallation(_ installedVersion: String) {
+    let defaults = InMemoryPreferences()
+    defaults.set("nightly", forKey: AppUpdateReleaseTrack.preferenceKey)
+    PendingReleaseReturn.checkpoint(track: .regular, version: "200", defaults: defaults)
+    var info = productionUpdateInfo()
+    info["CFBundleVersion"] = installedVersion
+    PendingReleaseReturn.reconcile(
+        configuration: AppUpdateConfiguration(infoDictionary: info, bundleIdentifier: AppUpdateConfiguration.canonicalBundleIdentifier),
+        defaults: defaults
+    )
+    #expect(defaults.string(forKey: AppUpdateReleaseTrack.preferenceKey) == "regular")
+    #expect(PendingReleaseReturn.load(from: defaults) == nil)
+}
+
+@Test("recovery before the return target rolls back without overwriting a later explicit choice")
+func releaseReturnCheckpointProtectsRecoveryAndLaterChoice() {
+    let defaults = InMemoryPreferences()
+    PendingReleaseReturn.checkpoint(track: .nightly, version: "200", defaults: defaults)
+    let configuration = AppUpdateConfiguration(infoDictionary: productionUpdateInfo(), bundleIdentifier: AppUpdateConfiguration.canonicalBundleIdentifier)
+    PendingReleaseReturn.reconcile(configuration: configuration, defaults: defaults)
+    #expect(defaults.string(forKey: AppUpdateReleaseTrack.preferenceKey) == nil)
+
+    PendingReleaseReturn.checkpoint(track: .nightly, version: "200", defaults: defaults)
+    defaults.set("regular", forKey: AppUpdateReleaseTrack.preferenceKey)
+    PendingReleaseReturn.rollback(defaults: defaults)
+    #expect(defaults.string(forKey: AppUpdateReleaseTrack.preferenceKey) == "regular")
+}

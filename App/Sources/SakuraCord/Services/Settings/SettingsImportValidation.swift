@@ -11,13 +11,7 @@ nonisolated enum SettingsImportValidation {
         if case let .double(number) = value, !number.isFinite { return false }
         switch value {
         case let .string(raw): return acceptsString(raw, id: registration.id)
-        case let .double(number):
-            switch registration.id {
-            case .windowOpacity: return AppearanceSettingsSnapshot.windowOpacityRange.contains(number)
-            case .messageDensity: return AppearanceSettingsSnapshot.messageSpacingRange.contains(number)
-            case .voiceInputVolume, .voiceOutputVolume: return (0 ... 2).contains(number)
-            default: return true
-            }
+        case let .double(number): return acceptsDouble(number, id: registration.id)
         case let .integer(number):
             switch registration.id {
             case .localStorageLimit: return LocalStorageLimit(rawValue: Int64(number)) != nil
@@ -30,12 +24,23 @@ nonisolated enum SettingsImportValidation {
         }
     }
 
+    private static func acceptsDouble(_ number: Double, id: SettingsControlID) -> Bool {
+        switch id {
+        case .windowOpacity: return AppearanceSettingsSnapshot.windowOpacityRange.contains(number)
+        case .messageDensity: return AppearanceSettingsSnapshot.messageSpacingRange.contains(number)
+        case .interfaceSize: return InterfaceScale.range.contains(number)
+        case .voiceInputVolume, .voiceOutputVolume: return (0 ... 2).contains(number)
+        default: return true
+        }
+    }
+
     private static func acceptsString(_ raw: String, id: SettingsControlID) -> Bool {
         switch id {
+        case .translationMessageLanguage, .translationDraftLanguage: return TranslationLanguages.validPreference(raw)
         case .launchDestination: return SettingsLaunchDestination(rawValue: raw) != nil
         case .appColorScheme: return AppColorScheme(rawValue: raw) != nil
         case .composerBarAppearance: return ComposerBarAppearance(rawValue: raw) != nil
-        case .messageAppearance: return MessageAppearance(rawValue: raw) != nil
+        case .messageAppearance, .directMessageAppearance, .groupMessageAppearance: return MessageAppearance(rawValue: raw) != nil
         case .timestampFormat: return InterfaceTimestampFormat(rawValue: raw) != nil
         case .roleColorDisplay: return RoleColorDisplay(rawValue: raw) != nil
         case .emojiSkinTone: return NativeEmojiSkinTone(rawValue: raw) != nil

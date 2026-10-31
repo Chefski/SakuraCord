@@ -262,7 +262,7 @@ final class WindowModalHostingView: NSHostingView<AnyView> {
         content: (WindowModalContext) -> AnyView
     ) {
         self.presentationID = presentationID
-        let reducesMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let reducesMotion = !AppMotionPolicy.animates(.overlays)
         self.reducesMotion = reducesMotion
         let animationState = WindowModalContext(
             dismiss: dismiss,
@@ -508,6 +508,7 @@ private struct WindowModalHostedContent: View {
 
     var body: some View {
         content
+            .interfaceScaleRoot()
             .environment(\.windowModalInputAllowed, context.isInputActive)
             .allowsHitTesting(context.isInputActive)
             .accessibilityHidden(!context.isInputActive)

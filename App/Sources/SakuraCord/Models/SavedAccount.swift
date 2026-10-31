@@ -8,8 +8,13 @@ nonisolated struct SavedAccount: Codable, Hashable, Identifiable, Sendable {
     var displayName: String?
     var avatarURL: URL?
     var lastUsedAt: Date?
+    // Set when Discord rejects the saved session, such as after a password
+    // change. A successful sign-in records a fresh value without it.
+    var signInRequiredAt: Date?
 
     var id: String { accountID }
+
+    var requiresSignIn: Bool { signInRequiredAt != nil }
 
     var resolvedDisplayName: String {
         displayName ?? username ?? "Discord Account"
@@ -28,13 +33,15 @@ nonisolated struct SavedAccount: Codable, Hashable, Identifiable, Sendable {
         username: String? = nil,
         displayName: String? = nil,
         avatarURL: URL? = nil,
-        lastUsedAt: Date? = nil
+        lastUsedAt: Date? = nil,
+        signInRequiredAt: Date? = nil
     ) {
         self.accountID = accountID
         self.username = username
         self.displayName = displayName
         self.avatarURL = avatarURL
         self.lastUsedAt = lastUsedAt
+        self.signInRequiredAt = signInRequiredAt
     }
 
     init(handle: CredentialHandle) {
@@ -56,6 +63,7 @@ nonisolated protocol SavedAccountStoring: Sendable {
     func accounts(matching handles: [CredentialHandle]) async -> [SavedAccount]
     func preferredAccountID() async -> String?
     func record(_ account: SavedAccount) async
+    func markSignInRequired(accountID: String) async
     func remove(accountID: String) async
     func setPreferredAccountID(_ accountID: String?) async
 }
@@ -70,8 +78,29 @@ actor UserDefaultsSavedAccountStore: SavedAccountStoring {
 
     private let defaults: any PreferenceStoring
 
-    init(defaults: any PreferenceStoring = UserDefaults.standard) {
+    init(
+        defaults: any PreferenceStoring = PRBuildProfile.defaults,
+        seedFrom source: (any PreferenceStoring)? = PRBuildProfile.savedAccountMetadataSource
+    ) {
         self.defaults = defaults
+        if let source {
+            let marker = "dev.sakuracord.preview-account-metadata-seeded"
+            if !defaults.bool(forKey: marker) {
+                // Only picker metadata crosses profiles; credentials remain in
+                // Keychain, and preview changes never write back to the source.
+                if defaults.object(forKey: Self.accountsKey) == nil,
+                   defaults.object(forKey: Self.preferredAccountKey) == nil
+                {
+                    if let accounts = source.data(forKey: Self.accountsKey) {
+                        defaults.set(accounts, forKey: Self.accountsKey)
+                    }
+                    if let preferred = source.string(forKey: Self.preferredAccountKey) {
+                        defaults.set(preferred, forKey: Self.preferredAccountKey)
+                    }
+                }
+                defaults.set(true, forKey: marker)
+            }
+        }
     }
 
     // A presentation hint available before asynchronous credential restoration.
@@ -100,6 +129,17 @@ actor UserDefaultsSavedAccountStore: SavedAccountStoring {
         accounts.append(account)
         persist(accounts.sorted(by: Self.sortsBefore))
         defaults.set(account.accountID, forKey: Self.preferredAccountKey)
+    }
+
+    func markSignInRequired(accountID: String) {
+        var accounts = storedAccounts()
+        if let index = accounts.firstIndex(where: { $0.accountID == accountID }) {
+            guard !accounts[index].requiresSignIn else { return }
+            accounts[index].signInRequiredAt = .now
+        } else {
+            accounts.append(SavedAccount(accountID: accountID, signInRequiredAt: .now))
+        }
+        persist(accounts.sorted(by: Self.sortsBefore))
     }
 
     func remove(accountID: String) {

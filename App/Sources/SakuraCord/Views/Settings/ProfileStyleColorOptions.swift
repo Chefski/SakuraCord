@@ -12,13 +12,13 @@ struct ProfileStyleColorOptions: View {
     private var defaults: [UInt32] { DiscordProfileNameStyles.defaultColors(for: effect, darkAppearance: darkAppearance) }
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: InterfaceScale.metric(8)) {
             if effect == .solid || effect == .pop {
                 defaultColorButton
             }
             customColorButton
         }
-        .frame(width: 140, alignment: .trailing)
+        .frame(width: InterfaceScale.metric(140), alignment: .trailing)
         .onChange(of: effect) { _, _ in isColorPickerPresented = false }
     }
 
@@ -35,11 +35,11 @@ struct ProfileStyleColorOptions: View {
                 }
                 .overlay {
                     Image(systemName: selected ? "checkmark" : "arrow.counterclockwise")
-                        .font(.caption.weight(.semibold))
+                        .font(.interface(.caption).weight(.semibold))
                         .foregroundStyle(.white).shadow(color: .black.opacity(0.6), radius: 1)
                 }
-                .frame(width: 28, height: 28)
-                .padding(.vertical, 2)
+                .frame(width: InterfaceScale.metric(28), height: InterfaceScale.metric(28))
+                .padding(.vertical, InterfaceScale.metric(2))
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
@@ -54,12 +54,12 @@ struct ProfileStyleColorOptions: View {
                 .fill(LinearGradient(colors: customColors.map(Color.init(hex:)), startPoint: .leading, endPoint: .trailing))
                 .overlay { Capsule().stroke(.primary.opacity(0.15), lineWidth: 1) }
                 .overlay {
-                    Image(systemName: "pencil").font(.caption)
+                    Image(systemName: "pencil").font(.interface(.caption))
                         .foregroundStyle(.white).shadow(color: .black.opacity(0.6), radius: 1)
                 }
-                .frame(width: CGFloat(customColorCount) * 28, height: 28)
+                .frame(width: CGFloat(customColorCount) * 28, height: InterfaceScale.metric(28))
                 .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: customColorCount)
-                .padding(.vertical, 2)
+                .padding(.vertical, InterfaceScale.metric(2))
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)

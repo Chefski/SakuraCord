@@ -51,12 +51,12 @@ struct ProfileImagePicker: View {
     }
 
     static func chooserSize(for purpose: ProfileImagePurpose) -> CGSize {
-        CGSize(width: 320, height: purpose == .avatar ? 148 : 64)
+        CGSize(width: InterfaceScale.metric(320), height: purpose == .avatar ? InterfaceScale.metric(148) : InterfaceScale.metric(64))
     }
 
     private var chooser: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 8) {
+        VStack(spacing: InterfaceScale.metric(8)) {
+            HStack(spacing: InterfaceScale.metric(8)) {
                 imageAction("Upload Image", icon: Image(systemName: "photo.badge.plus"), action: importImage)
                 imageAction("Choose GIF", icon: ComposerIcon.gif.image) { showsGIFs = true }
                     .overlay {
@@ -67,15 +67,15 @@ struct ProfileImagePicker: View {
                     }
             }
             if purpose == .avatar {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: InterfaceScale.metric(8)) {
                     Divider()
                     Text("Recent Avatars", bundle: #bundle)
-                        .font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                        .font(.interface(.caption).weight(.medium)).foregroundStyle(.secondary)
                     recentAvatars
                 }
             }
         }
-        .padding(12)
+        .padding(InterfaceScale.metric(12))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .disabled(isBusy)
         .overlay { if isBusy { ProgressView().padding().glassEffect() } }
@@ -83,30 +83,30 @@ struct ProfileImagePicker: View {
 
     private func imageAction(_ title: LocalizedStringKey, icon: Image, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 7) {
-                icon.font(.system(size: 18)).frame(width: 22, height: 22)
-                Text(title).font(.callout.weight(.medium)).lineLimit(1)
+            HStack(spacing: InterfaceScale.metric(7)) {
+                icon.font(.interfaceSystem(size: 18)).frame(width: InterfaceScale.metric(22), height: InterfaceScale.metric(22))
+                Text(title).font(.interface(.callout).weight(.medium)).lineLimit(1)
             }
-            .frame(maxWidth: .infinity).frame(height: 40)
+            .frame(maxWidth: .infinity).frame(height: InterfaceScale.metric(40))
         }
         .buttonStyle(PopoverRowButtonStyle())
     }
 
     private var recentAvatars: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: InterfaceScale.metric(4)) {
             ForEach(editor.history.prefix(6)) { entry in
                 ProfileRecentAvatarButton(entry: entry, choose: { selectArchive(entry) }, remove: {
                     if NSApp.currentEvent?.modifierFlags.contains(.shift) == true { delete(entry) } else { deleteCandidate = entry }
                 })
             }
         }
-        .frame(maxWidth: .infinity).frame(height: 44)
+        .frame(maxWidth: .infinity).frame(height: InterfaceScale.metric(44))
         .overlay {
             if editor.history.isEmpty {
                 if isLoadingHistory {
                     ProgressView().controlSize(.small).accessibilityLabel("Loading recent avatars")
                 } else {
-                    Text("No Recent Avatars", bundle: #bundle).font(.caption).foregroundStyle(.secondary)
+                    Text("No Recent Avatars", bundle: #bundle).font(.interface(.caption)).foregroundStyle(.secondary)
                 }
             }
         }
@@ -217,8 +217,8 @@ private struct ProfileRecentAvatarButton: View {
 
     var body: some View {
         Button(action: choose) {
-            AvatarView(name: "", url: entry.imageURL, size: 40)
-                .padding(2)
+            AvatarView(name: "", url: entry.imageURL, size: InterfaceScale.metric(40))
+                .padding(InterfaceScale.metric(2))
                 .background(.primary.opacity(isHovered ? 0.14 : 0), in: Circle())
                 .overlay { Circle().strokeBorder(.primary.opacity(isHovered ? 0.3 : 0), lineWidth: 2) }
                 .contentShape(Circle())

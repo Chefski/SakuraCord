@@ -7,9 +7,9 @@ struct ComposerCharacterCounter: View {
     var body: some View {
         let limit = ChatCharacterLimitPolicy.limit(premiumType: premiumType)
         Text("\(characterCount) / \(limit)")
-            .font(.caption2.monospacedDigit())
+            .font(.interface(.caption2).monospacedDigit())
             .foregroundStyle(characterCount > limit ? .red : .secondary)
-            .padding(.horizontal, 4)
+            .padding(.horizontal, InterfaceScale.metric(4))
             .background(.regularMaterial, in: Capsule())
             .accessibilityLabel("\(characterCount) of \(limit) characters")
     }

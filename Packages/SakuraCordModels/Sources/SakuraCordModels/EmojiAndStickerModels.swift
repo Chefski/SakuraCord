@@ -7,6 +7,7 @@ public struct DiscordEmoji: Identifiable, Codable, Hashable, Sendable {
     public var guildID: GuildID
     public var isAvailable: Bool
     public var isManaged: Bool
+    public var roleIDs: [RoleID]
     public var assetURL: URL?
 
     public init(
@@ -16,7 +17,8 @@ public struct DiscordEmoji: Identifiable, Codable, Hashable, Sendable {
         guildID: GuildID,
         isAvailable: Bool = true,
         assetURL: URL? = nil,
-        isManaged: Bool = false
+        isManaged: Bool = false,
+        roleIDs: [RoleID] = []
     ) {
         self.id = id
         self.name = name
@@ -25,10 +27,11 @@ public struct DiscordEmoji: Identifiable, Codable, Hashable, Sendable {
         self.isAvailable = isAvailable
         self.assetURL = assetURL
         self.isManaged = isManaged
+        self.roleIDs = roleIDs
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, isAnimated, guildID, isAvailable, assetURL, isManaged
+        case id, name, isAnimated, guildID, isAvailable, assetURL, isManaged, roleIDs
     }
 
     public init(from decoder: any Decoder) throws {
@@ -40,6 +43,7 @@ public struct DiscordEmoji: Identifiable, Codable, Hashable, Sendable {
         isAvailable = try container.decode(Bool.self, forKey: .isAvailable)
         assetURL = try container.decodeIfPresent(URL.self, forKey: .assetURL)
         isManaged = try container.decodeIfPresent(Bool.self, forKey: .isManaged) ?? false
+        roleIDs = try container.decodeIfPresent([RoleID].self, forKey: .roleIDs) ?? []
     }
 
     public var messageToken: String {
@@ -68,23 +72,26 @@ public struct DiscordEmoji: Identifiable, Codable, Hashable, Sendable {
 
 public struct EmojiUserSettings: Equatable, Sendable {
     public var favoriteKeys: [String]
-    public var frequentlyUsedKeys: [String]
-    public var usageScores: [String: Int]
+    public var dataVersion: UInt32?
+    public var messageHistory: DiscordFrecencyHistory
+    public var reactionHistory: DiscordFrecencyHistory
     public var guildAndChannelUsageScores: [String: Int]
     public var guildAndChannelUsage: [String: DiscordFrecencyUsage]
     public var guildAndChannelUsageOrder: [String]
 
     public init(
         favoriteKeys: [String] = [],
-        frequentlyUsedKeys: [String] = [],
-        usageScores: [String: Int] = [:],
+        dataVersion: UInt32? = nil,
+        messageHistory: DiscordFrecencyHistory = .init(),
+        reactionHistory: DiscordFrecencyHistory = .init(),
         guildAndChannelUsageScores: [String: Int] = [:],
         guildAndChannelUsage: [String: DiscordFrecencyUsage] = [:],
         guildAndChannelUsageOrder: [String] = []
     ) {
+        self.dataVersion = dataVersion
+        self.messageHistory = messageHistory
+        self.reactionHistory = reactionHistory
         self.favoriteKeys = favoriteKeys
-        self.frequentlyUsedKeys = frequentlyUsedKeys
-        self.usageScores = usageScores
         self.guildAndChannelUsageScores = guildAndChannelUsageScores
         self.guildAndChannelUsage = guildAndChannelUsage
         self.guildAndChannelUsageOrder = guildAndChannelUsageOrder

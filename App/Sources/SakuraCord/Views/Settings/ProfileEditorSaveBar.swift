@@ -55,7 +55,7 @@ struct ProfileEditorSaveBar: NSViewRepresentable {
             glass.contentView = content
             addSubview(glass)
             addSubview(error)
-            message.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+            message.font = .interfaceSystemFont(ofSize: NSFont.smallSystemFontSize)
             error.font = message.font
             error.textColor = .systemRed
             content.addSubview(message)

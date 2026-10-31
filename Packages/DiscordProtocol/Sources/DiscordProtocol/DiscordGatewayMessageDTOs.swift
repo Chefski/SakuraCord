@@ -683,12 +683,14 @@ struct ForumThreadSearchResponseDTO: Decodable {
     fileprivate var firstMessages: [MessageDTO]
     fileprivate var mostRecentMessages: [MessageDTO]
     var hasMore: Bool?
+    var totalResults: Int?
 
     enum CodingKeys: String, CodingKey {
         case threads, members
         case firstMessages = "first_messages"
         case mostRecentMessages = "most_recent_messages"
         case hasMore = "has_more"
+        case totalResults = "total_results"
     }
 
     init(from decoder: any Decoder) throws {
@@ -709,6 +711,7 @@ struct ForumThreadSearchResponseDTO: Decodable {
                 LossyList<MessageDTO>.self, forKey: .mostRecentMessages
             )?.elements ?? []
         hasMore = try values.decodeIfPresent(Bool.self, forKey: .hasMore)
+        totalResults = try values.decodeIfPresent(Int.self, forKey: .totalResults)
     }
 
     func posts(fallbackGuildID: GuildID?) -> [ForumPost] {
@@ -739,6 +742,7 @@ struct ForumThreadSearchResponseDTO: Decodable {
                 return nil
             }
             post.firstMessage = post.firstMessage ?? firstByChannel[post.id]
+            post.isFirstMessageLoaded = true
             post.mostRecentMessage = recentByChannel[post.id]
             post.owner = post.owner ?? post.firstMessage?.author
             return post
@@ -850,6 +854,7 @@ struct GuildEmojiDTO: Decodable {
     var animated: Bool?
     var available: Bool?
     var managed: Bool?
+    var roles: [String]?
 
     func domain(guildID: GuildID) -> DiscordEmoji? {
         guard let id, let name, !name.isEmpty else { return nil }
@@ -859,7 +864,8 @@ struct GuildEmojiDTO: Decodable {
             isAnimated: animated ?? false,
             guildID: guildID,
             isAvailable: available ?? true,
-            isManaged: managed ?? false
+            isManaged: managed ?? false,
+            roleIDs: (roles ?? []).compactMap(RoleID.init)
         )
     }
 }

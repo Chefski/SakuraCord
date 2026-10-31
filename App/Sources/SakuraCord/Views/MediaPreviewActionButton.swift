@@ -8,9 +8,9 @@ struct MediaPreviewActionButton: View {
     var body: some View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
-                .font(.callout.weight(.semibold))
-                .padding(.horizontal, 16)
-                .frame(height: 42)
+                .font(.interface(.callout).weight(.semibold))
+                .padding(.horizontal, InterfaceScale.metric(16))
+                .frame(height: InterfaceScale.metric(42))
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)

@@ -76,6 +76,9 @@ extension AppModel {
             return
         }
 
+        let rejectedAccountID = (error as? ChatProviderError) == .unauthenticated
+            ? activeAccountID
+            : nil
         let previousEventTask = eventTask
         previousEventTask?.cancel()
         eventTask = nil
@@ -93,6 +96,12 @@ extension AppModel {
         installSignedOutAccountState()
         isLoading = false
         handleSessionStartFailure(error, account: accountSession())
+        // Mark only after the signed-out session is installed, so bootstrap
+        // work still finishing for the rejected session can no longer record
+        // the account afresh and clear the flag.
+        if let rejectedAccountID {
+            await markSavedAccountSignInRequired(rejectedAccountID)
+        }
     }
 
     func installEventTask(
@@ -105,12 +114,17 @@ extension AppModel {
                       !Task.isCancelled,
                       self.isCurrentAccountSession(account)
                 else { break }
-                if case let .sessionInvalidated(reason) = event {
+                let terminalError: ChatProviderError? = switch event {
+                case let .sessionInvalidated(reason): .invalidRequest(reason)
+                // Discord rejected the saved token, for example after a
+                // password change. The provider has already stopped.
+                case .connectionChanged(.authenticationFailed): .unauthenticated
+                default: nil
+                }
+                if let terminalError {
                     // Detach this consumer before teardown, which drains eventTask.
                     self.eventTask = nil
-                    await self.failAuthenticatedSessionStart(
-                        ChatProviderError.invalidRequest(reason), account: account
-                    )
+                    await self.failAuthenticatedSessionStart(terminalError, account: account)
                     break
                 }
                 await self.consume(event)
@@ -224,6 +238,15 @@ extension AppModel {
                     lastActiveAccountID: preferredStoredAccountID
                 )
             }
+            if let restoredHandle,
+               savedAccounts.first(where: { $0.accountID == restoredHandle.accountID })?
+                   .requiresSignIn == true
+            {
+                // A rejected session cannot connect; offer sign-in from the picker.
+                isLoading = false
+                sessionState = .signedOut
+                return false
+            }
             if let restoredHandle {
                 SettingsConversationRestorationStore.shared.prepareLaunch(
                     destination: launchDestination
@@ -258,7 +281,9 @@ extension AppModel {
         let statusRevision = statusRevision ?? currentStatusRevision
         AppPerformanceSignposts.measureSync("BootstrapSnapshotPublish") {
             snapshot = value
-            onboarding.members = value.currentMembersByGuildID
+            friends.replaceRelationships(value.relationships)
+            ignoredUsers.replaceRelationships(value.relationships)
+            installBootstrapMembership(value)
             configureForwardDestinationHistoryScope(
                 credentialHandle?.accountID
                     ?? (launchMode == .offlineTesting ? "offline" : "signed-out")
@@ -374,7 +399,8 @@ extension AppModel {
                     readStates: value.readStates,
                     notificationSettings: value.notificationSettings,
                     usesNewNotifications: value.usesNewNotifications,
-                    currentUserID: value.currentUser.id
+                    currentUserID: value.currentUser.id,
+                    activeJoinedThreads: value.activeJoinedThreads
                 ))
             }.value
         }

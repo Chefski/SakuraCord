@@ -14,6 +14,7 @@ struct PrivacySafetySettingsPage: View {
                     value: $value,
                     state: state
                 )
+                PrivacyIgnoreBlockSection(model: model, state: state)
                 PrivacyLinksServicesSection(value: $value, state: state)
                 PrivacyLocalActivitySection(model: model, state: state)
             }
@@ -21,6 +22,8 @@ struct PrivacySafetySettingsPage: View {
                 switch destination {
                 case .trustedDomains:
                     TrustedDomainsSettingsPage(trustedDomains: $value.trustedDomains)
+                case .relationships(let list):
+                    RelationshipListSettingsPage(model: model, list: list)
                 }
             }
         }
@@ -39,6 +42,31 @@ struct PrivacySafetySettingsPage: View {
 
 private enum PrivacyDestination: Hashable {
     case trustedDomains
+    case relationships(ManagedRelationshipList)
+}
+
+private struct PrivacyIgnoreBlockSection: View {
+    let model: AppModel
+    let state: SettingsViewState
+
+    var body: some View {
+        Section {
+            link(.blocked).settingsControlAnchor(.blockedAccounts, state: state)
+            link(.ignored).settingsControlAnchor(.ignoredAccounts, state: state)
+        } header: {
+            Text("Ignore & Block", bundle: #bundle)
+        }
+    }
+
+    private func link(_ list: ManagedRelationshipList) -> some View {
+        NavigationLink(value: PrivacyDestination.relationships(list)) {
+            LabeledContent {
+                Text(model.relationships.count(where: list.contains), format: .number)
+            } label: {
+                Label { Text(list.title) } icon: { Image(systemName: list.systemImage) }
+            }
+        }
+    }
 }
 
 private struct PrivacyLinksServicesSection: View {
@@ -180,7 +208,7 @@ private struct TrustedDomainsSettingsPage: View {
                 .disabled(domainToAdd == nil)
         } message: {
             Text(
-                "Enter the domain you want SakuraCord to trust.",
+                "Enter a domain such as example.com, or *.example.com to trust its subdomains. Wildcards do not include the domain itself.",
                 bundle: #bundle
             )
         }
@@ -252,7 +280,7 @@ private struct TrustedDomainsEmptyState: View {
                 )
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 260, alignment: .center)
+        .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(260), alignment: .center)
     }
 }
 
@@ -261,11 +289,11 @@ private struct TrustedDomainRow: View {
     let onRemove: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: InterfaceScale.metric(12)) {
             Image(systemName: "globe")
                 .symbolRenderingMode(.monochrome)
                 .foregroundStyle(.secondary)
-                .frame(width: 18)
+                .frame(width: InterfaceScale.metric(18))
                 .accessibilityHidden(true)
 
             Text(domain)

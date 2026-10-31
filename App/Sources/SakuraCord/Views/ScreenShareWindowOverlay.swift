@@ -45,7 +45,7 @@ private struct ScreenSharePreviewOverlay: View {
         ZStack {
             WindowModalBackdrop(dismiss: { animationState.dismiss() })
 
-            VStack(spacing: 20) {
+            VStack(spacing: InterfaceScale.metric(20)) {
                 ScreenSharePreviewHeader(
                     model: model,
                     animationState: animationState
@@ -53,18 +53,18 @@ private struct ScreenSharePreviewOverlay: View {
                 ScreenSharePreviewSurface(model: model)
                 ScreenSharePreviewFooter(model: model)
             }
-            .padding(24)
-            .frame(maxWidth: 1_200, maxHeight: 820)
+            .padding(InterfaceScale.metric(24))
+            .frame(maxWidth: 1_200, maxHeight: InterfaceScale.metric(820))
             .background(
                 .regularMaterial,
-                in: ConcentricRectangle(cornerRadius: 24, style: .continuous)
+                in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(24), style: .continuous)
             )
             .overlay {
-                ConcentricRectangle(cornerRadius: 24, style: .continuous)
+                ConcentricRectangle(cornerRadius: InterfaceScale.metric(24), style: .continuous)
                     .stroke(.primary.opacity(0.1), lineWidth: 1)
             }
-            .shadow(color: .black.opacity(0.35), radius: 30, y: 14)
-            .padding(36)
+            .shadow(color: .black.opacity(0.35), radius: InterfaceScale.metric(30), y: 14)
+            .padding(InterfaceScale.metric(36))
             .scaleEffect(animationState.isVisible ? 1 : 0.96)
             .opacity(animationState.isVisible ? 1 : 0)
         }
@@ -79,13 +79,13 @@ private struct ScreenSharePreviewHeader: View {
     let animationState: WindowModalContext
 
     var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
+        HStack(spacing: InterfaceScale.metric(12)) {
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(3)) {
                 Text(model.localApplicationStreamKey == nil ? "Share Your Screen" : "Your Screen Share")
-                    .font(.title2.weight(.bold))
+                    .font(.interface(.title2).weight(.bold))
                 if model.isScreenShareCaptureAvailable {
                     Text(model.screenShareSourceName)
-                        .font(.callout)
+                        .font(.interface(.callout))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -119,17 +119,17 @@ private struct ScreenSharePreviewSurface: View {
                     .scaledToFit()
                     .transition(.opacity)
             } else {
-                VStack(spacing: 12) {
+                VStack(spacing: InterfaceScale.metric(12)) {
                     if model.screenShareCaptureState == .starting {
                         ProgressView()
                             .controlSize(.large)
                     } else {
                         Image(systemName: previewStatusIcon)
-                            .font(.system(size: 42, weight: .light))
+                            .font(.interfaceSystem(size: 42, weight: .light))
                             .foregroundStyle(.secondary)
                     }
                     Text(previewStatus)
-                        .font(.callout.weight(.medium))
+                        .font(.interface(.callout).weight(.medium))
                         .foregroundStyle(.secondary)
                     if model.screenShareCaptureState != .starting {
                         chooseSourceButton
@@ -147,9 +147,9 @@ private struct ScreenSharePreviewSurface: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .aspectRatio(16 / 9, contentMode: .fit)
-        .clipShape(ConcentricRectangle(cornerRadius: 18, style: .continuous))
+        .clipShape(ConcentricRectangle(cornerRadius: InterfaceScale.metric(18), style: .continuous))
         .overlay {
-            ConcentricRectangle(cornerRadius: 18, style: .continuous)
+            ConcentricRectangle(cornerRadius: InterfaceScale.metric(18), style: .continuous)
                 .stroke(
                     model.screenSharePreviewFrame == nil
                         ? Color.primary.opacity(0.1) : Color.white.opacity(0.12),
@@ -207,7 +207,7 @@ private struct ScreenSharePreviewFooter: View {
 
     var body: some View {
         ZStack {
-            HStack(spacing: 10) {
+            HStack(spacing: InterfaceScale.metric(10)) {
                 settingsButton(
                     title: model.screenShareSettings.frameRate.title,
                     systemImage: "gauge.with.dots.needle.67percent"
@@ -238,7 +238,7 @@ private struct ScreenSharePreviewFooter: View {
                 primaryButton
             }
         }
-        .frame(minHeight: 44)
+        .frame(minHeight: InterfaceScale.metric(44))
     }
 
     private func settingsButton(
@@ -248,9 +248,9 @@ private struct ScreenSharePreviewFooter: View {
     ) -> some View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
-                .font(.callout.weight(.medium))
-                .padding(.horizontal, 14)
-                .frame(height: 40)
+                .font(.interface(.callout).weight(.medium))
+                .padding(.horizontal, InterfaceScale.metric(14))
+                .frame(height: InterfaceScale.metric(40))
                 .contentShape(Capsule())
         }
         .menuStyle(.button)
@@ -272,9 +272,9 @@ private struct ScreenSharePreviewFooter: View {
                 "Share Audio",
                 systemImage: includesAudio ? "speaker.wave.2.fill" : "speaker.slash.fill"
             )
-            .font(.callout.weight(.medium))
-            .padding(.horizontal, 14)
-            .frame(height: 40)
+            .font(.interface(.callout).weight(.medium))
+            .padding(.horizontal, InterfaceScale.metric(14))
+            .frame(height: InterfaceScale.metric(40))
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -294,9 +294,9 @@ private struct ScreenSharePreviewFooter: View {
                 Task { await model.stopScreenSharing() }
             } label: {
                 Label("Stop Sharing", systemImage: "stop.fill")
-                    .font(.callout.weight(.semibold))
-                    .padding(.horizontal, 17)
-                    .frame(height: 42)
+                    .font(.interface(.callout).weight(.semibold))
+                    .padding(.horizontal, InterfaceScale.metric(17))
+                    .frame(height: InterfaceScale.metric(42))
                     .contentShape(Capsule())
             }
             .buttonStyle(.plain)
@@ -309,16 +309,16 @@ private struct ScreenSharePreviewFooter: View {
             Button {
                 Task { await model.startScreenSharing() }
             } label: {
-                HStack(spacing: 8) {
+                HStack(spacing: InterfaceScale.metric(8)) {
                     if model.isStartingScreenShare {
                         ProgressView()
                             .controlSize(.small)
                     }
                     Text(primaryButtonTitle)
                 }
-                .font(.callout.weight(.semibold))
-                .padding(.horizontal, 18)
-                .frame(height: 42)
+                .font(.interface(.callout).weight(.semibold))
+                .padding(.horizontal, InterfaceScale.metric(18))
+                .frame(height: InterfaceScale.metric(42))
                 .contentShape(Capsule())
             }
             .buttonStyle(.plain)
@@ -351,11 +351,11 @@ struct ScreenShareFrameRatePopover: View {
     let model: AppModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(4)) {
             Text("Frame Rate")
-                .font(.headline)
-                .padding(.horizontal, 4)
-                .padding(.bottom, 4)
+                .font(.interface(.headline))
+                .padding(.horizontal, InterfaceScale.metric(4))
+                .padding(.bottom, InterfaceScale.metric(4))
             ForEach(model.availableScreenShareFrameRates, id: \.self) { frameRate in
                 Button {
                     Task {
@@ -372,16 +372,16 @@ struct ScreenShareFrameRatePopover: View {
                                 .foregroundStyle(SakuraCordAccentColor.color)
                         }
                     }
-                    .padding(.horizontal, 8)
+                    .padding(.horizontal, InterfaceScale.metric(8))
                     .frame(maxWidth: .infinity)
-                    .frame(height: 30)
+                    .frame(height: InterfaceScale.metric(30))
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(PopoverRowButtonStyle())
             }
         }
-        .font(.callout)
-        .padding(12)
-        .frame(width: 190)
+        .font(.interface(.callout))
+        .padding(InterfaceScale.metric(12))
+        .frame(width: InterfaceScale.metric(190))
     }
 }

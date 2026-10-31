@@ -47,7 +47,7 @@ struct GIFProviderContractTests {
         ])
     }
 
-    @Test func `GIF favourites share one settings read and use one full proto patch per action`() async throws {
+    @Test func `GIF favourites share one settings read and use one changed-field proto patch per action`() async throws {
         GIFURLProtocol.reset()
         let provider = makeProvider()
         let gif = GIFSearchResult(
@@ -82,7 +82,7 @@ struct GIFProviderContractTests {
         #expect(DiscordSettingsProto.gifFavorites(from: addedProto).map(\.url) == [gif.url])
     }
 
-    @Test func `emoji favourites use one full frecency proto patch per action`() async throws {
+    @Test func `emoji favourites patch only field 5 and consume the stored response`() async throws {
         GIFURLProtocol.reset()
         let provider = makeProvider()
 
@@ -105,6 +105,46 @@ struct GIFProviderContractTests {
         let addedBase64 = try #require(patches.first?.body?["settings"] as? String)
         let addedProto = try #require(Data(base64Encoded: addedBase64))
         #expect(DiscordSettingsProto.emojiSettings(from: addedProto).favoriteKeys == ["wave"])
+    }
+
+    @Test func `emoji usage saves both histories with a favorite in one partial patch`() async throws {
+        GIFURLProtocol.reset()
+        let provider = makeProvider()
+        let message = DiscordFrecencyHistory(entries: [.init(key: "turtle", totalUses: 3, recentUses: [1, 2, 3], frecency: 300, score: 300)])
+        let reaction = DiscordFrecencyHistory(entries: [.init(key: "snake", totalUses: 1, recentUses: [4], frecency: 80, score: 100)])
+        let stored = try await provider.saveEmojiFrecency(message, reactions: reaction, favoriteKey: "turtle", isFavorite: true)
+        #expect(stored.messageHistory == message)
+        #expect(stored.reactionHistory == reaction)
+        #expect(stored.favoriteKeys == ["turtle"])
+        #expect(GIFURLProtocol.requests.map(\.method) == ["GET", "PATCH"])
+        let encoded = try #require(GIFURLProtocol.requests.last?.body?["settings"] as? String)
+        var reader = ProtoReader(data: try #require(Data(base64Encoded: encoded)))
+        var fields: [Int] = []
+        while let field = reader.readRawField() { fields.append(field.field) }
+        #expect(fields == [6, 13, 5])
+    }
+
+    @Test func `other type two saves include and acknowledge pending emoji usage in the same request`() async throws {
+        GIFURLProtocol.reset()
+        let provider = makeProvider()
+        let history = DiscordFrecencyHistory(entries: [.init(key: "turtle", totalUses: 2, recentUses: [1, 2])])
+        let acknowledgement = EmojiSaveAcknowledgement()
+        let sessionProvider: any ChatProvider = provider
+        await sessionProvider.configureEmojiFrecencyPersistence {
+            EmojiFrecencySaveContribution(messages: history, reactions: .init()) { settings in
+                await acknowledgement.record(settings)
+            }
+        }
+        let gif = GIFSearchResult(id: "one", title: "Hello", url: URL(string: "https://tenor.com/view/one")!)
+        let favorites = try await provider.setGIFFavorite(gif, isFavorite: true)
+        #expect(favorites.map(\.url) == [gif.url])
+        #expect(GIFURLProtocol.requests.map(\.method) == ["GET", "PATCH"])
+        #expect(await acknowledgement.settings?.messageHistory == history)
+        let encoded = try #require(GIFURLProtocol.requests.last?.body?["settings"] as? String)
+        var reader = ProtoReader(data: try #require(Data(base64Encoded: encoded)))
+        var fields: [Int] = []
+        while let field = reader.readRawField() { fields.append(field.field) }
+        #expect(fields == [2, 6, 13])
     }
 
     @Test func `soundboard defaults native send and favorites use exact contracts`() async throws {
@@ -275,7 +315,8 @@ private final class GIFURLProtocol: URLProtocol, @unchecked Sendable {
             ]
             """#
         case "/api/v9/users/@me/settings-proto/2":
-            body = request.httpMethod == "GET" ? #"{"settings":""}"# : "{}"
+            let settings = Self.requests.last?.body?["settings"] as? String ?? ""
+            body = "{\"settings\":\"\(settings)\"}"
         default:
             body = "{}"
         }
@@ -306,4 +347,9 @@ private final class GIFURLProtocol: URLProtocol, @unchecked Sendable {
         }
         return data
     }
+}
+
+private actor EmojiSaveAcknowledgement {
+    private(set) var settings: EmojiUserSettings?
+    func record(_ settings: EmojiUserSettings?) { self.settings = settings }
 }

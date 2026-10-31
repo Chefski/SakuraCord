@@ -17,12 +17,18 @@ private final class VoiceOverAnnouncementTestState {
 
     var value = store.load()
     #expect(value == .defaults)
+    value.disablesMessageSendingAnimations = true
+    value.disablesAllAnimations = true
+    value.disablesSidebarAnimations = true
+    value.disablesSideChatAnimations = true
+    value.disablesOverlayAnimations = true
     value.disablesProfileEffects = true
     value.disablesNameplates = true
     value.disablesAvatarDecorations = true
     value.disablesProfileFrames = true
     value.disablesNameStyles = true
     value.disablesProfileGradients = true
+    value.disablesServerTags = true
     value.disablesOwnCosmetics = true
     value.announcesNewMessages = true
     store.save(value)
@@ -31,6 +37,10 @@ private final class VoiceOverAnnouncementTestState {
     let export = preferences.export(scope: .appWide, page: .accessibility)
     #expect(
         export.values[SettingsControlID.accessibilityDisableProfileEffects.rawValue]
+            == .bool(true)
+    )
+    #expect(
+        export.values[SettingsControlID.accessibilityDisableServerTags.rawValue]
             == .bool(true)
     )
     #expect(
@@ -43,31 +53,56 @@ private final class VoiceOverAnnouncementTestState {
     #expect(store.load() == .defaults)
 }
 
-@Test func `Cosmetic restrictions preserve own profile unless opted in`() throws {
+@MainActor
+@Test func `Motion categories snap when disabled by their switch or the master`() {
+    var settings = AccessibilitySettingsSnapshot.defaults
+    #expect(AppMotionPolicy.animates([.sidebar, .sideChats, .overlays], settings: settings, reducesMotion: false))
+    #expect(!AppMotionPolicy.animates([.sidebar], settings: settings, reducesMotion: true))
+
+    settings.disablesSideChatAnimations = true
+    #expect(AppMotionPolicy.animates([.sidebar], settings: settings, reducesMotion: false))
+    #expect(!AppMotionPolicy.animates([.sidebar, .sideChats], settings: settings, reducesMotion: false))
+
+    settings = .defaults
+    settings.disablesAllAnimations = true
+    #expect(!AppMotionPolicy.animates([.overlays], settings: settings, reducesMotion: false))
+}
+
+@Test func `Cosmetic restrictions preserve own profile except disabled server tags`() throws {
     let ownID = UserID(rawValue: 1)
     let otherID = UserID(rawValue: 2)
     let decoration = try #require(URL(string: "https://example.com/decoration.png"))
+    let serverTag = PrimaryGuildIdentity(guildID: GuildID(rawValue: 3), tag: "TAG")
     let user = User(id: otherID, username: "fixture", displayName: "Fixture",
-                    avatarDecorationURL: decoration, displayNameStyle: DisplayNameStyle(fontID: 1))
+                    avatarDecorationURL: decoration, primaryGuild: serverTag,
+                    displayNameStyle: DisplayNameStyle(fontID: 1))
     var settings = AccessibilitySettingsSnapshot.defaults
     #expect(!settings.disablesOwnCosmetics)
     var policy = ProfileCosmeticPolicy(settings: settings, currentUserID: ownID)
     #expect(policy.user(user) == user)
     settings.disablesAvatarDecorations = true
     settings.disablesNameStyles = true
+    settings.disablesServerTags = true
     policy.settings = settings
     #expect(policy.user(user).avatarDecorationURL == nil)
     #expect(policy.user(user).displayNameStyle == nil)
+    #expect(policy.user(user).primaryGuild == nil)
+    #expect(policy.member(Member(user: user, roleName: "Member", status: .online)).user.primaryGuild == nil)
     #expect(user.avatarDecorationURL == decoration)
+    #expect(user.primaryGuild == serverTag)
     #expect(policy.user(user).username == user.username)
     policy.currentUserID = otherID
-    #expect(policy.user(user) == user)
+    var ownPresentation = user
+    ownPresentation.primaryGuild = nil
+    #expect(policy.user(user) == ownPresentation)
     policy.settings.disablesOwnCosmetics = true
     #expect(policy.user(user).avatarDecorationURL == nil)
     #expect(policy.user(user).displayNameStyle == nil)
     policy.settings.disablesAvatarDecorations = false
     #expect(policy.user(user).avatarDecorationURL == decoration)
     #expect(policy.user(user).displayNameStyle == nil)
+    policy.settings.disablesServerTags = false
+    #expect(policy.user(user).primaryGuild == serverTag)
 }
 
 @Test func `VoiceOver metadata follows each configured field`() throws {

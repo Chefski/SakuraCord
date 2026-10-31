@@ -3,11 +3,34 @@ import Foundation
 nonisolated extension SettingsCatalog {
     static let featuresPage = page(
         .features, group: .preferences, title: "Features", image: "square.stack.3d.up.fill",
-        help: "Manage hidden channels, FakeNitro, and attachments.",
-        keywords: ["channels", "hidden", "FakeNitro", "emoji", "stickers", "soundboard", "stream", "uploads"]
+        help: "Manage hidden channels, FakeNitro, voice messages, attachments, and on-device translation.",
+        keywords: [
+            "channels", "hidden", "FakeNitro", "emoji", "stickers", "soundboard", "stream", "voice messages", "uploads", "translation",
+            "language",
+        ]
     )
 
     static let featuresControls: [SettingsControlMetadata] = [
+        control(
+            .readAllButton, page: .features, section: .featuresNotifications,
+            label: "Read All button", help: "Show a button above the server list to mark all server channels as read after confirmation.",
+            keywords: ["unread", "notifications", "mark read", "servers"], scope: .appWideLocal
+        ),
+        control(
+            .translationEnabled, page: .features, section: .featuresTranslation,
+            label: "Enable on-device translation", help: "Translate messages and drafts with Apple Translation after an explicit action.",
+            keywords: ["translation", "language", "Apple", "offline"], scope: .appWideLocal
+        ),
+        control(
+            .translationMessageLanguage, page: .features, section: .featuresTranslation,
+            label: "Translate messages into", help: "Choose a supported target language for messages.",
+            keywords: ["translation", "language"], scope: .appWideLocal
+        ),
+        control(
+            .translationDraftLanguage, page: .features, section: .featuresTranslation,
+            label: "Translate drafts into", help: "Choose a supported target language for editable drafts.",
+            keywords: ["translation", "language", "composer"], scope: .appWideLocal
+        ),
         control(
             .channelManagement, page: .features, section: .featuresChannels,
             label: "Channel customization", help: "Use each server’s channel selections. Turn off to show all channels and hide channel customization controls without changing server selections.",
@@ -37,6 +60,12 @@ nonisolated extension SettingsCatalog {
             .fakeNitroStreamQuality, page: .features, section: .featuresFakeNitro,
             label: "FakeNitro stream quality", help: "Use higher stream resolutions and frame rates without Nitro.",
             keywords: ["features", "FakeNitro"], scope: .appWideLocal
+        ),
+        control(
+            .voiceMessageRecording, page: .features, section: .featuresVoiceMessages,
+            label: "Record voice messages",
+            help: "Show the composer’s record button. Voice messages in conversations play either way.",
+            keywords: ["voice message", "record", "microphone", "audio"], scope: .appWideLocal
         ),
         control(
             .attachmentCompactionPrompt, page: .features, section: .featuresAttachments,

@@ -53,7 +53,7 @@ extension NativeMessageTimelineCoordinator {
         for index in items.indices where changedIdentifiers.contains(items[index].identifier) {
             // Deliberately bypass layoutPreparation and recent-conversation caches.
             let updated = NativeTimelineRowLayout.make(
-                item: items[index], width: layoutWidth, model: parent.model, relativeTo: date
+                item: items[index], width: layoutWidth, source: parent.model, relativeTo: date
             )
             changesHeight = changesHeight || abs(updated.height - rowHeights[index]) >= 0.5
             layouts[index] = updated

@@ -31,7 +31,7 @@ struct SelectionFieldDropdown<Content: View>: NSViewRepresentable {
         var cancel: () -> Void = {}
         var reduceMotion = false
         var preferredPlacement: SelectionFieldResultPlacement = .below
-        var requestedHeight: CGFloat = 260
+        var requestedHeight: CGFloat = InterfaceScale.metric(260)
         var makeContent: (CGFloat) -> AnyView = { _ in AnyView(EmptyView()) }
         private var host: NSHostingView<AnyView>?
         private weak var modalCoordinator: WindowModalCoordinator?
@@ -191,15 +191,15 @@ private struct SelectionFieldDropdownSurface<Content: View>: View {
 
     var body: some View {
         GlassEffectContainer(spacing: 0) { content() }
-            .clipShape(.rect(cornerRadius: 11))
+            .clipShape(.rect(cornerRadius: InterfaceScale.metric(11)))
             .opacity(presentation.visible ? 1 : 0)
             .animation(reduceMotion ? nil : .easeOut(duration: presentation.visible ? 0.09 : 0.08), value: presentation.visible)
             .mask(alignment: presentation.opensBelow ? .top : .bottom) {
-                RoundedRectangle(cornerRadius: 11)
+                RoundedRectangle(cornerRadius: InterfaceScale.metric(11))
                     .scaleEffect(x: 1, y: presentation.visible || reduceMotion ? 1 : 0.06, anchor: edge)
                     .animation(reveal, value: presentation.visible)
             }
-            .offset(y: presentation.visible || reduceMotion ? 0 : (presentation.opensBelow ? -10 : 10))
+            .offset(y: presentation.visible || reduceMotion ? 0 : (presentation.opensBelow ? -InterfaceScale.metric(10) : InterfaceScale.metric(10)))
             .animation(reveal, value: presentation.visible)
             .allowsHitTesting(presentation.visible)
             .accessibilityHidden(!presentation.visible)

@@ -19,10 +19,10 @@ struct ProfileEditorImageMenu: ViewModifier {
             .overlay {
                 if editor?.displayProfile != nil, open != nil {
                     HoverActionPill {
-                        HoverActionControlLabel { Image(systemName: "pencil").font(.callout.weight(.medium)) }
+                        HoverActionControlLabel { Image(systemName: "pencil").font(.interface(.callout).weight(.medium)) }
                     }
                         .anchorPreference(key: ProfileImageEditAnchorKey.self, value: .bounds) { $0 }
-                        .padding(target == .banner ? 12 : 0)
+                        .padding(target == .banner ? InterfaceScale.metric(12) : 0)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: target == .avatar ? .center : .topTrailing)
                         .opacity(showsEditAffordance ? 1 : 0)
                         .allowsHitTesting(false)

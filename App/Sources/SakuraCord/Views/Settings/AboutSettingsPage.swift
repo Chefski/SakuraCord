@@ -32,8 +32,8 @@ struct AboutSettingsPage: View {
     private var aboutOverview: some View {
         SettingsPageForm(page: .about, state: state) {
             aboutHeader
-                .padding(.horizontal, 32)
-                .padding(.vertical, 8)
+                .padding(.horizontal, InterfaceScale.metric(32))
+                .padding(.vertical, InterfaceScale.metric(8))
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
 
@@ -54,19 +54,19 @@ struct AboutSettingsPage: View {
     }
 
     private var aboutHeader: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: InterfaceScale.metric(6)) {
             Image("SakuraCordAboutLogo", bundle: .module)
                 .resizable()
                 .scaledToFit()
-                .frame(width: 80, height: 80)
+                .frame(width: InterfaceScale.metric(80), height: InterfaceScale.metric(80))
                 .accessibilityLabel("SakuraCord logo")
 
             Text("SakuraCord")
-                .font(.title.bold())
+                .font(.interface(.title).bold())
                 .foregroundStyle(.primary.opacity(0.86))
 
             Text(versionInformation.prefixedDisplay)
-                .font(.subheadline.weight(.medium))
+                .font(.interface(.subheadline).weight(.medium))
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
@@ -103,7 +103,7 @@ struct AboutSettingsPage: View {
             Spacer()
 
             Image(systemName: "arrow.up.right")
-                .font(.caption.weight(.semibold))
+                .font(.interface(.caption).weight(.semibold))
                 .foregroundStyle(.tertiary)
         }
         .foregroundStyle(.primary)
@@ -141,7 +141,7 @@ struct AboutSettingsPage: View {
             "SakuraCord is an independent project, is not affiliated with Discord, "
                 + "and connects through an unsupported third-party client."
         )
-        .font(.caption)
+        .font(.interface(.caption))
         .foregroundStyle(.tertiary)
         .multilineTextAlignment(.center)
         .frame(maxWidth: .infinity)

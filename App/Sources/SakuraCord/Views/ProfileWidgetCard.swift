@@ -34,7 +34,7 @@ struct ProfileWidgetCard: View {
                                              connection: resources?.connections?[configuration.connectionApplicationID ?? id],
                                              connect: connectionAction(configuration))
             } else if let error = resources?.errorMessage {
-                Label(error, systemImage: "exclamationmark.triangle").font(.callout).padding(16)
+                Label(error, systemImage: "exclamationmark.triangle").font(.interface(.callout)).padding(InterfaceScale.metric(16))
             }
         case let .personal(personal):
             ProfilePersonalWidgetCard(id: widget.id, widget: personal, animates: animates, editor: editor)
@@ -64,7 +64,7 @@ struct ProfileWidgetsSection: View {
     var connectApplication: ((ProfileApplicationWidget) -> Void)?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(12)) {
             ForEach(widgets) { widget in
                 ProfileWidgetCard(widget: widget, resources: resources, animates: animates, displayName: displayName, openGame: openGame, connectApplication: connectApplication)
             }

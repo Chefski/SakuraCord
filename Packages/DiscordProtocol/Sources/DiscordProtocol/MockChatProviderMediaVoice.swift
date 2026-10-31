@@ -13,13 +13,15 @@ public extension MockChatProvider {
                 "broken_heart", "hot_face",
                 "smiling_face_with_3_hearts", "cry", "fire", "thumbsup", "sob",
             ],
-            frequentlyUsedKeys: [
+            messageHistory: savedEmojiFrecency?.messages ?? .init(entries: [
                 "custom:900000000000000202", "broken_heart", "white_check_mark", "neutral_face",
                 "sob", "pray", "fire",
                 "cry", "wilted_flower", "person_shrugging", "white_heart", "thumbsup", "x",
                 "unamused", "hot_face", "pleading_face", "smiley_cat", "eyes",
-            ],
-            usageScores: [:],
+            ].enumerated().map { index, key in
+                DiscordFrecencyEntry(key: key.replacingOccurrences(of: "custom:", with: ""), totalUses: 30 - index, recentUses: [UInt64(Date().timeIntervalSince1970 * 1_000)])
+            }),
+            reactionHistory: savedEmojiFrecency?.reactions ?? .init(),
             guildAndChannelUsageScores: Dictionary(
                 uniqueKeysWithValues: snapshot.channels.enumerated().map { index, channel in
                     (channel.id.description, max(1, snapshot.channels.count - index))
@@ -39,6 +41,15 @@ public extension MockChatProvider {
         }
         favoriteEmojiKeys = settings.favoriteKeys
         return settings
+    }
+
+    func saveEmojiFrecency(
+        _ messages: DiscordFrecencyHistory, reactions: DiscordFrecencyHistory,
+        favoriteKey: String?, isFavorite: Bool
+    ) async throws -> EmojiUserSettings {
+        savedEmojiFrecency = (messages, reactions)
+        if let favoriteKey { return try await setEmojiFavorite(favoriteKey, isFavorite: isFavorite) }
+        return try await emojiUserSettings()
     }
 
     func trendingGIFs() async throws -> [GIFSearchResult] {

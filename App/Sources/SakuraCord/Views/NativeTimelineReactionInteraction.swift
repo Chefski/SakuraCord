@@ -35,7 +35,8 @@ extension NativeTimelineCanvasView {
                 frame: region.frame.offsetBy(dx: 0, dy: rowOrigin)
             )
         case .add:
-            guard let frame = layout.addReactionFrame else { return nil }
+            guard model?.canCreateReactions(on: row.message) == true,
+                  let frame = layout.addReactionFrame else { return nil }
             return ReactionPointerHit(
                 target: .add(messageID: row.id),
                 rowIndex: index,
@@ -70,7 +71,8 @@ extension NativeTimelineCanvasView {
                 frame: region.frame.offsetBy(dx: 0, dy: rowOrigin)
             )
         case .add:
-            guard let frame = layouts[index].addReactionFrame else {
+            guard model?.canCreateReactions(on: row.message) == true,
+                  let frame = layouts[index].addReactionFrame else {
                 return nil
             }
             return ReactionPointerHit(
@@ -145,7 +147,7 @@ extension NativeTimelineCanvasView {
         var counts: [ReactionCountKey: Int] = [:]
         var visibleMessageIDs: Set<MessageID> = []
         let reducesMotion =
-            NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            !AppMotionPolicy.animatesUncategorized
 
         while items.indices.contains(index),
               displayedRowOrigin(at: index) < visibleRect.maxY
@@ -225,7 +227,13 @@ extension NativeTimelineCanvasView {
         rowIndex: Int,
         reaction: Reaction
     ) {
-        guard layouts.indices.contains(rowIndex),
+        // Remove the previous host even when the replacement needs no animation.
+        reactionCountAnimationTasks.removeValue(forKey: key)?.cancel()
+        reactionCountAnimationHosts.removeValue(forKey: key)?.removeFromSuperview()
+
+        // A newly added reaction shows its first count immediately.
+        guard !(from == 0 && to == 1),
+              layouts.indices.contains(rowIndex),
               let region = layouts[rowIndex].reactionRegions.first(where: {
                   $0.reaction.id == reaction.id
               }),
@@ -234,10 +242,6 @@ extension NativeTimelineCanvasView {
             activeReactionCountAnimations[key] = nil
             return
         }
-
-        reactionCountAnimationTasks[key]?.cancel()
-        reactionCountAnimationTasks[key] = nil
-        reactionCountAnimationHosts[key]?.removeFromSuperview()
 
         let color: NSColor = reaction.didCurrentUserReact
             ? .sakuraCordAccentColor
@@ -345,9 +349,7 @@ extension NativeTimelineCanvasView {
         else {
             animatedMediaRows.removeAll()
             inlineVideoRows.removeAll()
-            lottieStickerRows.removeAll()
             removeInlineVideoOverlays()
-            removeLottieStickerOverlays()
             removeAnimatedMediaOverlays()
             return
         }
@@ -361,8 +363,6 @@ extension NativeTimelineCanvasView {
             [NativeMessageTimelineItem.Identifier: Set<NativeTimelineMediaKey>] = [:]
         var videoRows:
             [NativeMessageTimelineItem.Identifier: Set<URL>] = [:]
-        var stickerRows:
-            [NativeMessageTimelineItem.Identifier: Set<URL>] = [:]
         while items.indices.contains(index),
               displayedRowOrigin(at: index) < visibleRect.maxY
         {
@@ -373,6 +373,12 @@ extension NativeTimelineCanvasView {
                 continue
             }
             let identifier = items[index].identifier
+            // A message still flying in from the composer gets its media
+            // once it lands.
+            if hidesRowForSendTransition(identifier) {
+                index += 1
+                continue
+            }
             let keys = animatedMediaKeys(
                 for: row,
                 layout: layouts[index]
@@ -409,25 +415,14 @@ extension NativeTimelineCanvasView {
             if !videoURLs.isEmpty {
                 videoRows[identifier] = videoURLs
             }
-            let stickerURLs = Set(row.message.stickers.compactMap { sticker -> URL? in
-                guard sticker.format == .lottie else { return nil }
-                return sticker.mediaURL
-            })
-            if !stickerURLs.isEmpty {
-                stickerRows[identifier] = stickerURLs
-            }
             index += 1
         }
         animatedMediaRows = rows
         inlineVideoRows = videoRows
-        lottieStickerRows = stickerRows
         reconcileAnimatedMediaOverlays(reduceMotion: reduceMotion)
         if !allowsScrolling {
             reconcileInlineVideoOverlays(
                 plays: !reduceMotion
-            )
-            reconcileLottieStickerOverlays(
-                reduceMotion: reduceMotion
             )
         }
     }

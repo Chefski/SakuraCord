@@ -3,10 +3,14 @@ import CoreText
 import SakuraCordModels
 
 enum NativeTimelineComponentButtonMetrics {
-    static let height: CGFloat = 32
+    static var height: CGFloat { InterfaceScale.metric(32) }
+    /// Shared by measurement, painting and the animated-emoji overlay.
+    static var horizontalPadding: CGFloat { InterfaceScale.metric(12) }
+    static var leadingGlyphAdvance: CGFloat { InterfaceScale.metric(22) }
+    static var externalLinkAllowance: CGFloat { InterfaceScale.metric(30) }
 
     static var font: NSFont {
-        .systemFont(
+        .interfaceSystemFont(
             ofSize: NSFont.preferredFont(
                 forTextStyle: .callout
             ).pointSize,
@@ -94,16 +98,21 @@ struct NativeTimelineComponentLayout {
         let isSpoiler: Bool
         let cornerRadius: CGFloat
         let maximumPixelDimension: Int
+        let placeholder: NativeTimelineMediaPlaceholder?
     }
 
     struct MediaRegion {
         let frame: CGRect
         let componentID: String
         let displayURL: URL
+        /// The still image drawn in the tile: the media itself for images, or
+        /// the media proxy's poster frame for videos.
+        let previewURL: URL?
         let openURL: URL
         let description: String
         let isSpoiler: Bool
         let isVideo: Bool
+        let placeholder: NativeTimelineMediaPlaceholder?
     }
 
     struct FileRegion {
@@ -140,7 +149,7 @@ struct NativeTimelineComponentLayout {
     static func make(
         message: Message,
         components embedComponents: [MessageComponent]? = nil,
-        model: AppModel?,
+        source: AppModel?,
         origin: CGPoint,
         maximumWidth: CGFloat,
         integratesWithBubble: Bool = false,
@@ -153,22 +162,22 @@ struct NativeTimelineComponentLayout {
                 NodeBuilder.bubbleRootNode(
                     for: component,
                     message: message,
-                    model: model,
+                    source: source,
                     maximumWidth: maximumWidth
                 )
             } else {
                 NodeBuilder.node(
                     for: component,
                     message: message,
-                    model: model,
+                    source: source,
                     maximumWidth: maximumWidth
                 )
             }
         }
-        if embedComponents == nil, let error = model?.componentError(for: message.id) {
+        if embedComponents == nil, let error = source?.componentError(for: message.id) {
             let errorBox = NodeBuilder.plainText(
                 "⚠ \(error)",
-                font: .systemFont(ofSize: 13),
+                font: .interfaceSystemFont(ofSize: 13),
                 color: .systemRed
             )
             nodes.append(
@@ -204,7 +213,7 @@ struct NativeTimelineComponentLayout {
             )
         }
 
-        let root = NodeBuilder.vertical(nodes, spacing: 8)
+        let root = NodeBuilder.vertical(nodes, spacing: InterfaceScale.metric(8))
             .offsetBy(dx: origin.x, dy: origin.y)
         let expandsSingleBubbleContainer =
             integratesWithBubble
@@ -215,7 +224,7 @@ struct NativeTimelineComponentLayout {
                   container.chrome == .bubbleSection
             else { return container }
             return .init(
-                frame: container.frame.insetBy(dx: -12, dy: -8),
+                frame: container.frame.insetBy(dx: -InterfaceScale.metric(12), dy: -InterfaceScale.metric(8)),
                 chromeFrame: container.chromeFrame,
                 componentID: container.componentID,
                 accentColor: container.accentColor,
@@ -312,7 +321,8 @@ private struct Node {
                 description: $0.description,
                 isSpoiler: $0.isSpoiler,
                 cornerRadius: $0.cornerRadius,
-                maximumPixelDimension: $0.maximumPixelDimension
+                maximumPixelDimension: $0.maximumPixelDimension,
+                placeholder: $0.placeholder
             )
         }
         result.media = media.map {
@@ -320,10 +330,12 @@ private struct Node {
                 frame: $0.frame.offsetBy(dx: dx, dy: dy),
                 componentID: $0.componentID,
                 displayURL: $0.displayURL,
+                previewURL: $0.previewURL,
                 openURL: $0.openURL,
                 description: $0.description,
                 isSpoiler: $0.isSpoiler,
-                isVideo: $0.isVideo
+                isVideo: $0.isVideo,
+                placeholder: $0.placeholder
             )
         }
         result.files = files.map {
@@ -368,6 +380,7 @@ private struct Node {
 private enum NodeBuilder {
     private struct ResolvedMedia {
         let displayURL: URL
+        let previewURL: URL?
         let openURL: URL
         let title: String
         let description: String?
@@ -375,12 +388,13 @@ private enum NodeBuilder {
         let height: Int?
         let isSpoiler: Bool
         let isVideo: Bool
+        let placeholder: NativeTimelineMediaPlaceholder?
     }
 
     static func node(
         for component: MessageComponent,
         message: Message,
-        model: AppModel?,
+        source: AppModel?,
         maximumWidth: CGFloat,
         inBubble: Bool = false
     ) -> Node {
@@ -390,7 +404,7 @@ private enum NodeBuilder {
             return actionRowNode(
                 for: component,
                 message: message,
-                model: model,
+                source: source,
                 maximumWidth: maximumWidth,
                 inBubble: inBubble
             )
@@ -399,7 +413,7 @@ private enum NodeBuilder {
             return buttonNode(
                 for: component,
                 message: message,
-                model: model,
+                source: source,
                 maximumWidth: maximumWidth
             )
 
@@ -407,7 +421,7 @@ private enum NodeBuilder {
             return selectNode(
                 for: component,
                 message: message,
-                model: model,
+                source: source,
                 maximumWidth: maximumWidth,
                 inBubble: inBubble
             )
@@ -416,7 +430,7 @@ private enum NodeBuilder {
             return sectionNode(
                 for: component,
                 message: message,
-                model: model,
+                source: source,
                 maximumWidth: maximumWidth,
                 inBubble: inBubble
             )
@@ -426,7 +440,7 @@ private enum NodeBuilder {
                 id: id,
                 content: content,
                 message: message,
-                model: model,
+                source: source,
                 maximumWidth: maximumWidth
             )
 
@@ -441,7 +455,7 @@ private enum NodeBuilder {
                     maximumWidth: maximumWidth
                 )
             }
-            let size = min(80, maximumWidth)
+            let size = min(InterfaceScale.metric(80), maximumWidth)
             return Node(
                 size: CGSize(width: size, height: size),
                 images: [
@@ -458,8 +472,9 @@ private enum NodeBuilder {
                         description:
                             item.description ?? item.title,
                         isSpoiler: item.isSpoiler,
-                        cornerRadius: 8,
-                        maximumPixelDimension: 256
+                        cornerRadius: InterfaceScale.metric(8),
+                        maximumPixelDimension: 256,
+                        placeholder: item.placeholder
                     )
                 ]
             )
@@ -476,7 +491,7 @@ private enum NodeBuilder {
             return containerNode(
                 for: component,
                 message: message,
-                model: model,
+                source: source,
                 maximumWidth: maximumWidth,
                 inBubble: inBubble
             )
@@ -492,7 +507,7 @@ private enum NodeBuilder {
     static func bubbleRootNode(
         for component: MessageComponent,
         message: Message,
-        model: AppModel?,
+        source: AppModel?,
         maximumWidth: CGFloat
     ) -> Node {
         guard case let .container(id, accent, spoiler, children) = component
@@ -500,7 +515,7 @@ private enum NodeBuilder {
             return node(
                 for: component,
                 message: message,
-                model: model,
+                source: source,
                 maximumWidth: maximumWidth,
                 inBubble: true
             )
@@ -510,12 +525,12 @@ private enum NodeBuilder {
                 node(
                     for: $0,
                     message: message,
-                    model: model,
+                    source: source,
                     maximumWidth: maximumWidth,
                     inBubble: true
                 )
             },
-            spacing: 7
+            spacing: InterfaceScale.metric(7)
         )
         let size = CGSize(
             width: maximumWidth,
@@ -544,14 +559,14 @@ private enum NodeBuilder {
         id: String,
         content: String,
         message: Message,
-        model: AppModel?,
+        source: AppModel?,
         maximumWidth: CGFloat
     ) -> Node {
         let box = richText(
             content,
             componentID: id,
             message: message,
-            model: model,
+            source: source,
             emojiSize: 18
         )
         let width = min(maximumWidth, max(1, idealWidth(box)))
@@ -577,7 +592,7 @@ private enum NodeBuilder {
     private static func actionRowNode(
         for component: MessageComponent,
         message: Message,
-        model: AppModel?,
+        source: AppModel?,
         maximumWidth: CGFloat,
         inBubble: Bool
     ) -> Node {
@@ -594,7 +609,7 @@ private enum NodeBuilder {
                 let childNode = node(
                     for: child,
                     message: message,
-                    model: model,
+                    source: source,
                     maximumWidth: maximumWidth,
                     inBubble: inBubble
                 )
@@ -604,7 +619,7 @@ private enum NodeBuilder {
                         horizontalOffset = 0
                         rowHeight = 0
                     } else {
-                        horizontalOffset += 8
+                        horizontalOffset += InterfaceScale.metric(8)
                     }
                 }
                 result.merge(childNode, at: CGPoint(x: horizontalOffset, y: verticalOffset))
@@ -626,7 +641,7 @@ private enum NodeBuilder {
     private static func selectNode(
         for component: MessageComponent,
         message: Message,
-        model: AppModel?,
+        source: AppModel?,
         maximumWidth: CGFloat,
         inBubble: Bool
     ) -> Node {
@@ -643,7 +658,7 @@ private enum NodeBuilder {
             channelTypes
         ):
             let placeholder = rawPlaceholder ?? "Make a selection"
-            let font = NSFont.systemFont(ofSize: 14)
+            let font = NSFont.interfaceSystemFont(ofSize: 14)
             let labelWidth = ceil(
                 (placeholder as NSString).size(
                     withAttributes: [.font: font]
@@ -653,14 +668,14 @@ private enum NodeBuilder {
                 ? maximumWidth
                 : min(
                     maximumWidth,
-                    max(372, min(420, labelWidth + 76))
+                    max(InterfaceScale.metric(372), min(InterfaceScale.metric(420), labelWidth + InterfaceScale.metric(76)))
                 )
-            let selectedOptions = model?.componentSelection(
+            let selectedOptions = source?.componentSelection(
                 messageID: message.id,
                 customID: customID
             ) ?? (kind == .string
                 ? options.filter(\.isDefault)
-                : model?.resolvedDefaultComponentChoices(options, kind: kind, guildID: message.guildID) ?? options)
+                : source?.resolvedDefaultComponentChoices(options, kind: kind, guildID: message.guildID) ?? options)
             let height = ComponentChoiceOptionPresentation.fieldHeight(
                 options: selectedOptions,
                 selectKind: kind,
@@ -670,12 +685,12 @@ private enum NodeBuilder {
                 kind: kind,
                 hasStaticOptions: !options.isEmpty,
                 supportsComponents:
-                    model?.supportsCapability(.components) == true,
+                    source?.supportsComponents == true,
                 supportsRemoteChoices:
-                    model?.supportsCapability(.remoteComponentChoices) == true,
+                    source?.supportsRemoteComponentChoices == true,
                 interactionUnavailable:
                     disabled
-                    || model?.isComponentInteractionPending(messageID: message.id) == true
+                    || source?.isComponentInteractionPending(messageID: message.id) == true
             )
             return Node(
                 size: CGSize(width: width, height: height),
@@ -698,7 +713,7 @@ private enum NodeBuilder {
                         selectedOptions: selectedOptions,
                         isDisabled: isDisabled,
                         // The committed select shows the dots in place of its chevron.
-                        isLoading: model?.isComponentPending(messageID: message.id, customID: customID) == true
+                        isLoading: source?.isComponentPending(messageID: message.id, customID: customID) == true
                     )
                 ]
             )
@@ -711,7 +726,7 @@ private enum NodeBuilder {
     private static func sectionNode(
         for component: MessageComponent,
         message: Message,
-        model: AppModel?,
+        source: AppModel?,
         maximumWidth: CGFloat,
         inBubble: Bool
     ) -> Node {
@@ -723,19 +738,19 @@ private enum NodeBuilder {
                         node(
                             for: $0,
                             message: message,
-                            model: model,
+                            source: source,
                             maximumWidth: maximumWidth,
                             inBubble: inBubble
                         )
                     },
-                    spacing: 8
+                    spacing: InterfaceScale.metric(8)
                 )
             }
             let accessoryNode = node(
                 for: accessory,
                 message: message,
-                model: model,
-                maximumWidth: min(180, maximumWidth),
+                source: source,
+                maximumWidth: min(InterfaceScale.metric(180), maximumWidth),
                 inBubble: inBubble
             )
             let leftWidth = max(
@@ -747,12 +762,12 @@ private enum NodeBuilder {
                     node(
                         for: $0,
                         message: message,
-                        model: model,
+                        source: source,
                         maximumWidth: leftWidth,
                         inBubble: inBubble
                     )
                 },
-                spacing: 8
+                spacing: InterfaceScale.metric(8)
             )
             var result = Node(
                 size: CGSize(
@@ -778,7 +793,7 @@ private enum NodeBuilder {
     private static func buttonNode(
         for component: MessageComponent,
         message: Message,
-        model: AppModel?,
+        source: AppModel?,
         maximumWidth: CGFloat
     ) -> Node {
         switch component {
@@ -792,7 +807,8 @@ private enum NodeBuilder {
             _,
             disabled
         ):
-            let label = rawLabel ?? "Button"
+            // Discord shows an emoji-only button as just its emoji.
+            let label = rawLabel ?? (emoji == nil ? "Button" : "")
             let labelWidth = ceil(
                 (label as NSString).size(
                     withAttributes: [
@@ -802,26 +818,32 @@ private enum NodeBuilder {
             )
             let showsLeadingGlyph = emoji != nil || style == .premium
             let showsExternalLink = url != nil
+            let leadingGlyphWidth = label.isEmpty
+                ? DiscordComponentEmojiMetrics.buttonSize
+                : NativeTimelineComponentButtonMetrics.leadingGlyphAdvance
             let width = min(
                 maximumWidth,
-                max(32, ceil(
-                    24 + labelWidth
-                        + (showsLeadingGlyph ? 22 : 0)
-                        + (showsExternalLink ? 18 : 0)
+                max(NativeTimelineComponentButtonMetrics.height, ceil(
+                    labelWidth
+                        + NativeTimelineComponentButtonMetrics.horizontalPadding
+                        + (showsLeadingGlyph ? leadingGlyphWidth : 0)
+                        + (showsExternalLink
+                            ? NativeTimelineComponentButtonMetrics.externalLinkAllowance
+                            : NativeTimelineComponentButtonMetrics.horizontalPadding)
                 ))
             )
             // While one action on this message is pending, its siblings are
             // disabled and the activated button shows progress.
             let isLoading = url == nil && customID.map {
-                model?.isComponentPending(messageID: message.id, customID: $0) == true
+                source?.isComponentPending(messageID: message.id, customID: $0) == true
             } == true
             let isDisabled =
                 disabled
                 || style == .premium
                 || (url == nil && (
                     customID == nil
-                        || model?.supportsCapability(.components) != true
-                        || model?.isComponentInteractionPending(messageID: message.id) == true
+                        || source?.supportsComponents != true
+                        || source?.isComponentInteractionPending(messageID: message.id) == true
                 ))
             return Node(
                 size: CGSize(
@@ -879,7 +901,7 @@ private enum NodeBuilder {
                     maximumWidth: maximumWidth
                 )
             }
-            let galleryWidth = min(500, max(180, maximumWidth))
+            let galleryWidth = min(InterfaceScale.metric(500), max(InterfaceScale.metric(180), maximumWidth))
             let frames = MediaGalleryPlan.frames(
                 count: resolved.count,
                 width: galleryWidth,
@@ -889,7 +911,7 @@ private enum NodeBuilder {
                 intrinsicSizes: resolved.map {
                     intrinsicSize(width: $0.1.width, height: $0.1.height)
                 },
-                spacing: 4
+                spacing: InterfaceScale.metric(4)
             )
             let height = frames.map(\.maxY).max() ?? 0
             return Node(
@@ -900,11 +922,13 @@ private enum NodeBuilder {
                         frame: frame,
                         componentID: item.id,
                         displayURL: media.displayURL,
+                        previewURL: media.previewURL,
                         openURL: media.openURL,
                         description:
                             media.description ?? media.title,
                         isSpoiler: media.isSpoiler,
-                        isVideo: media.isVideo
+                        isVideo: media.isVideo,
+                        placeholder: media.placeholder
                     )
                 }
             )
@@ -920,7 +944,7 @@ private enum NodeBuilder {
                     maximumWidth: maximumWidth
                 )
             }
-            let titleFont = NSFont.systemFont(ofSize: 13, weight: .semibold)
+            let titleFont = NSFont.interfaceSystemFont(ofSize: 13, weight: .semibold)
             let naturalWidth = ceil(
                 (item.title as NSString).size(
                     withAttributes: [.font: titleFont]
@@ -928,9 +952,9 @@ private enum NodeBuilder {
             ) + 96
             let width = inBubble
                 ? maximumWidth
-                : min(maximumWidth, max(220, naturalWidth))
+                : min(maximumWidth, max(InterfaceScale.metric(220), naturalWidth))
             let height: CGFloat =
-                item.description?.isEmpty == false ? 62 : 48
+                item.description?.isEmpty == false ? InterfaceScale.metric(62) : InterfaceScale.metric(48)
             return Node(
                 size: CGSize(width: width, height: height),
                 files: [
@@ -958,15 +982,17 @@ private enum NodeBuilder {
     private static func containerNode(
         for component: MessageComponent,
         message: Message,
-        model: AppModel?,
+        source: AppModel?,
         maximumWidth: CGFloat,
         inBubble: Bool
     ) -> Node {
         switch component {
         case let .separator(_, divider, spacing):
-            let height: CGFloat = divider
-                ? (spacing == 2 ? 13 : 3)
-                : (spacing == 2 ? 12 : 6)
+            let height = InterfaceScale.metric(
+                divider
+                    ? (spacing == 2 ? 13 : 3)
+                    : (spacing == 2 ? 12 : 6)
+            )
             return Node(
                 // SwiftUI Divider has no intrinsic horizontal width. It
                 // stretches only after the container has chosen its fitting
@@ -986,19 +1012,21 @@ private enum NodeBuilder {
             )
 
         case let .container(id, accent, spoiler, children):
-            let fixedWidth: CGFloat = 24 + (accent == nil ? 0 : 4)
+            let padding = DiscordRichMessageMetrics.cardPadding
+            let accentWidth = accent == nil ? 0 : InterfaceScale.metric(4)
+            let fixedWidth = padding * 2 + accentWidth
             let maximumContentWidth = max(1, maximumWidth - fixedWidth)
             let firstPass = vertical(
                 children.map {
                     node(
                         for: $0,
                         message: message,
-                        model: model,
+                        source: source,
                         maximumWidth: maximumContentWidth,
                         inBubble: inBubble
                     )
                 },
-                spacing: 7
+                spacing: InterfaceScale.metric(7)
             )
             let width = DiscordComponentContainerLayoutPlan.width(
                 idealContent: firstPass.size.width,
@@ -1013,14 +1041,14 @@ private enum NodeBuilder {
                     node(
                         for: $0,
                         message: message,
-                        model: model,
+                        source: source,
                         maximumWidth: contentWidth,
                         inBubble: inBubble
                     )
                 },
-                spacing: 7
+                spacing: InterfaceScale.metric(7)
             )
-            let height = content.size.height + 24
+            let height = content.size.height + padding * 2
             var result = Node(
                 size: CGSize(width: width, height: height),
                 containers: [
@@ -1049,8 +1077,8 @@ private enum NodeBuilder {
             result.merge(
                 content,
                 at: CGPoint(
-                    x: 12 + (accent == nil ? 0 : 4),
-                    y: 12
+                    x: padding + accentWidth,
+                    y: padding
                 )
             )
             return result
@@ -1126,14 +1154,14 @@ private enum NodeBuilder {
     }
 
     private static func richText(
-        _ source: String,
+        _ content: String,
         componentID: String,
         message: Message,
-        model: AppModel?,
+        source: AppModel?,
         emojiSize: CGFloat
     ) -> NativeTimelineAttributedTextBox {
-        let prepared = RichMessageAttributedText.prepare(source: source)
-        let resolver = model.map {
+        let prepared = RichMessageAttributedText.prepare(source: content)
+        let resolver = source.map {
             MessageMentionResolver(model: $0, message: message)
         }
         let mentions = prepared.tokens.reduce(
@@ -1144,7 +1172,8 @@ private enum NodeBuilder {
                 resolver?.presentation(mention)
                 ?? MentionPresentation.fallback(for: mention)
         }
-        let baseFontSize = InterfaceTypographyMetrics.messageTextSize
+        let baseFontSize = InterfaceScale.fontSize(InterfaceTypographyMetrics.messageTextSize)
+        let emojiSize = InterfaceScale.metric(emojiSize)
         let key = NativeTimelineResolvedTextCache.Key(
             messageID: message.id,
             scope: "component:\(componentID)",
@@ -1174,7 +1203,7 @@ private enum NodeBuilder {
         _ label: String,
         maximumWidth: CGFloat
     ) -> Node {
-        let font = NSFont.systemFont(ofSize: 11)
+        let font = NSFont.interfaceSystemFont(ofSize: 11)
         let width = min(
             maximumWidth,
             ceil(
@@ -1184,14 +1213,14 @@ private enum NodeBuilder {
             ) + 22
         )
         return Node(
-            size: CGSize(width: max(40, width), height: 18),
+            size: CGSize(width: max(InterfaceScale.metric(40), width), height: InterfaceScale.metric(18)),
             unsupported: [
                 .init(
                     frame: CGRect(
                         x: 0,
                         y: 0,
-                        width: max(40, width),
-                        height: 18
+                        width: max(InterfaceScale.metric(40), width),
+                        height: InterfaceScale.metric(18)
                     ),
                     label: label
                 )
@@ -1211,25 +1240,39 @@ private enum NodeBuilder {
         {
             return ResolvedMedia(
                 displayURL: attachment.proxyURL ?? attachment.url,
+                previewURL: attachment.mediaKind == .video
+                    ? attachment.videoPosterURL(maximumPixelDimension: 1_024)
+                    : attachment.proxyURL ?? attachment.url,
                 openURL: attachment.url,
                 title: attachment.filename,
                 description: media.description ?? attachment.description,
                 width: media.width ?? attachment.width,
                 height: media.height ?? attachment.height,
                 isSpoiler: media.isSpoiler || attachment.isSpoiler,
-                isVideo: attachment.mediaKind == .video
+                isVideo: attachment.mediaKind == .video,
+                placeholder: .init(attachment)
             )
         }
         guard let openURL = media.url else { return nil }
+        let isVideo = media.contentType?.hasPrefix("video/") == true
         return ResolvedMedia(
             displayURL: media.proxyURL ?? openURL,
+            previewURL: isVideo
+                ? DiscordVideoPosterURL.url(
+                    proxyURL: media.proxyURL,
+                    width: media.width,
+                    height: media.height,
+                    maximumPixelDimension: 1_024
+                )
+                : media.proxyURL ?? openURL,
             openURL: openURL,
             title: media.description ?? "Component media",
             description: media.description,
             width: media.width,
             height: media.height,
             isSpoiler: media.isSpoiler,
-            isVideo: media.contentType?.hasPrefix("video/") == true
+            isVideo: isVideo,
+            placeholder: .init(media)
         )
     }
 

@@ -18,8 +18,9 @@ struct ProfileScopePicker: View {
 
     var body: some View {
         Button { isPresented.toggle() } label: {
+            // Toolbar content keeps its native size; the list below scales.
             HStack(spacing: 8) {
-                ProfileScopeIcon(name: title, iconURL: selectedGuild?.iconURL, isMain: scope == .main)
+                ProfileScopeIcon(name: title, iconURL: selectedGuild?.iconURL, isMain: scope == .main, size: 20)
                 Text(title).lineLimit(1)
                 Image(systemName: isPresented ? "chevron.up" : "chevron.down").font(.caption.bold())
             }
@@ -36,10 +37,14 @@ struct ProfileScopePicker: View {
                                         isSelected: scope == .server(guild.id)) { choose(.server(guild.id)) }
                     }
                 }
-                .padding(4)
+                .padding(InterfaceScale.metric(4))
             }
             .scrollIndicators(.visible)
-            .frame(width: 264, height: min(217, CGFloat(guilds.count + 1) * 40 + 8))
+            .frame(
+                width: InterfaceScale.metric(264),
+                height: min(InterfaceScale.metric(217), CGFloat(guilds.count + 1) * InterfaceScale.metric(40) + InterfaceScale.metric(8))
+            )
+            .interfaceScaleRoot()
         }
     }
 
@@ -54,6 +59,7 @@ private struct ProfileScopeIcon: View {
     let name: String
     let iconURL: URL?
     let isMain: Bool
+    var size: CGFloat = InterfaceScale.metric(20)
 
     var body: some View {
         Group {
@@ -62,10 +68,10 @@ private struct ProfileScopeIcon: View {
                     .resizable()
                     .scaledToFit()
             } else {
-                AvatarView(name: name, url: iconURL, size: 20)
+                AvatarView(name: name, url: iconURL, size: size)
             }
         }
-        .frame(width: 20, height: 20)
+        .frame(width: size, height: size)
         .accessibilityHidden(true)
     }
 }
@@ -80,17 +86,17 @@ private struct ProfileScopeRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 7) {
+            HStack(spacing: InterfaceScale.metric(7)) {
                 ProfileScopeIcon(name: name, iconURL: iconURL, isMain: isMain)
                 VStack(alignment: .leading, spacing: 0) {
                     Text(name).lineLimit(1)
-                    if let nickname, !nickname.isEmpty { Text(nickname).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+                    if let nickname, !nickname.isEmpty { Text(nickname).font(.interface(.caption)).foregroundStyle(.secondary).lineLimit(1) }
                 }
-                Spacer(minLength: 4)
-                if isSelected { Image(systemName: "checkmark").font(.body.bold()) }
+                Spacer(minLength: InterfaceScale.metric(4))
+                if isSelected { Image(systemName: "checkmark").font(.interface(.body).bold()) }
             }
-            .padding(.horizontal, 6)
-            .frame(height: 40)
+            .padding(.horizontal, InterfaceScale.metric(6))
+            .frame(height: InterfaceScale.metric(40))
             .contentShape(Rectangle())
         }
         .buttonStyle(PopoverRowButtonStyle(isSelected: isSelected))

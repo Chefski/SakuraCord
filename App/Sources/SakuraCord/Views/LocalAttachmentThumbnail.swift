@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import MediaPipeline
 import SwiftUI
 import UniformTypeIdentifiers
@@ -11,34 +12,44 @@ struct LocalAttachmentThumbnail: View {
     var imageCornerRadius: CGFloat = 0
     var onImageLoaded: ((NSImage) -> Void)?
     @State private var image: NSImage?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
             Color.clear
             if let displayImage {
-                if preservesImageAspectRatio {
-                    Image(nsImage: displayImage)
-                        .resizable()
-                        .scaledToFit()
-                        .clipShape(
-                            ConcentricRectangle(cornerRadius: imageCornerRadius, style: .continuous)
-                        )
-                } else {
-                    Image(nsImage: displayImage)
-                        .resizable()
-                        .scaledToFill()
-                        .clipShape(
-                            ConcentricRectangle(cornerRadius: imageCornerRadius, style: .continuous)
-                        )
+                Group {
+                    if preservesImageAspectRatio {
+                        Image(nsImage: displayImage)
+                            .resizable()
+                            .scaledToFit()
+                    } else {
+                        Image(nsImage: displayImage)
+                            .resizable()
+                            .scaledToFill()
+                    }
+                }
+                .clipShape(
+                    ConcentricRectangle(cornerRadius: imageCornerRadius, style: .continuous)
+                )
+                .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.96)))
+                if isVideoFile {
+                    Image(systemName: "play.fill")
+                        .font(.interfaceSystem(size: 14, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: InterfaceScale.metric(30), height: InterfaceScale.metric(30))
+                        .background(.black.opacity(0.55), in: Circle())
                 }
             } else if isImageFile {
                 ProgressView()
                     .controlSize(.small)
+                    .transition(.opacity)
             } else {
                 Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
                     .resizable()
                     .scaledToFit()
-                    .padding(14)
+                    .padding(InterfaceScale.metric(14))
+                    .transition(.opacity)
             }
         }
         .clipped()
@@ -48,12 +59,23 @@ struct LocalAttachmentThumbnail: View {
                 return
             }
             image = nil
-            guard isImageFile else { return }
+            guard isImageFile || isVideoFile else { return }
             let accessed = url.startAccessingSecurityScopedResource()
             defer {
                 if accessed {
                     url.stopAccessingSecurityScopedResource()
                 }
+            }
+            if isVideoFile {
+                guard let frame = await Self.videoFrame(
+                    at: url,
+                    maximumPixelDimension: maximumPixelDimension
+                ),
+                    !Task.isCancelled
+                else { return }
+                let loadedImage = NSImage(cgImage: frame, size: .zero)
+                reveal(loadedImage)
+                return
             }
             guard let data = try? await SharedMediaDataLoader.shared.data(for: url),
                   !Task.isCancelled
@@ -72,9 +94,16 @@ struct LocalAttachmentThumbnail: View {
                 guard let fallbackImage = NSImage(data: data) else { return }
                 loadedImage = fallbackImage
             }
-            image = loadedImage
-            onImageLoaded?(loadedImage)
+            reveal(loadedImage)
         }
+    }
+
+    /// A decoded preview fades in over its placeholder instead of popping.
+    private func reveal(_ loadedImage: NSImage) {
+        withAnimation(.smooth(duration: 0.28)) {
+            image = loadedImage
+        }
+        onImageLoaded?(loadedImage)
     }
 
     private var displayImage: NSImage? {
@@ -83,5 +112,24 @@ struct LocalAttachmentThumbnail: View {
 
     private var isImageFile: Bool {
         UTType(filenameExtension: url.pathExtension)?.conforms(to: .image) == true
+    }
+
+    private var isVideoFile: Bool {
+        UTType(filenameExtension: url.pathExtension)?.conforms(to: .movie) == true
+    }
+
+    /// Video files keep showing their Finder icon until this frame is ready,
+    /// so an undecodable file never leaves a spinner behind.
+    private nonisolated static func videoFrame(
+        at url: URL,
+        maximumPixelDimension: Int
+    ) async -> CGImage? {
+        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(
+            width: maximumPixelDimension,
+            height: maximumPixelDimension
+        )
+        return try? await generator.image(at: .zero).image
     }
 }

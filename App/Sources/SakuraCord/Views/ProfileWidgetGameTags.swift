@@ -80,17 +80,17 @@ struct ProfileWidgetGameTags: View {
     }
 
     var body: some View {
-        ProfileRoleFlowLayout(spacing: 4) {
+        ProfileRoleFlowLayout(spacing: InterfaceScale.metric(4)) {
             ForEach(Array(visibleTags.prefix(alwaysExpanded || expanded ? visibleTags.count : collapsedCount))) { tag in
                 chip(tag)
             }
             if !alwaysExpanded, collapsedCount < visibleTags.count {
                 Button { expanded.toggle() } label: {
-                    if expanded { Image(systemName: "chevron.left").frame(minWidth: 12) } else { Text("+\(visibleTags.count - collapsedCount)") }
+                    if expanded { Image(systemName: "chevron.left").frame(minWidth: InterfaceScale.metric(12)) } else { Text("+\(visibleTags.count - collapsedCount)") }
                 }
-                .buttonStyle(.plain).font(.system(size: 12, weight: .medium))
-                .padding(.horizontal, 6).padding(.vertical, 4)
-                .background(.primary.opacity(0.07), in: .rect(cornerRadius: 4))
+                .buttonStyle(.plain).font(.interfaceSystem(size: 12, weight: .medium))
+                .padding(.horizontal, InterfaceScale.metric(6)).padding(.vertical, InterfaceScale.metric(4))
+                .background(.primary.opacity(0.07), in: .rect(cornerRadius: InterfaceScale.metric(4)))
                 .accessibilityLabel(expanded ? "Collapse tags" : "Show \(visibleTags.count - collapsedCount) more tags")
                 .help(expanded ? "Collapse tags" : "Show all tags")
             }
@@ -99,8 +99,8 @@ struct ProfileWidgetGameTags: View {
                     pickerAnchorFrame = addButtonFrame
                     showsPicker = true
                 } label: { Label("Add tags", systemImage: "plus") }
-                    .buttonStyle(.plain).font(.system(size: 12, weight: .medium))
-                    .padding(.horizontal, 6).padding(.vertical, 4)
+                    .buttonStyle(.plain).font(.interfaceSystem(size: 12, weight: .medium))
+                    .padding(.horizontal, InterfaceScale.metric(6)).padding(.vertical, InterfaceScale.metric(4))
                     .onGeometryChange(for: CGRect.self) { [tagCoordinateSpace] in $0.frame(in: .named(tagCoordinateSpace)) } action: { addButtonFrame = $0 }
             }
         }
@@ -126,13 +126,13 @@ struct ProfileWidgetGameTags: View {
                         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { tagWidths[tag.rawValue] = $0 }
                 }
                 Label("Add tags", systemImage: "plus")
-                    .padding(.horizontal, 6).padding(.vertical, 4)
+                    .padding(.horizontal, InterfaceScale.metric(6)).padding(.vertical, InterfaceScale.metric(4))
                     .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { addWidth = $0 }
                 Text("+\(visibleTags.count)")
-                    .padding(.horizontal, 6).padding(.vertical, 4)
+                    .padding(.horizontal, InterfaceScale.metric(6)).padding(.vertical, InterfaceScale.metric(4))
                     .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { overflowWidth = $0 }
             }
-            .font(.system(size: 12, weight: .medium)).fixedSize()
+            .font(.interfaceSystem(size: 12, weight: .medium)).fixedSize()
             .hidden().accessibilityHidden(true).allowsHitTesting(false)
         }
     }
@@ -159,18 +159,18 @@ private struct ProfileWidgetGameTagChip: View {
                     .help("Remove tag")
             } else { label }
         }
-        .background(.primary.opacity(remove != nil && isEnabled && isHovered ? 0.14 : 0.07), in: .rect(cornerRadius: 4))
+        .background(.primary.opacity(remove != nil && isEnabled && isHovered ? 0.14 : 0.07), in: .rect(cornerRadius: InterfaceScale.metric(4)))
         .onModalHover { isHovered = $0 }
     }
 
     private var label: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: InterfaceScale.metric(4)) {
             Label { Text(tag.label) } icon: { Image(systemName: tag.icon) }
             if remove != nil { Image(systemName: "xmark") }
         }
-        .font(.system(size: 12, weight: .medium))
-        .padding(.horizontal, 6).padding(.vertical, 4)
-        .contentShape(.rect(cornerRadius: 4))
+        .font(.interfaceSystem(size: 12, weight: .medium))
+        .padding(.horizontal, InterfaceScale.metric(6)).padding(.vertical, InterfaceScale.metric(4))
+        .contentShape(.rect(cornerRadius: InterfaceScale.metric(4)))
     }
 }
 
@@ -182,10 +182,10 @@ private struct ProfileWidgetGameTagPicker: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(0 ..< 3) { group in
-                    if group > 0 { Divider().padding(.horizontal, 8).padding(.vertical, 4) }
+                    if group > 0 { Divider().padding(.horizontal, InterfaceScale.metric(8)).padding(.vertical, InterfaceScale.metric(4)) }
                     Text(group == 0 ? "Skill level" : group == 1 ? "Rating" : "Looking for")
-                        .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                        .padding(.horizontal, 6).padding(.vertical, 8)
+                        .font(.interface(.caption).weight(.semibold)).foregroundStyle(.secondary)
+                        .padding(.horizontal, InterfaceScale.metric(6)).padding(.vertical, InterfaceScale.metric(8))
                     if group == 0 {
                         ProfileWidgetTagOption(label: "None", selected: !tags.contains { ProfileWidgetGameTag(rawValue: $0)?.group == 0 }) {
                             setTags(tags.filter { ProfileWidgetGameTag(rawValue: $0)?.group != 0 })
@@ -207,10 +207,10 @@ private struct ProfileWidgetGameTagPicker: View {
                     }
                 }
             }
-            .padding(4)
+            .padding(InterfaceScale.metric(4))
         }
         .scrollIndicators(.visible)
-        .frame(width: 264, height: 360)
+        .frame(width: InterfaceScale.metric(264), height: InterfaceScale.metric(360))
     }
 
     private func setTags(_ value: [String]) {
@@ -228,10 +228,10 @@ private struct ProfileWidgetTagOption: View {
             HStack {
                 Text(label)
                 Spacer()
-                if selected { Image(systemName: "checkmark").font(.body.bold()) }
+                if selected { Image(systemName: "checkmark").font(.interface(.body).bold()) }
             }
-            .padding(.horizontal, 6)
-            .frame(height: 40)
+            .padding(.horizontal, InterfaceScale.metric(6))
+            .frame(height: InterfaceScale.metric(40))
             .contentShape(Rectangle())
         }
         .buttonStyle(PopoverRowButtonStyle(isSelected: selected))

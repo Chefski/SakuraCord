@@ -94,18 +94,18 @@ private struct AboutChangelogRow: View {
     let systemImage: String
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: InterfaceScale.metric(12)) {
             Image(systemName: systemImage)
                 .foregroundStyle(.secondary)
-                .frame(width: 18)
+                .frame(width: InterfaceScale.metric(18))
                 .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(2)) {
                 Text(displayName)
-                    .font(.headline)
+                    .font(.interface(.headline))
 
                 Text(headline)
-                    .font(.caption)
+                    .font(.interface(.caption))
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
@@ -121,8 +121,8 @@ private struct AboutDocumentDetailPage: View {
         ScrollView {
             AboutMarkdownTextView(document: document)
                 .frame(maxWidth: .infinity)
-                .padding(32)
-                .frame(maxWidth: 784)
+                .padding(InterfaceScale.metric(32))
+                .frame(maxWidth: InterfaceScale.metric(784))
                 .frame(maxWidth: .infinity)
         }
     }
@@ -447,8 +447,8 @@ enum AboutMarkdownAttributedText {
         let isStrong = inlineIntent.contains(.stronglyEmphasized)
         let isCode = inlineIntent.contains(.code) || blockKind == .code
         var font = isCode
-            ? NSFont.monospacedSystemFont(ofSize: size, weight: isStrong ? .semibold : defaultWeight)
-            : NSFont.systemFont(ofSize: size, weight: isStrong ? .semibold : defaultWeight)
+            ? NSFont.monospacedSystemFont(ofSize: InterfaceScale.fontSize(size), weight: isStrong ? .semibold : defaultWeight)
+            : NSFont.interfaceSystemFont(ofSize: size, weight: isStrong ? .semibold : defaultWeight)
         if inlineIntent.contains(.emphasized) {
             font = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask)
         }
@@ -468,7 +468,7 @@ enum AboutMarkdownAttributedText {
                 NSAttributedString(
                     string: String(repeating: "\t", count: depth) + prefix,
                     attributes: [
-                        .font: NSFont.systemFont(ofSize: NSFont.systemFontSize),
+                        .font: NSFont.interfaceSystemFont(ofSize: NSFont.systemFontSize),
                         .foregroundColor: NSColor.secondaryLabelColor,
                     ]
                 )
@@ -479,7 +479,7 @@ enum AboutMarkdownAttributedText {
                 NSAttributedString(
                     string: String(repeating: "\t", count: depth) + "│\t",
                     attributes: [
-                        .font: NSFont.systemFont(ofSize: NSFont.systemFontSize),
+                        .font: NSFont.interfaceSystemFont(ofSize: NSFont.systemFontSize),
                         .foregroundColor: NSColor.tertiaryLabelColor,
                     ]
                 )
@@ -490,7 +490,7 @@ enum AboutMarkdownAttributedText {
                 NSAttributedString(
                     string: "────────",
                     attributes: [
-                        .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+                        .font: NSFont.interfaceSystemFont(ofSize: NSFont.smallSystemFontSize),
                         .foregroundColor: NSColor.separatorColor,
                     ]
                 )
@@ -518,8 +518,8 @@ enum AboutMarkdownAttributedText {
 
         switch kind {
         case let .heading(level):
-            style.paragraphSpacingBefore = level == 1 ? 0 : 8
-            style.paragraphSpacing = level == 1 ? 12 : 8
+            style.paragraphSpacingBefore = level == 1 ? 0 : InterfaceScale.metric(8)
+            style.paragraphSpacing = level == 1 ? InterfaceScale.metric(12) : InterfaceScale.metric(8)
         case let .listItem(_, _, depth):
             let indentation = CGFloat(depth) * 18
             style.firstLineHeadIndent = indentation

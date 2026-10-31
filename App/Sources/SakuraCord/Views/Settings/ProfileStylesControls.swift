@@ -20,18 +20,18 @@ struct ProfileStylesControls: View {
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            controls(columns: 4).frame(minWidth: 680)
+            controls(columns: 4).frame(minWidth: InterfaceScale.metric(680))
             controls(columns: 2)
         }
     }
 
     private func controls(columns: Int) -> some View {
-        GlassEffectContainer(spacing: 16) {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 16, alignment: .top), count: columns), spacing: 24) {
+        GlassEffectContainer(spacing: InterfaceScale.metric(16)) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: InterfaceScale.metric(16), alignment: .top), count: columns), spacing: InterfaceScale.metric(24)) {
                 if editor.scope == .main || editor.isNitro {
                     ProfileStyleSection(title: "Avatar") {
                         ProfileCustomizationTile(label: "Avatar", selection: .avatar, editor: editor, profile: profile, content: {
-                            AvatarView(name: profile.displayName, url: profile.avatarURL, size: 80)
+                            AvatarView(name: profile.displayName, url: profile.avatarURL, size: InterfaceScale.metric(80))
                         })
                         .settingsControlAnchor(.profileAvatar)
                     }
@@ -47,10 +47,10 @@ struct ProfileStylesControls: View {
                         ProfileCustomizationTile(label: "Banner", selection: .banner, editor: editor, profile: profile, content: {
                             if let url = profile.bannerURL {
                                 AnimatedRemoteImage(url: url, animates: false, contentMode: .fit, usesSwiftUIRendering: true)
-                                    .clipShape(.rect(cornerRadius: 8))
-                                    .padding(12)
+                                    .clipShape(.rect(cornerRadius: InterfaceScale.metric(8)))
+                                    .padding(InterfaceScale.metric(12))
                             } else {
-                                Image(systemName: "photo.badge.plus").font(.largeTitle).foregroundStyle(.secondary)
+                                Image(systemName: "photo.badge.plus").font(.interface(.largeTitle)).foregroundStyle(.secondary)
                             }
                         })
                         .settingsControlAnchor(.profileBanner)
@@ -74,7 +74,7 @@ struct ProfileStylesControls: View {
                     ProfileStyleSection(title: "Display Name Style", nitro: true) {
                         ProfileCustomizationTile(label: "Display Name Style", selection: .nameStyle, editor: editor, profile: profile, content: {
                             ProfileDisplayName(name: profile.displayName, style: profile.user.displayNameStyle, size: 22, wraps: true)
-                                .allowsHitTesting(false).padding(12)
+                                .allowsHitTesting(false).padding(InterfaceScale.metric(12))
                         })
                         .settingsControlAnchor(.profileNameStyle)
                     }
@@ -106,22 +106,22 @@ private struct ProfileEditorCosmeticPreview: View {
     var body: some View {
         switch kind {
         case .avatarDecoration:
-            DecoratedAvatarView(name: "", avatarURL: nil, decorationURL: profile.user.avatarDecorationURL, size: 80, playback: .hover(isHovered))
+            DecoratedAvatarView(name: "", avatarURL: nil, decorationURL: profile.user.avatarDecorationURL, size: InterfaceScale.metric(80), playback: .hover(isHovered))
         case .nameplate:
-            HStack(spacing: 10) {
-                Image(systemName: "person.crop.circle.fill").font(.system(size: 28))
-                Capsule().frame(height: 10)
+            HStack(spacing: InterfaceScale.metric(10)) {
+                Image(systemName: "person.crop.circle.fill").font(.interfaceSystem(size: 28))
+                Capsule().frame(height: InterfaceScale.metric(10))
             }
-            .foregroundStyle(.secondary.opacity(0.6)).padding(.horizontal, 10)
+            .foregroundStyle(.secondary.opacity(0.6)).padding(.horizontal, InterfaceScale.metric(10))
             .frame(maxWidth: .infinity)
-            .frame(height: 42)
+            .frame(height: InterfaceScale.metric(42))
             .background {
                 if let nameplate = profile.user.nameplate {
                     NameplateBackground(nameplate: nameplate, isAnimated: isHovered, preservesTrailingArtwork: true)
                 }
             }
-            .clipShape(.rect(cornerRadius: 8))
-            .padding(12)
+            .clipShape(.rect(cornerRadius: InterfaceScale.metric(8)))
+            .padding(InterfaceScale.metric(12))
         case .effect:
             ProfileCosmeticTileArtwork(effect: profile.effect, kind: .effect, animates: isHovered)
         case .frame:
@@ -136,10 +136,10 @@ private struct ProfileStyleSection<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 4) {
-                Text(title, bundle: #bundle).font(.headline)
-                if nitro { Image(systemName: "sparkles").font(.caption).accessibilityLabel("Exclusive to Nitro") }
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(10)) {
+            HStack(spacing: InterfaceScale.metric(4)) {
+                Text(title, bundle: #bundle).font(.interface(.headline))
+                if nitro { Image(systemName: "sparkles").font(.interface(.caption)).accessibilityLabel("Exclusive to Nitro") }
             }
             content
         }
@@ -199,7 +199,7 @@ struct ProfileEditorPickerPopover: ViewModifier {
         case .avatar: ProfileImagePicker.chooserSize(for: .avatar)
         case .banner: ProfileImagePicker.chooserSize(for: .banner)
         case .nameStyle: ProfileNameStylePicker.popoverSize
-        default: CGSize(width: 320, height: 360)
+        default: CGSize(width: InterfaceScale.metric(320), height: InterfaceScale.metric(360))
         }
     }
 
@@ -229,8 +229,8 @@ struct ProfileEditorPickerPopover: ViewModifier {
     private func optionCornerRadius(in geometry: GeometryProxy) -> CGFloat {
         // Resolve against the stationary inset surface, not each moving grid cell.
         // Every option then keeps the same concentric corners while scrolling.
-        let padding: CGFloat = selection == .avatar || selection == .banner ? 16 : 8
-        guard let radii = geometry.concentricCornerRadii(in: CGRect(origin: .zero, size: geometry.size).insetBy(dx: padding, dy: padding)) else { return 16 }
+        let padding: CGFloat = selection == .avatar || selection == .banner ? InterfaceScale.metric(16) : InterfaceScale.metric(8)
+        guard let radii = geometry.concentricCornerRadii(in: CGRect(origin: .zero, size: geometry.size).insetBy(dx: padding, dy: padding)) else { return InterfaceScale.metric(16) }
         return max(16, radii.topLeading, radii.topTrailing, radii.bottomLeading, radii.bottomTrailing)
     }
 

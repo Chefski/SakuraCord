@@ -19,25 +19,25 @@ struct EmojiDocumentRowView: View {
             switch row.content {
             case let .header(title, count):
                 EmojiPickerHeader(title: title, count: count, horizontalInset: 6)
-                    .padding(.top, 8)
+                    .padding(.top, InterfaceScale.metric(8))
             case let .emojis(cells):
                 nativeRow(cells)
                 .frame(height: EmojiPickerGridMetrics.cellSize)
                 .frame(maxWidth: .infinity)
             case let .empty(message):
                 Text(message)
-                    .font(.callout)
+                    .font(.interface(.callout))
                     .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 38)
+                    .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(38))
             case .loading:
-                HStack(spacing: 8) {
+                HStack(spacing: InterfaceScale.metric(8)) {
                     ProgressView().controlSize(.small)
                     Text("Loading server emojis…")
                 }
                 .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, minHeight: 42)
+                .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(42))
             case let .failure(guildID, details):
-                HStack(spacing: 8) {
+                HStack(spacing: InterfaceScale.metric(8)) {
                     Image(systemName: "wifi.exclamationmark")
                     Text("Couldn’t load these emojis.")
                     Button("Retry") { retry(guildID) }
@@ -46,7 +46,7 @@ struct EmojiDocumentRowView: View {
                 }
                 .help(details)
                 .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, minHeight: 42)
+                .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(42))
             }
         }
     }
@@ -79,17 +79,17 @@ struct EmojiHoverPreviewBar: View {
     var body: some View {
         let guild = sourceGuild
 
-        HStack(spacing: 6) {
+        HStack(spacing: InterfaceScale.metric(6)) {
             interaction.item.preview(skinTone: skinTone, dimension: 28, nativeFontSize: 24)
-                .frame(width: 30, height: 30, alignment: .center)
+                .frame(width: InterfaceScale.metric(30), height: InterfaceScale.metric(30), alignment: .center)
             VStack(alignment: .leading, spacing: 0) {
                 Text(interaction.item.shortcode)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.interface(.subheadline).weight(.semibold))
                     .lineLimit(1)
                     .truncationMode(.middle)
                 if let guild {
                     Text("from \(Text(guild.name).fontWeight(.semibold))")
-                        .font(.caption)
+                        .font(.interface(.caption))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.tail)
@@ -103,8 +103,8 @@ struct EmojiHoverPreviewBar: View {
                     .accessibilityHidden(true)
             }
         }
-        .padding(.horizontal, 10)
-        .frame(height: 38, alignment: .center)
+        .padding(.horizontal, InterfaceScale.metric(10))
+        .frame(height: InterfaceScale.metric(38), alignment: .center)
         .accessibilityElement(children: .combine)
     }
 
@@ -124,9 +124,9 @@ struct EmojiNativeJumpButton: View {
         Button(action: jump) {
             SakuraCordSystemSymbol.emojiFaceGrinningImage
                 .symbolVariant(.none)
-                .font(.system(size: 17))
+                .font(.interfaceSystem(size: 17))
                 .foregroundStyle(isSelected ? Color.primary : Color.secondary)
-                .frame(width: 30, height: 30)
+                .frame(width: InterfaceScale.metric(30), height: InterfaceScale.metric(30))
                 .background {
                     Circle().fill(
                         isSelected
@@ -137,7 +137,7 @@ struct EmojiNativeJumpButton: View {
         }
         .buttonStyle(.plain)
         .focusable(false)
-        .frame(width: EmojiSidebarLayout.railWidth, height: 38)
+        .frame(width: EmojiSidebarLayout.railWidth, height: InterfaceScale.metric(38))
         .contentShape(Rectangle())
         .onModalHover { isHovering = $0 }
         .help("Jump to native emojis")
@@ -146,7 +146,7 @@ struct EmojiNativeJumpButton: View {
 }
 
 enum EmojiSidebarLayout {
-    static let railWidth = PickerSectionRailLayout.width
+    static var railWidth: CGFloat { PickerSectionRailLayout.width }
 }
 
 struct EmojiDocumentSidebar: View {
@@ -179,8 +179,8 @@ struct EmojiDocumentSidebar: View {
                 if !guilds.isEmpty {
                     if showsFavorites || showsFrequentlyUsed {
                         Divider()
-                            .frame(width: 28)
-                            .padding(.vertical, 2)
+                            .frame(width: InterfaceScale.metric(28))
+                            .padding(.vertical, InterfaceScale.metric(2))
                     }
 
                     ForEach(guilds) { guild in
@@ -191,11 +191,11 @@ struct EmojiDocumentSidebar: View {
                     }
                 }
 
-                VStack(spacing: 2) {
+                VStack(spacing: InterfaceScale.metric(2)) {
                     if showsFavorites || showsFrequentlyUsed || !guilds.isEmpty {
                         Divider()
-                            .frame(width: 28)
-                            .padding(.vertical, 2)
+                            .frame(width: InterfaceScale.metric(28))
+                            .padding(.vertical, InterfaceScale.metric(2))
                     }
 
                     ForEach(NativeEmojiCategory.allCases) { category in
@@ -204,8 +204,8 @@ struct EmojiDocumentSidebar: View {
                             help: category.title, jump: jump
                         ) {
                             Text(category.symbol)
-                                .font(.system(size: 18))
-                                .frame(width: 28, height: 28, alignment: .center)
+                                .font(.interfaceSystem(size: 18))
+                                .frame(width: InterfaceScale.metric(28), height: InterfaceScale.metric(28), alignment: .center)
                         }
                     }
                 }

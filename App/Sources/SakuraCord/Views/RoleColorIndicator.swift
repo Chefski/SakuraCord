@@ -57,7 +57,7 @@ struct NameRoleColorIndicator: View {
 
     var body: some View {
         if display == .nextToNames, let colorHex, colorHex != 0 {
-            RoleColorIndicator(colorHex: colorHex, size: 8)
+            RoleColorIndicator(colorHex: colorHex, size: InterfaceScale.metric(8))
         }
     }
 }

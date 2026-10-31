@@ -28,7 +28,7 @@ struct ProfileGameGallery: View {
 
     var body: some View {
         if !items.isEmpty {
-            VStack(spacing: 12) {
+            VStack(spacing: InterfaceScale.metric(12)) {
                 let index = min(selectedIndex, items.count - 1)
                 let item = items[index]
                 Group {
@@ -41,26 +41,26 @@ struct ProfileGameGallery: View {
                     }
                 }
                 .aspectRatio(16 / 9, contentMode: .fit)
-                .background(.black.opacity(0.15), in: .rect(cornerRadius: 16))
-                .clipShape(.rect(cornerRadius: 16))
+                .background(.black.opacity(0.15), in: .rect(cornerRadius: InterfaceScale.metric(16)))
+                .clipShape(.rect(cornerRadius: InterfaceScale.metric(16)))
                 ScrollView(.horizontal) {
-                    HStack(spacing: 10) {
+                    HStack(spacing: InterfaceScale.metric(10)) {
                         ForEach(Array(items.enumerated()), id: \.element.id) { offset, item in
                             Button { selectedIndex = offset } label: {
                                 ProfileWidgetImageView(url: thumbnail(item), animates: false, contentMode: .fill)
-                                    .frame(width: 106, height: 60).clipped()
-                                    .overlay { if item.kind == .video { Image(systemName: "play.fill").shadow(radius: 2) } }
-                                    .clipShape(.rect(cornerRadius: 8))
-                                    .overlay { if index == offset { RoundedRectangle(cornerRadius: 8).stroke(.primary, lineWidth: 2) } }
+                                    .frame(width: InterfaceScale.metric(106), height: InterfaceScale.metric(60)).clipped()
+                                    .overlay { if item.kind == .video { Image(systemName: "play.fill").shadow(radius: InterfaceScale.metric(2)) } }
+                                    .clipShape(.rect(cornerRadius: InterfaceScale.metric(8)))
+                                    .overlay { if index == offset { RoundedRectangle(cornerRadius: InterfaceScale.metric(8)).stroke(.primary, lineWidth: 2) } }
                             }.buttonStyle(.plain).accessibilityLabel("\(item.kind == .video ? "Trailer" : "Screenshot") \(offset + 1)")
                         }
-                    }.padding(2)
+                    }.padding(InterfaceScale.metric(2))
                 }
             }
             .onChange(of: game.id) { _, _ in selectedIndex = 0; presentation = nil }
             .windowModal(item: $presentation) { value in
                 MediaViewer(presentation: value, close: { presentation = nil }, closeInteractively: { presentation = nil })
-                    .frame(width: 1180, height: 760)
+                    .frame(width: InterfaceScale.metric(1180), height: InterfaceScale.metric(760))
             }
         }
     }

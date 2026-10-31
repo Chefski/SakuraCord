@@ -56,7 +56,7 @@ private struct ColorPickerHueHandle: View {
         ZStack {
             if showsNumber {
                 Text(index + 1, format: .number)
-                    .font(.body.weight(.bold).monospacedDigit())
+                    .font(.interface(.body).weight(.bold).monospacedDigit())
             }
         }
             .foregroundStyle(.white)
@@ -102,8 +102,8 @@ private struct ColorPickerHueHandle: View {
 }
 
 nonisolated enum ColorPickerGeometry {
-    static let width: CGFloat = 330
-    static let height: CGFloat = 226
+    static var width: CGFloat { InterfaceScale.metric(330) }
+    static var height: CGFloat { InterfaceScale.metric(226) }
 
     // Intersect the hue's angular-gradient ray with a capsule's centerline.
     // The straight edges remain straight and both ends are true semicircles.

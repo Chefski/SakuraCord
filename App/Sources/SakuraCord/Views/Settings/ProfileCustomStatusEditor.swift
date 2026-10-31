@@ -33,12 +33,12 @@ struct ProfileCustomStatusControl: View {
         .accessibilityLabel(profile.customStatus == nil ? "Add custom status" : "Edit custom status")
         .overlay(alignment: .topTrailing) {
             HoverActionPill {
-                HoverActionControlLabel(diameter: 20) {
-                    Image(systemName: "pencil").font(.callout.weight(.medium))
+                HoverActionControlLabel(diameter: InterfaceScale.metric(20)) {
+                    Image(systemName: "pencil").font(.interface(.callout).weight(.medium))
                 }
             }
             // A 28-point glass circle sits concentrically inside the 36-point pill.
-            .padding(4)
+            .padding(InterfaceScale.metric(4))
             .opacity(showsEditAffordance ? 1 : 0)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
@@ -87,22 +87,22 @@ private struct ProfileCustomStatusEditor: View {
     var body: some View {
         VStack(spacing: 0) {
             inputRow
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-            Divider().padding(.horizontal, 12)
+                .padding(.horizontal, InterfaceScale.metric(10))
+                .padding(.vertical, InterfaceScale.metric(8))
+            Divider().padding(.horizontal, InterfaceScale.metric(12))
             HStack {
                 expirationMenu
                 Spacer(minLength: 0)
             }
-            .font(.callout)
+            .font(.interface(.callout))
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .padding(.horizontal, InterfaceScale.metric(16))
+            .padding(.vertical, InterfaceScale.metric(10))
             if let errorMessage {
-                Text(errorMessage).font(.caption).foregroundStyle(.red).padding([.horizontal, .bottom], 12)
+                Text(errorMessage).font(.interface(.caption)).foregroundStyle(.red).padding([.horizontal, .bottom], InterfaceScale.metric(12))
             }
         }
-        .frame(width: 320)
+        .frame(width: InterfaceScale.metric(320))
         .disabled(!editor.canEditWidgets)
         .onChange(of: draft) { _, value in editor.setCustomStatusDraft(value) }
         .onChange(of: showsEmojiPicker, initial: true) { _, presented in
@@ -116,7 +116,7 @@ private struct ProfileCustomStatusEditor: View {
     }
 
     private var inputRow: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: InterfaceScale.metric(6)) {
             ProfileStatusEmojiButton(status: draft.status) { showsEmojiPicker.toggle() }
                 .overlay {
                     StableAnchoredPopoverPresenter(isPresented: showsEmojiPicker, configuration: .toolbarPanel,
@@ -126,7 +126,7 @@ private struct ProfileCustomStatusEditor: View {
                 }
             TextField("Add Status", text: $draft.status.text, axis: .vertical)
                 .textFieldStyle(.plain)
-                .font(.body)
+                .font(.interface(.body))
                 .lineLimit(1 ... 3)
                 .focused($isTextFocused)
                 .onKeyPress(.return) {
@@ -137,14 +137,14 @@ private struct ProfileCustomStatusEditor: View {
                     while draft.status.text.utf16.count > 128 { draft.status.text.removeLast() }
                 }
             if !draft.status.displayText.isEmpty {
-                ComposerActionButton(icon: Image(systemName: "xmark"), help: String(localized: "Clear Status", bundle: #bundle), iconSize: 12, size: 28) {
+                ComposerActionButton(icon: Image(systemName: "xmark"), help: String(localized: "Clear Status", bundle: #bundle), iconSize: 12, size: InterfaceScale.metric(28)) {
                     draft.status.text = ""
                     draft.status.emojiID = nil
                     draft.status.emojiName = nil
                 }
             }
         }
-        .frame(minHeight: 34)
+        .frame(minHeight: InterfaceScale.metric(34))
     }
 
     private var expirationMenu: some View {
@@ -202,14 +202,14 @@ private struct ProfileStatusEmojiButton: View {
                     AnimatedRemoteImage(url: url, animates: false, maximumPixelDimension: 48)
                 } else if let emoji = status.emojiName {
                     Image(nsImage: ComponentUnicodeEmojiRenderer.image(for: emoji))
-                        .resizable().scaledToFit().frame(width: 22, height: 22)
+                        .resizable().scaledToFit().frame(width: InterfaceScale.metric(22), height: InterfaceScale.metric(22))
                 } else {
-                    Image(systemName: "face.smiling").font(.system(size: 21)).foregroundStyle(.secondary)
+                    Image(systemName: "face.smiling").font(.interfaceSystem(size: 21)).foregroundStyle(.secondary)
                 }
             }
-            .frame(width: 24, height: 24)
+            .frame(width: InterfaceScale.metric(24), height: InterfaceScale.metric(24))
             .allowsHitTesting(false)
-            .frame(width: 34, height: 34)
+            .frame(width: InterfaceScale.metric(34), height: InterfaceScale.metric(34))
             .contentShape(Circle())
         }
         .buttonStyle(.plain)

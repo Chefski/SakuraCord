@@ -2,7 +2,7 @@ import AppKit
 
 enum NativeTimelineCompactTimestampMetrics {
     static var font: NSFont {
-        .preferredFont(forTextStyle: .caption2)
+        .interfaceSystemFont(ofSize: NSFont.preferredFont(forTextStyle: .caption2).pointSize)
     }
 
     private static var cachedWidth: (key: String, width: CGFloat)?
@@ -32,11 +32,16 @@ nonisolated enum NativeTimelineMessageMenuAction: Equatable {
     case jumpToMessage
     case retrySending
     case addReaction
+    case viewReactions
     case reply
     case forward
+    case createThread
+    case viewThread
     case markUnread
     case dismissInboxMention
     case endPoll
+    case copyTranslation
+    case toggleTranslation
     case editMessage
     case pinMessage
     case unpinMessage
@@ -67,11 +72,15 @@ nonisolated enum NativeTimelineMessageMenuPolicy {
         canEdit: Bool,
         canDelete: Bool,
         canRetry: Bool,
+        isFailed: Bool = false,
         canReply: Bool,
         canEndPoll: Bool = false,
         canForward: Bool = false,
+        threadAction: NativeTimelineMessageMenuAction? = nil,
         canPin: Bool = false,
         isPinned: Bool = false,
+        translationTitle: String? = nil,
+        canCopyTranslation: Bool = false,
         context: NativeTimelineMessageInteractionContext = .conversation
     ) -> [NativeTimelineMessageMenuEntry] {
         if context == .searchResult {
@@ -98,59 +107,87 @@ nonisolated enum NativeTimelineMessageMenuPolicy {
             )
         }
 
-        var entries = conversationEntries(
+        var entries = canRetry || isFailed ? failedEntries(canRetry: canRetry) : conversationEntries(
             canEdit: canEdit,
             canDelete: canDelete,
-            canRetry: canRetry,
             canReply: canReply,
             canForward: canForward,
+            threadAction: threadAction,
             canPin: canPin,
             isPinned: isPinned
         )
         if canEndPoll {
             entries.insert(.action(.endPoll, title: "End Poll Now", systemImage: "stop.circle"), at: min(3, entries.count))
         }
+        if let translationTitle, !canRetry, !isFailed {
+            entries.insert(
+                .action(.toggleTranslation, title: translationTitle, systemImage: "translate"),
+                at: messageActionsEnd(in: entries)
+            )
+        }
+        if canCopyTranslation {
+            entries.insert(.action(.copyTranslation, title: "Copy Translation", systemImage: "doc.on.doc"),
+                           at: messageActionsEnd(in: entries))
+        }
+        return entries
+    }
+
+    private static func messageActionsEnd(in entries: [NativeTimelineMessageMenuEntry]) -> Int {
+        guard let copyIndex = entries.firstIndex(where: {
+            if case .action(.copyText, _, _, _) = $0 { return true }
+            return false
+        }) else { return entries.count }
+        return entries[..<copyIndex].lastIndex(of: .separator) ?? copyIndex
+    }
+
+    private static func failedEntries(canRetry: Bool) -> [NativeTimelineMessageMenuEntry] {
+        var entries: [NativeTimelineMessageMenuEntry] = []
+        if canRetry {
+            entries.append(.action(
+                .retrySending,
+                title: "Retry Send",
+                systemImage: "arrow.clockwise"
+            ))
+            entries.append(.separator)
+        }
+        entries += [
+            .action(
+                .copyText,
+                title: "Copy Text",
+                systemImage: "doc.on.doc"
+            ),
+            .separator,
+            .action(
+                .discardFailedMessage,
+                title: "Delete Message…",
+                systemImage: "trash",
+                isDestructive: true
+            ),
+        ]
         return entries
     }
 
     private static func conversationEntries(
         canEdit: Bool,
         canDelete: Bool,
-        canRetry: Bool,
         canReply: Bool,
         canForward: Bool,
+        threadAction: NativeTimelineMessageMenuAction?,
         canPin: Bool,
         isPinned: Bool
     ) -> [NativeTimelineMessageMenuEntry] {
-        if canRetry {
-            return [
-                .action(
-                    .retrySending,
-                    title: "Retry Send",
-                    systemImage: "arrow.clockwise"
-                ),
-                .separator,
-                .action(
-                    .copyText,
-                    title: "Copy Text",
-                    systemImage: "doc.on.doc"
-                ),
-                .separator,
-                .action(
-                    .discardFailedMessage,
-                    title: "Delete Message…",
-                    systemImage: "trash",
-                    isDestructive: true
-                ),
-            ]
-        }
-
         var result: [NativeTimelineMessageMenuEntry] = []
         result.append(.action(
             .addReaction,
             title: "Add Reaction",
+            systemImage: "emoji.face.grinning.and.plus"
+        ))
+        result.append(.action(
+            .viewReactions,
+            title: "View Reactions",
             systemImage: SakuraCordSystemSymbol.emojiFaceGrinning
         ))
+        result.append(.separator)
         if canReply {
             result.append(.action(
                 .reply,
@@ -164,6 +201,16 @@ nonisolated enum NativeTimelineMessageMenuPolicy {
                 title: "Forward",
                 systemImage: "arrowshape.turn.up.right"
             ))
+        }
+        // The first-party menu offers Create Thread after Forward; a message
+        // that already has a thread opens it instead.
+        switch threadAction {
+        case .createThread?:
+            result.append(.action(.createThread, title: "Create Thread", systemImage: SakuraCordSystemSymbol.thread))
+        case .viewThread?:
+            result.append(.action(.viewThread, title: "View Thread", systemImage: SakuraCordSystemSymbol.thread))
+        default:
+            break
         }
         if canEdit {
             result.append(.action(
@@ -192,13 +239,13 @@ nonisolated enum NativeTimelineMessageMenuPolicy {
         ))
         result.append(.action(
             .copyLink,
-            title: "Copy Link",
+            title: "Copy Message Link",
             systemImage: "link"
         ))
         result.append(.action(
             .copyMessageID,
             title: "Copy Message ID",
-            systemImage: "number.square.fill"
+            systemImage: "number.sign"
         ))
         if canDelete {
             result.append(.separator)
@@ -249,13 +296,13 @@ nonisolated enum NativeTimelineMessageMenuPolicy {
             ),
             .action(
                 .copyLink,
-                title: "Copy Link",
+                title: "Copy Message Link",
                 systemImage: "link"
             ),
             .action(
                 .copyMessageID,
                 title: "Copy Message ID",
-                systemImage: "number.square.fill"
+                systemImage: "number.sign"
             ),
             .action(
                 .copyAuthorID,

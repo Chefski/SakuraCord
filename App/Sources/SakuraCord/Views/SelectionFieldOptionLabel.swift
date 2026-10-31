@@ -6,16 +6,16 @@ struct SelectionFieldOptionLabel<ID: Hashable & Sendable>: View {
     var showsSubtitle = false
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: InterfaceScale.metric(8)) {
             SelectionFieldOptionIcon(leading: option.leading)
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(3)) {
                 Text(option.title)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.interfaceSystem(size: 13, weight: .medium))
                     .foregroundStyle(titleColor)
                     .lineLimit(1)
                 if showsSubtitle, let subtitle = option.subtitle, !subtitle.isEmpty {
                     Text(subtitle)
-                        .font(.system(size: 11))
+                        .font(.interfaceSystem(size: 11))
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                 }
@@ -45,20 +45,20 @@ private struct SelectionFieldOptionIcon: View {
                 EmptyView()
             case .systemImage(let name):
                 Image(systemName: name).foregroundStyle(.secondary)
-                    .frame(width: 20, height: 20)
+                    .frame(width: InterfaceScale.metric(20), height: InterfaceScale.metric(20))
             case .text(let text):
-                Text(text).frame(width: 20, height: 20)
+                Text(text).frame(width: InterfaceScale.metric(20), height: InterfaceScale.metric(20))
             case .remoteImage(let url, let fallback, let shape):
                 remoteImage(url: url, fallback: fallback, circle: shape == .circle)
             case .role(let color, let iconURL, let emoji):
                 if let emoji, !emoji.isEmpty {
-                    Text(emoji).frame(width: 20, height: 20)
+                    Text(emoji).frame(width: InterfaceScale.metric(20), height: InterfaceScale.metric(20))
                 } else if let iconURL {
                     remoteImage(url: iconURL, fallback: "", circle: false)
                 } else {
                     Circle().fill(color.map { Color(hex: $0) } ?? .secondary)
-                        .frame(width: 10, height: 10)
-                        .frame(width: 20, height: 20)
+                        .frame(width: InterfaceScale.metric(10), height: InterfaceScale.metric(10))
+                        .frame(width: InterfaceScale.metric(20), height: InterfaceScale.metric(20))
                 }
             }
         }
@@ -73,11 +73,11 @@ private struct SelectionFieldOptionIcon: View {
             } else {
                 ZStack {
                     Color.primary.opacity(0.08)
-                    Text(String(fallback.prefix(1))).font(.system(size: 10, weight: .medium))
+                    Text(String(fallback.prefix(1))).font(.interfaceSystem(size: 10, weight: .medium))
                 }
             }
         }
-        .frame(width: 20, height: 20)
+        .frame(width: InterfaceScale.metric(20), height: InterfaceScale.metric(20))
         .clipShape(.rect(cornerRadius: circle ? 10 : 4))
     }
 }

@@ -38,7 +38,7 @@ struct SakuraCordColorSlider: View {
                                 lineJoin: .round
                             )
                         )
-                        .shadow(color: .black.opacity(0.22), radius: 2)
+                        .shadow(color: .black.opacity(0.22), radius: InterfaceScale.metric(2))
                         .clipShape(ColorSliderTrackShape())
                 }
                 .frame(

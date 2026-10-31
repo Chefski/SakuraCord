@@ -40,8 +40,10 @@ struct NativeTimelineMediaKey: Hashable {
     let fallbackURL: URL?
     let maximumPixelDimension: Int
 
+    static let avatarPixelDimension = 96
+
     static func avatar(_ url: URL) -> Self {
-        Self(url: url, fallbackURL: nil, maximumPixelDimension: 96)
+        Self(url: url, fallbackURL: nil, maximumPixelDimension: avatarPixelDimension)
     }
 
     static func avatarDecoration(_ url: URL) -> Self {
@@ -75,35 +77,8 @@ struct NativeTimelineMediaKey: Hashable {
         }
     }
 
-    /// Discord's media proxy renders a video attachment's first frame when a
-    /// still format is requested. Only that proxy can do so; the origin URL
-    /// would deliver the whole video.
     static func videoPoster(_ attachment: Attachment) -> Self? {
-        guard let proxyURL = attachment.proxyURL,
-              proxyURL.scheme == "https",
-              proxyURL.host() == "media.discordapp.net",
-              var components = URLComponents(
-                  url: proxyURL,
-                  resolvingAgainstBaseURL: false
-              )
-        else { return nil }
-        var query = (components.queryItems ?? []).filter {
-            !["format", "width", "height"].contains($0.name)
-        }
-        query.append(URLQueryItem(name: "format", value: "webp"))
-        if let width = attachment.width, let height = attachment.height,
-           width > 0, height > 0
-        {
-            let scale = min(1, 1_024 / Double(max(width, height)))
-            query += [("width", width), ("height", height)].map { name, value in
-                URLQueryItem(
-                    name: name,
-                    value: String(max(1, Int((Double(value) * scale).rounded())))
-                )
-            }
-        }
-        components.queryItems = query
-        return components.url.map { .media($0) }
+        attachment.videoPosterURL(maximumPixelDimension: 1_024).map { .media($0) }
     }
 
     static func == (lhs: Self, rhs: Self) -> Bool {
@@ -572,7 +547,7 @@ final class NativeTimelineMediaStore {
         animatedCache.setObject(
             media,
             forKey: key.cacheKey,
-            cost: decoded.estimatedByteCount
+            cost: decoded.storedByteCount
         )
         if let firstFrame = media.firstFrame {
             cacheImage(firstFrame, for: key)
@@ -628,7 +603,7 @@ final class NativeTimelineMediaStore {
                 animatedCache.setObject(
                     media,
                     forKey: key.cacheKey,
-                    cost: decoded.estimatedByteCount
+                    cost: decoded.storedByteCount
                 )
             }
             for completion in completions {
@@ -1137,6 +1112,12 @@ enum NativeTimelineMediaDecoder {
         _ data: Data,
         maximumPixelDimension: Int
     ) -> CGImage? {
+        if let lottie = LottieStickerFrameRenderer(
+            data: data,
+            maximumPixelDimension: maximumPixelDimension
+        ) {
+            return lottie.frame(at: 0)
+        }
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
             return nil
         }

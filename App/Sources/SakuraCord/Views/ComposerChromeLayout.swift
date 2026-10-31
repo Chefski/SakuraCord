@@ -29,11 +29,11 @@ struct ComposerChromeLayout<Header: View, Leading: View, Input: View, Accessorie
 
             VStack(alignment: .leading, spacing: 0) {
                 header
-                HStack(alignment: .bottom, spacing: 9) {
+                HStack(alignment: .bottom, spacing: InterfaceScale.metric(9)) {
                     input
                     accessories
                 }
-                .padding(.leading, 11)
+                .padding(.leading, InterfaceScale.metric(11))
                 .padding(.trailing, ChatChromeMetrics.composerAccessoryEdgeInset)
                 .frame(minHeight: ChatChromeMetrics.composerControlHeight)
             }
@@ -53,21 +53,21 @@ struct ComposerChromeLayout<Header: View, Leading: View, Input: View, Accessorie
     private var legacyLayout: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            HStack(alignment: .bottom, spacing: 9) {
+            HStack(alignment: .bottom, spacing: InterfaceScale.metric(9)) {
                 leading
                 input
                 HStack(spacing: 1) {
                     accessories
                     Capsule()
                         .fill(.primary.opacity(0.16))
-                        .frame(width: 1, height: 16)
-                        .frame(width: 9, height: ChatChromeMetrics.composerControlHeight)
+                        .frame(width: 1, height: InterfaceScale.metric(16))
+                        .frame(width: InterfaceScale.metric(9), height: ChatChromeMetrics.composerControlHeight)
                         .accessibilityHidden(true)
                     send
                 }
             }
-            .padding(.horizontal, 11)
-            .padding(.vertical, 6)
+            .padding(.horizontal, InterfaceScale.metric(11))
+            .padding(.vertical, InterfaceScale.metric(6))
             .frame(minHeight: ChatChromeMetrics.controlHeight)
         }
         .background { ComposerFocusSurface(focus: focus) }

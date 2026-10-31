@@ -7,6 +7,13 @@ section or repeat its wording.
 
 ## Authored description
 
+For a release containing one fix, use the bold headline below, one blank line,
+and a short paragraph explaining the fix. Omit Highlights and bullets; do not
+pad one fix into several highlights. The 500–800 character target applies to
+broader releases, not these short announcements.
+
+For releases with several distinct changes:
+
 1. A short feature-specific bold headline ending in `🌸` for Regular or `🌙`
    for Nightly.
 2. Exactly one blank line, then `**Highlights**`.

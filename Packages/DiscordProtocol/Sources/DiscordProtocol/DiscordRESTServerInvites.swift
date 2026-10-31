@@ -13,7 +13,7 @@ public extension DiscordRESTProvider {
         return try Self.inviteDecoder().decode(ServerInviteDTO.self, from: data).domain(reference: reference)
     }
 
-    func acceptServerInvite(_ reference: ServerInviteReference, messageID: MessageID?, captchaHandler: DiscordCaptchaHandler?) async throws -> ServerInviteAcceptance {
+    func acceptServerInvite(_ reference: ServerInviteReference, messageID: MessageID?) async throws -> ServerInviteAcceptance {
         // Refresh immediately before the write: previews can outlive a revoked invite or changed onboarding settings.
         let invite = try await serverInvite(reference)
         if cachedGuilds[invite.guildID] != nil {
@@ -34,9 +34,9 @@ public extension DiscordRESTProvider {
         let contextData = try JSONSerialization.data(withJSONObject: contextObject, options: [.sortedKeys])
         var body: [String: JSONValue] = ["session_id": .string(sessionID)]
         if let messageID { body["invite_instance_id"] = .string("\(messageID):\(reference.code)") }
-        let (data, response) = try await acceptInviteRequest(
-            reference, body: body, context: contextData.base64EncodedString(),
-            sessionID: sessionID, captchaHandler: captchaHandler
+        let (data, response) = try await perform(
+            "/invites/\(reference.code)", method: "POST", query: [], body: body,
+            headers: ["X-Context-Properties": contextData.base64EncodedString()], maximumAttempts: 1
         )
         try checkInviteResponse(data, response)
         struct Acceptance: Decodable {
@@ -52,36 +52,27 @@ public extension DiscordRESTProvider {
         return ServerInviteAcceptance(invite: invite, requiresVerification: accepted.showVerificationForm == true)
     }
 
-    private func acceptInviteRequest(
-        _ reference: ServerInviteReference, body: [String: JSONValue], context: String,
-        sessionID: String, captchaHandler: DiscordCaptchaHandler?
-    ) async throws -> (Data, HTTPURLResponse) {
-        let path = "/invites/\(reference.code)"
-        var headers = ["X-Context-Properties": context]
-        let original = try await perform(path, method: "POST", query: [], body: body, headers: headers, maximumAttempts: 1)
-        guard let challenge = DiscordCaptchaChallenge.inviteChallenge(
-            data: original.0, status: original.1.statusCode, method: "POST", path: path
-        ) else { return original }
-        guard let captchaHandler else {
-            throw ServerInviteError.failed("Discord requires a CAPTCHA to join this server. Complete the invite in Discord.")
+    /// Full-membership join from a discoverable server's profile; see docs/protocol/GUILDS.md, Server tag cards.
+    /// Returns whether Discord still requires verification.
+    func joinDiscoverableGuild(_ guildID: GuildID) async throws -> Bool {
+        if cachedGuilds[guildID] != nil { return false }
+        guard await gatewaySession?.snapshot().sessionID != nil else {
+            throw ServerInviteError.failed("Wait for SakuraCord to reconnect before joining this server.")
         }
-        try Task.checkCancellation()
-        let token = try await captchaHandler(challenge)
-        try Task.checkCancellation()
-        guard !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw ServerInviteError.failed("CAPTCHA verification did not return a solution. Try joining again.")
+        let (data, response) = try await perform(
+            "/guilds/\(guildID)/members/@me", method: "PUT", query: [URLQueryItem(name: "lurker", value: "false")],
+            body: [:], headers: ["X-Context-Properties": Data("{}".utf8).base64EncodedString()], maximumAttempts: 1
+        )
+        try checkInviteResponse(data, response)
+        struct Joined: Decodable {
+            var id: String?
+            var showVerificationForm: Bool?
         }
-        // Keep the original account, invite, message context and Gateway session. Never replay a stale join.
-        let currentSessionID = await gatewaySession?.snapshot().sessionID
-        guard !requestSafetyCircuitIsOpen, currentSessionID == sessionID else { throw CancellationError() }
-        headers["X-Captcha-Key"] = token
-        headers["X-Captcha-Rqtoken"] = challenge.rqtoken
-        headers["X-Captcha-Session-Id"] = challenge.sessionID
-        let completed = try await perform(path, method: "POST", query: [], body: body, headers: headers, maximumAttempts: 1)
-        if DiscordCaptchaChallenge.inviteChallenge(data: completed.0, status: completed.1.statusCode, method: "POST", path: path) != nil {
-            throw ServerInviteError.failed("Discord did not accept the CAPTCHA. Try joining again to get a new challenge.")
+        let joined = try Self.inviteDecoder().decode(Joined.self, from: data)
+        guard joined.id == guildID.description else {
+            throw ServerInviteError.failed("Discord accepted the request but did not confirm the expected server. Check your server list before trying again.")
         }
-        return completed
+        return joined.showVerificationForm == true
     }
 
     func createServerInvite(in channelID: ChannelID, guildID: GuildID, settings: ServerInviteSettings) async throws -> CreatedServerInvite {
@@ -169,9 +160,7 @@ public extension DiscordRESTProvider {
             if response.statusCode == 429 {
                 throw ServerInviteError.failed("Discord is limiting server actions. Wait before trying again.")
             }
-            throw apiDiagnostics.coalescing(ChatProviderError.transport(
-                status: response.statusCode, requestID: response.value(forHTTPHeaderField: "x-request-id")
-            ), with: response)
+            throw unexplainedFailure(data, response)
         }
     }
 }

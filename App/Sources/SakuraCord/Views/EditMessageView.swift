@@ -14,18 +14,18 @@ struct EditMessageView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Edit Message").font(.headline)
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(14)) {
+            Text("Edit Message").font(.interface(.headline))
             TextEditor(text: $content)
                 .tint(SakuraCordAccentColor.color)
-                .frame(minHeight: 120)
-                .font(.body)
+                .frame(minHeight: InterfaceScale.metric(120))
+                .font(.interface(.body))
             HStack {
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }
                 Button("Save") { save(content); dismiss() }.keyboardShortcut(.defaultAction).disabled(content.isEmpty)
             }
         }
-        .padding(20).frame(width: 480)
+        .padding(InterfaceScale.metric(20)).frame(width: InterfaceScale.metric(480))
     }
 }

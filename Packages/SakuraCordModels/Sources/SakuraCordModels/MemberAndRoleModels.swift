@@ -17,6 +17,7 @@ public struct GuildRole: Identifiable, Codable, Hashable, Sendable {
     public var unicodeEmoji: String?
     public var isMentionable: Bool
     public var permissions: UInt64?
+    public var isPurchasableSubscription: Bool?
 
     public init(
         id: RoleID,
@@ -26,7 +27,8 @@ public struct GuildRole: Identifiable, Codable, Hashable, Sendable {
         iconURL: URL? = nil,
         unicodeEmoji: String? = nil,
         isMentionable: Bool = true,
-        permissions: UInt64? = nil
+        permissions: UInt64? = nil,
+        isPurchasableSubscription: Bool? = nil
     ) {
         self.id = id
         self.name = name
@@ -36,6 +38,7 @@ public struct GuildRole: Identifiable, Codable, Hashable, Sendable {
         self.unicodeEmoji = unicodeEmoji
         self.isMentionable = isMentionable
         self.permissions = permissions
+        self.isPurchasableSubscription = isPurchasableSubscription
     }
 }
 
@@ -82,6 +85,8 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
     /// normal guild channel access even when role IDs are already present.
     public var isPending: Bool?
     public var flags: UInt64?
+    /// Discord server timeout expiry; nil means no active timeout is recorded.
+    public var communicationDisabledUntil: Date?
 
     public var requiresOnboarding: Bool {
         guard let flags else { return false }
@@ -123,6 +128,7 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
         isMobileOnly: Bool = false,
         isPending: Bool? = nil,
         flags: UInt64? = nil,
+        communicationDisabledUntil: Date? = nil,
         joinedAt: Date? = nil,
         memberListIndex: Int? = nil
     ) {
@@ -144,6 +150,7 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
         self.isMobileOnly = isMobileOnly
         self.isPending = isPending
         self.flags = flags
+        self.communicationDisabledUntil = communicationDisabledUntil
         self.joinedAt = joinedAt
         self.memberListIndex = memberListIndex
     }
@@ -167,6 +174,7 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
         isMobileOnly: Bool = false,
         isPending: Bool? = nil,
         flags: UInt64? = nil,
+        communicationDisabledUntil: Date? = nil,
         joinedAt: Date? = nil,
         memberListIndex: Int? = nil
     ) {
@@ -188,6 +196,7 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
         self.isMobileOnly = isMobileOnly
         self.isPending = isPending
         self.flags = flags
+        self.communicationDisabledUntil = communicationDisabledUntil
         self.joinedAt = joinedAt
         self.memberListIndex = memberListIndex
     }
@@ -196,7 +205,7 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
         case user, roleName, roleID, rolePosition, isRoleCategory, status, roleIDs, roles,
              guildAvatarURL,
              globalDisplayName, guildNickname, guildProfileCosmetics, activityText, customStatus, isListeningToMusic,
-             isMobileOnly, memberListIndex, joinedAt
+             isMobileOnly, memberListIndex, joinedAt, communicationDisabledUntil
     }
 
     public init(from decoder: Decoder) throws {
@@ -219,6 +228,7 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
         isMobileOnly = try container.decodeIfPresent(Bool.self, forKey: .isMobileOnly) ?? false
         memberListIndex = try container.decodeIfPresent(Int.self, forKey: .memberListIndex)
         joinedAt = try container.decodeIfPresent(Date.self, forKey: .joinedAt)
+        communicationDisabledUntil = try container.decodeIfPresent(Date.self, forKey: .communicationDisabledUntil)
     }
 
     public mutating func applyGlobalProfileUser(_ value: User) {

@@ -1357,6 +1357,18 @@ extension DiscordMarkdown {
     }
 }
 
+public extension DiscordMarkdown {
+    /// Source that renders `text` literally: every ASCII punctuation mark is
+    /// escaped, so no markdown, mention or emoji syntax survives. Bare URLs
+    /// still link, as plain text does.
+    static func escaped(_ text: String) -> String {
+        text.reduce(into: "") { output, character in
+            if character.isASCII, character.isPunctuation || character.isSymbol { output.append("\\") }
+            output.append(character)
+        }
+    }
+}
+
 private extension DiscordMarkdown {
     static func inlineCodeRun(
         _ source: Substring, traits: AppKitPlan.InlineTraits, link: URL?, sourceCollector: SourceFormatCollector?
@@ -1476,6 +1488,15 @@ private final class AppKitMarkdownCacheKey: NSObject {
 }
 
 public extension DiscordMarkdown {
+    /// Visible emoji-bearing text for send-time usage tracking. Code and link
+    /// destinations are not parsed as emoji by Discord's outgoing parser.
+    static func emojiUsageText(in source: String) -> String {
+        appKitPlan(source).lines.flatMap { line -> [String] in
+            if case .code = line.block { return [] }
+            return line.runs.filter { !$0.traits.contains(.inlineCode) }.map(\.text)
+        }.joined(separator: " ")
+    }
+
     /// Discord invite cards are client-derived, including bare links and links inside angle brackets.
     /// Code and spoiler text never initiate preview requests or expose invite cards.
     static func serverInviteReferences(in source: String) -> [ServerInviteReference] {

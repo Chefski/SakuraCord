@@ -16,7 +16,7 @@ struct ExtensionsSettingsPage: View {
                         "Support for installing and managing extensions is coming in a future SakuraCord release."
                     )
                 }
-                .frame(maxWidth: .infinity, minHeight: 300)
+                .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(300))
             }
         }
     }

@@ -2,10 +2,12 @@ import DiscordProtocol
 import Foundation
 import SakuraCordModels
 
-struct GameMentionHydrationState {
+struct GameMentionState {
+    var gamesByID: [String: ProfileGame] = [:]
     var hydratedIDs: Set<String> = []
     var pendingIDs: Set<String> = []
     var failedIDs: [String: Date] = [:]
+    var loadTask: Task<Void, Never>?
 }
 
 extension AppModel {
@@ -22,7 +24,7 @@ extension AppModel {
 
     func hydrateGameMentionSuggestions(_ suggestions: [ProfileGame]) async throws -> [ProfileGame] {
         let missingIDs = suggestions.filter {
-            $0.iconURL == nil && $0.coverURL == nil && !gameMentionHydration.hydratedIDs.contains($0.id)
+            $0.iconURL == nil && $0.coverURL == nil && !gameMentions.hydratedIDs.contains($0.id)
         }.map(\.id)
         if !missingIDs.isEmpty {
             let session = accountSession()
@@ -30,22 +32,22 @@ extension AppModel {
             try Task.checkCancellation()
             guard isCurrentAccountSession(session) else { throw CancellationError() }
             for game in games {
-                gameMentionsByID[game.id] = game
-                gameMentionHydration.hydratedIDs.insert(game.id)
+                gameMentions.gamesByID[game.id] = game
+                gameMentions.hydratedIDs.insert(game.id)
             }
             if !games.isEmpty { timelinePresentationRevision &+= 1 }
         }
         return suggestions.map { suggestion in
-            guard let detailed = gameMentionsByID[suggestion.id] else { return suggestion }
+            guard let detailed = gameMentions.gamesByID[suggestion.id] else { return suggestion }
             return detailed.iconURL != nil || detailed.coverURL != nil ? detailed : suggestion
         }
     }
 
     func rememberGameMention(_ game: ProfileGame) {
         guard UInt64(game.id) != nil else { return }
-        gameMentionHydration.failedIDs[game.id] = nil
-        if !gameMentionHydration.hydratedIDs.contains(game.id) {
-            gameMentionsByID[game.id] = game
+        gameMentions.failedIDs[game.id] = nil
+        if !gameMentions.hydratedIDs.contains(game.id) {
+            gameMentions.gamesByID[game.id] = game
             requestGameMentionDetails(id: game.id)
         }
         timelinePresentationRevision &+= 1
@@ -53,12 +55,12 @@ extension AppModel {
 
     func requestGameMentionDetails(id: String) {
         guard UInt64(id) != nil,
-              !gameMentionHydration.hydratedIDs.contains(id),
-              gameMentionHydration.failedIDs[id].map({ $0 < .now }) ?? true
+              !gameMentions.hydratedIDs.contains(id),
+              gameMentions.failedIDs[id].map({ $0 < .now }) ?? true
         else { return }
-        gameMentionHydration.pendingIDs.insert(id)
-        guard gameMentionLoadTask == nil else { return }
-        gameMentionLoadTask = Task { [weak self] in
+        gameMentions.pendingIDs.insert(id)
+        guard gameMentions.loadTask == nil else { return }
+        gameMentions.loadTask = Task { [weak self] in
             guard let self else { return }
             try? await Task.sleep(for: .milliseconds(50))
             guard !Task.isCancelled else { return }
@@ -67,19 +69,19 @@ extension AppModel {
     }
 
     private func loadPendingGameMentions() async {
-        let ids = gameMentionHydration.pendingIDs.sorted()
-        gameMentionHydration.pendingIDs.removeAll()
+        let ids = gameMentions.pendingIDs.sorted()
+        gameMentions.pendingIDs.removeAll()
         let session = accountSession()
         do {
             let games = try await session.provider.profileWidgetGames(ids: ids)
             guard !Task.isCancelled, isCurrentAccountSession(session) else { return }
             let resolved = Set(games.map(\.id))
             for game in games {
-                gameMentionsByID[game.id] = game
-                gameMentionHydration.hydratedIDs.insert(game.id)
+                gameMentions.gamesByID[game.id] = game
+                gameMentions.hydratedIDs.insert(game.id)
             }
             let retryAt = Date.now.addingTimeInterval(60)
-            for id in ids where !resolved.contains(id) { gameMentionHydration.failedIDs[id] = retryAt }
+            for id in ids where !resolved.contains(id) { gameMentions.failedIDs[id] = retryAt }
             if !games.isEmpty { timelinePresentationRevision &+= 1 }
         } catch is CancellationError {
             return
@@ -87,11 +89,11 @@ extension AppModel {
             guard isCurrentAccountSession(session) else { return }
             DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             let retryAt = Date.now.addingTimeInterval(60)
-            for id in ids { gameMentionHydration.failedIDs[id] = retryAt }
+            for id in ids { gameMentions.failedIDs[id] = retryAt }
         }
-        gameMentionLoadTask = nil
-        if let next = gameMentionHydration.pendingIDs.first {
-            gameMentionHydration.pendingIDs.remove(next)
+        gameMentions.loadTask = nil
+        if let next = gameMentions.pendingIDs.first {
+            gameMentions.pendingIDs.remove(next)
             requestGameMentionDetails(id: next)
         }
     }

@@ -16,13 +16,13 @@ nonisolated struct InboxGroupHeaderPresentation: Equatable {
 
     @MainActor
     init(_ group: InboxUnreadGroup, model: AppModel) {
-        let channel = model.snapshot?.channels.first { $0.id == group.channelID }
+        let channel = model.messagePresentationChannelsByID[group.channelID]
         let thread = model.inbox.threads[group.channelID]
-            ?? model.snapshot?.activeJoinedThreads.first { $0.id == group.channelID }
+            ?? model.activeJoinedThreads.first { $0.id == group.channelID }
         let parent = thread.flatMap { thread in
-            model.snapshot?.channels.first { $0.id == thread.parentID }
+            thread.parentID.flatMap { model.messagePresentationChannelsByID[$0] }
         }
-        let guild = model.snapshot?.guilds.first { $0.id == group.guildID }
+        let guild = group.guildID.flatMap { model.serverRailGuildsByID[$0] }
         guildName = guild?.name ?? group.subtitle
         guildIconURL = guild?.iconURL
         systemImage = group.isEvents ? "calendar" : parent?.kind == .forum ? "bubble.left.and.bubble.right"
@@ -46,39 +46,39 @@ struct InboxGroupHeaderView: View {
     @State private var isHovered = false
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: InterfaceScale.metric(4)) {
             Button { model.openInboxGroup(header.channelID) } label: {
-                HStack(spacing: 10) {
+                HStack(spacing: InterfaceScale.metric(10)) {
                     if let guildName = header.guildName {
                         GuildIconView(name: guildName, iconURL: header.guildIconURL,
-                                      size: 32, cornerRadius: 9, animates: false)
+                                      size: 32, cornerRadius: InterfaceScale.metric(9), animates: false)
                             .accessibilityHidden(true)
                     }
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 5) {
+                    VStack(alignment: .leading, spacing: InterfaceScale.metric(2)) {
+                        HStack(spacing: InterfaceScale.metric(5)) {
                             SakuraCordSystemSymbol.swiftUIImage(named: header.systemImage)
-                                .font(.subheadline).foregroundStyle(.secondary)
-                            Text(header.title).font(.headline).lineLimit(1)
+                                .font(.interface(.subheadline)).foregroundStyle(.secondary)
+                            Text(header.title).font(.interface(.headline)).lineLimit(1)
                         }
                         if let subtitle = header.subtitle, !subtitle.isEmpty {
-                            Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            Text(subtitle).font(.interface(.caption)).foregroundStyle(.secondary).lineLimit(1)
                         }
                     }
                     Spacer(minLength: 0)
                     if header.mentionCount > 0 {
                         Text(header.mentionCount, format: .number)
-                            .font(.caption2.bold())
+                            .font(.interface(.caption2).bold())
                             .monospacedDigit()
                             .foregroundStyle(.white)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
+                            .padding(.horizontal, InterfaceScale.metric(6))
+                            .padding(.vertical, InterfaceScale.metric(2))
                             .background(Color(hex: 0xF23F43), in: Capsule())
                             .accessibilityLabel(header.mentionCount == 1 ? "1 mention" : "\(header.mentionCount) mentions")
                     }
                 }
-                .padding(.leading, 6)
-                .padding(.trailing, 8)
-                .padding(.vertical, 6)
+                .padding(.leading, InterfaceScale.metric(6))
+                .padding(.trailing, InterfaceScale.metric(8))
+                .padding(.vertical, InterfaceScale.metric(6))
                 .contentShape(Rectangle())
             }
             .buttonStyle(PopoverRowButtonStyle())
@@ -99,7 +99,7 @@ struct InboxGroupHeaderView: View {
                                 .rotationEffect(.degrees(header.isCollapsed ? 0 : 90))
                         }
                     }
-                    .font(.caption.weight(.semibold))
+                    .font(.interface(.caption).weight(.semibold))
                     .foregroundStyle(.secondary)
                 }
             }
@@ -117,7 +117,7 @@ struct InboxGroupHeaderView: View {
             if let group = model.inbox.groups.first(where: { $0.id == header.channelID }), let guildID = group.guildID {
                 Button("Mark Server as Read") { model.markInboxGuildRead(guildID) }
             }
-            if let channel = model.snapshot?.channels.first(where: { $0.id == header.channelID }) {
+            if let channel = model.messagePresentationChannelsByID[header.channelID] {
                 Menu("Notifications") {
                     ForEach([MessageNotificationLevel.inherit, .allMessages, .onlyMentions, .nothing], id: \.self) { level in
                         Button(level.menuTitle) { model.setChannelNotificationLevel(level, for: channel) }
@@ -126,10 +126,10 @@ struct InboxGroupHeaderView: View {
                 .disabled(model.isChannelNotificationMutationPending(channel.id))
             }
         }
-        .padding(.horizontal, 8)
-        .frame(height: 58)
+        .padding(.horizontal, InterfaceScale.metric(8))
+        .frame(height: InboxRowMetrics.headerHeight)
         .overlay(alignment: .bottom) {
-            Rectangle().fill(.separator.opacity(header.isCollapsed ? 0.6 : 0)).frame(height: 1).padding(.horizontal, 14)
+            Rectangle().fill(.separator.opacity(header.isCollapsed ? 0.6 : 0)).frame(height: 1).padding(.horizontal, InterfaceScale.metric(14))
         }
     }
 }
@@ -143,7 +143,7 @@ extension NativeTimelineCanvasView {
         var desired: [ChannelID: (InboxGroupHeaderPresentation, CGRect)] = [:]
         forEachDisplayedRow(in: visibleRect) { index in
             if case let .inboxGroup(header) = items[index] {
-                desired[header.channelID] = (header, CGRect(x: 0, y: displayedRowOrigin(at: index), width: bounds.width, height: 58))
+                desired[header.channelID] = (header, CGRect(x: 0, y: displayedRowOrigin(at: index), width: bounds.width, height: InboxRowMetrics.headerHeight))
             }
         }
         for id in Array(inboxHeaderHosts.keys) where desired[id] == nil {
@@ -166,4 +166,12 @@ extension NativeTimelineCanvasView {
             host.frame = value.1
         }
     }
+}
+
+/// Inbox row heights shared by the SwiftUI rows, their native hosts and the
+/// timeline layout.
+nonisolated enum InboxRowMetrics {
+    static var headerHeight: CGFloat { InterfaceScale.metric(58) }
+    static var forumPostHeight: CGFloat { InterfaceScale.metric(88) }
+    static var scheduledEventHeight: CGFloat { InterfaceScale.metric(104) }
 }

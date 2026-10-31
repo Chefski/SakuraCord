@@ -11,6 +11,7 @@ final class ApplicationCommandAppsMenuPopulator: NSObject, NSMenuDelegate, NSSea
     private let type: ApplicationCommandType
     private let targetID: String
     private let channelID: ChannelID
+    private let account: AppModelAccountSession
     private let search = NSSearchField(frame: NSRect(x: 10, y: 7, width: 240, height: 24))
     private let searchItem = NSMenuItem()
     private var isOpen = false
@@ -22,6 +23,7 @@ final class ApplicationCommandAppsMenuPopulator: NSObject, NSMenuDelegate, NSSea
         self.type = type
         self.targetID = targetID
         self.channelID = channelID
+        account = model.accountSession()
         super.init()
         search.placeholderString = "Search commands"
         search.setAccessibilityLabel("Search commands")
@@ -54,7 +56,7 @@ final class ApplicationCommandAppsMenuPopulator: NSObject, NSMenuDelegate, NSSea
     }
 
     private func observeCatalog() {
-        guard let model else { return }
+        guard let model, model.isCurrentAccountSession(account) else { return }
         withObservationTracking {
             _ = model.commandComposer(for: model.commandDestination(in: channelID)).isLoading
             _ = model.commandComposer(for: model.commandDestination(in: channelID)).contextMenuCommands
@@ -106,7 +108,7 @@ final class ApplicationCommandAppsMenuPopulator: NSObject, NSMenuDelegate, NSSea
     }
 
     private func populate(_ menu: NSMenu) {
-        guard let model else { return }
+        guard let model, model.isCurrentAccountSession(account) else { return }
         imageTasks.forEach { $0.cancel() }
         imageTasks.removeAll()
         // Keep the search view and its field editor attached while filtering.
@@ -144,8 +146,11 @@ final class ApplicationCommandAppsMenuPopulator: NSObject, NSMenuDelegate, NSSea
 
     private func commandItem(_ command: ApplicationCommand, showsAvatar: Bool) -> NSMenuItem {
         let targetID = targetID, channelID = channelID
+        let account = account
         let action = NativeTimelineMenuAction { [weak model] in
-            model?.runContextMenuCommand(command, targetID: targetID, in: channelID)
+            guard let model, model.isCurrentAccountSession(account),
+                  model.composerSendChannelID(in: model.commandDestination(in: channelID)) == channelID else { return }
+            model.runContextMenuCommand(command, targetID: targetID, in: channelID)
         }
         let item = NSMenuItem(title: command.displayName, action: #selector(NativeTimelineMenuAction.performAction), keyEquivalent: "")
         item.target = action

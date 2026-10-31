@@ -6,11 +6,11 @@ import SwiftUI
 
 private enum StickerPickerMetrics {
     static let columns = 3
-    static let cellWidth: CGFloat = 140
-    static let cellHeight: CGFloat = 126
-    static let previewSize: CGFloat = 110
-    static let gridSpacing: CGFloat = 8
-    static let rowSpacing: CGFloat = 6
+    static var cellWidth: CGFloat { InterfaceScale.metric(140) }
+    static var cellHeight: CGFloat { InterfaceScale.metric(126) }
+    static var previewSize: CGFloat { InterfaceScale.metric(110) }
+    static var gridSpacing: CGFloat { InterfaceScale.metric(8) }
+    static var rowSpacing: CGFloat { InterfaceScale.metric(6) }
 }
 
 private enum StickerPickerSectionID: Hashable, Identifiable {
@@ -86,7 +86,7 @@ private struct StickerPickerDocumentRow: Identifiable {
             )
         }
         // Preserve the plain List's eight-point horizontal content margin.
-        return EdgeInsets(top: 2, leading: 18, bottom: 2, trailing: 18)
+        return EdgeInsets(top: InterfaceScale.metric(2), leading: InterfaceScale.metric(18), bottom: InterfaceScale.metric(2), trailing: InterfaceScale.metric(18))
     }
 }
 
@@ -414,7 +414,7 @@ struct StickerPickerView: View {
                 interaction.synchronize(with: document.selectableCells)
             }
         }
-        .frame(width: ChatChromeMetrics.emojiPickerWidth, height: 420)
+        .frame(width: ChatChromeMetrics.emojiPickerWidth, height: InterfaceScale.metric(420))
         .onExitCommand {
             if document.query.isEmpty {
                 dismiss()
@@ -426,28 +426,28 @@ struct StickerPickerView: View {
     }
 
     private var hoverPreview: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: InterfaceScale.metric(8)) {
             if let item = interaction.item {
                 StickerPreview(sticker: item.sticker)
-                    .frame(width: 34, height: 34)
+                    .frame(width: InterfaceScale.metric(34), height: InterfaceScale.metric(34))
                 VStack(alignment: .leading, spacing: 1) {
                     Text(item.sticker.name)
-                        .font(.subheadline.weight(.semibold))
+                        .font(.interface(.subheadline).weight(.semibold))
                         .lineLimit(1)
                     Text(item.source)
-                        .font(.caption)
+                        .font(.interface(.caption))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
             } else {
                 Text("Choose a sticker")
-                    .font(.subheadline)
+                    .font(.interface(.subheadline))
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 10)
-        .frame(height: 46)
+        .padding(.horizontal, InterfaceScale.metric(10))
+        .frame(height: InterfaceScale.metric(46))
     }
 
     private func sidebar(proxy: NativePickerScrollPosition) -> some View {
@@ -472,7 +472,7 @@ struct StickerPickerView: View {
             }
             if !document.guilds.isEmpty {
                 if document.showsFavorites || document.showsFrequentlyUsed {
-                    Divider().frame(width: 28).padding(.vertical, 2)
+                    Divider().frame(width: InterfaceScale.metric(28)).padding(.vertical, InterfaceScale.metric(2))
                 }
                 ForEach(document.guilds) { guild in
                     PickerSectionBookmark(
@@ -486,7 +486,7 @@ struct StickerPickerView: View {
             }
             if !document.packs.isEmpty {
                 if document.showsFavorites || document.showsFrequentlyUsed || !document.guilds.isEmpty {
-                    Divider().frame(width: 28).padding(.vertical, 2)
+                    Divider().frame(width: InterfaceScale.metric(28)).padding(.vertical, InterfaceScale.metric(2))
                 }
                 ForEach(document.packs) { pack in
                     PickerSectionBookmark(
@@ -644,14 +644,14 @@ private struct StickerPickerDocumentView: View {
     @ViewBuilder private func rowContent(_ row: StickerPickerDocumentRow) -> some View {
         switch row.content {
         case .loading:
-            HStack(spacing: 8) {
+            HStack(spacing: InterfaceScale.metric(8)) {
                 ProgressView().controlSize(.small)
                 Text("Loading stickers…")
             }
             .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, minHeight: 70)
+            .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(70))
         case let .failure(error):
-            VStack(spacing: 8) {
+            VStack(spacing: InterfaceScale.metric(8)) {
                 Label("Couldn’t load stickers.", systemImage: "wifi.exclamationmark")
                 Button("Retry") { Task { await model.loadStickerPicker() } }
                     .buttonStyle(.link)
@@ -659,7 +659,7 @@ private struct StickerPickerDocumentView: View {
             }
             .help(error)
             .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, minHeight: 90)
+            .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(90))
         default:
             StickerPickerDocumentRowView(
                 row: row, interaction: interaction, isFavorite: document.isFavorite,
@@ -682,7 +682,7 @@ private struct StickerPickerDocumentRowView: View {
             switch row.content {
             case let .header(title, count):
                 EmojiPickerHeader(title: title, count: count)
-                    .padding(.top, 8)
+                    .padding(.top, InterfaceScale.metric(8))
             case let .stickers(cells):
                 HStack(spacing: StickerPickerMetrics.gridSpacing) {
                     ForEach(cells) { cell in
@@ -708,9 +708,9 @@ private struct StickerPickerDocumentRowView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
             case let .empty(message):
                 Text(message)
-                    .font(.callout)
+                    .font(.interface(.callout))
                     .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 42)
+                    .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(42))
             case .loading, .failure:
                 EmptyView()
             }
@@ -731,7 +731,7 @@ private struct StickerPackBookmarkIcon: View {
                 .accessibilityHidden(true)
         } else {
             Image(systemName: "square.stack.3d.up.fill")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.interfaceSystem(size: 15, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
         }
@@ -761,7 +761,7 @@ private struct StickerPickerButton: View {
                 )
             .frame(width: StickerPickerMetrics.cellWidth, height: StickerPickerMetrics.cellHeight)
             .background {
-                ConcentricRectangle(cornerRadius: 10, style: .continuous)
+                ConcentricRectangle(cornerRadius: InterfaceScale.metric(10), style: .continuous)
                     .fill(isSelected ? Color.primary.opacity(0.12) : .clear)
             }
         }
@@ -815,7 +815,7 @@ struct StickerPreview: View {
                 Image(systemName: "face.smiling")
                     .resizable()
                     .scaledToFit()
-                    .padding(15)
+                    .padding(InterfaceScale.metric(15))
                     .foregroundStyle(.secondary)
             }
         }

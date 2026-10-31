@@ -22,6 +22,15 @@ function releaseCopy(overrides = {}) {
 
 test("validates a pre-made release file against its tag", () => {
   assert.equal(validateReleaseCopy(releaseCopy(), "v0.1.2").tagName, "v0.1.2");
+  const hotfix = releaseCopy({
+    tagName: "v0.1.7-Beta-1",
+    discordAnnouncement: "**Server-tag crash fix 🌙**\n\nFixed a crash when server tags scrolled out of view.",
+  });
+  assert.equal(validateReleaseCopy(hotfix).discordAnnouncement, hotfix.discordAnnouncement);
+  assert.throws(
+    () => validateReleaseCopy({ ...hotfix, discordAnnouncement: "**Server-tag crash fix 🌙**" }),
+    /exactly one blank line/,
+  );
   assert.throws(() => validateReleaseCopy(releaseCopy(), "v0.1.3"), /not v0\.1\.3/);
   assert.throws(
     () => validateReleaseCopy({ ...releaseCopy(), generatedAt: "today" }),

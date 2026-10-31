@@ -7,18 +7,18 @@ struct InboxScheduledEventView: View {
     let model: AppModel
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .center, spacing: InterfaceScale.metric(12)) {
             Button { model.inbox.selectedEvent = event } label: {
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: InterfaceScale.metric(5)) {
                     Text(event.status == 2 ? "Happening Now" : event.startTime.formatted(date: .abbreviated, time: .shortened))
-                        .font(.caption).foregroundStyle(.secondary)
-                    Text(event.name).font(.headline).lineLimit(2)
+                        .font(.interface(.caption)).foregroundStyle(.secondary)
+                    Text(event.name).font(.interface(.headline)).lineLimit(2)
                     if let location = event.location {
-                        Text(location).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        Text(location).font(.interface(.caption)).foregroundStyle(.secondary).lineLimit(1)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(6)
+                .padding(InterfaceScale.metric(6))
                 .contentShape(Rectangle())
             }
             .buttonStyle(PopoverRowButtonStyle())
@@ -30,9 +30,9 @@ struct InboxScheduledEventView: View {
                 model.setInboxEventInterest(!event.isInterested, event: event)
             }
         }
-        .padding(.horizontal, 16)
-        .frame(height: 104)
-        .overlay(alignment: .bottom) { Divider().padding(.horizontal, 12) }
+        .padding(.horizontal, InterfaceScale.metric(16))
+        .frame(height: InboxRowMetrics.scheduledEventHeight)
+        .overlay(alignment: .bottom) { Divider().padding(.horizontal, InterfaceScale.metric(12)) }
     }
 }
 
@@ -43,11 +43,11 @@ struct InboxEventDetailsView: View {
 
     var body: some View {
         let event = model.inbox.selectedEvent ?? self.event
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(16)) {
             HStack {
-                Text(event.name).font(.title2.weight(.semibold))
+                Text(event.name).font(.interface(.title2).weight(.semibold))
                 Spacer()
-                HoverCloseButton(help: "Close", accessibilityIdentifier: "inbox-event-close", diameter: 28) { dismiss() }
+                HoverCloseButton(help: "Close", accessibilityIdentifier: "inbox-event-close", diameter: InterfaceScale.metric(28)) { dismiss() }
             }
             Text(event.startTime.formatted(date: .complete, time: .shortened)).foregroundStyle(.secondary)
             if let description = event.description, !description.isEmpty {
@@ -68,8 +68,8 @@ struct InboxEventDetailsView: View {
                 }.buttonStyle(.borderedProminent)
             }
         }
-        .padding(24)
-        .frame(width: 440)
+        .padding(InterfaceScale.metric(24))
+        .frame(width: InterfaceScale.metric(440))
     }
 }
 
@@ -78,7 +78,7 @@ extension NativeTimelineCanvasView {
         var desired: [ScheduledEventID: (InboxScheduledEvent, CGRect)] = [:]
         forEachDisplayedRow(in: visibleRect) { index in
             if case let .inboxEvent(event) = items[index] {
-                desired[event.id] = (event, CGRect(x: 0, y: displayedRowOrigin(at: index), width: bounds.width, height: 104))
+                desired[event.id] = (event, CGRect(x: 0, y: displayedRowOrigin(at: index), width: bounds.width, height: InboxRowMetrics.scheduledEventHeight))
             }
         }
         for id in Array(inboxEventHosts.keys) where desired[id] == nil {

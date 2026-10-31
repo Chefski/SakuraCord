@@ -22,13 +22,13 @@ struct ProfileCosmeticTileArtwork: View {
                 .overlay { if let frame { ProfileFrameOverlay(frame: frame, order: "front") } }
                 .overlay {
                     if kind == .frame, frame == nil {
-                        RoundedRectangle(cornerRadius: 15).strokeBorder(.secondary.opacity(0.4), style: StrokeStyle(lineWidth: 2, dash: [1, 3]))
-                            .padding(-7)
+                        RoundedRectangle(cornerRadius: InterfaceScale.metric(15)).strokeBorder(.secondary.opacity(0.4), style: StrokeStyle(lineWidth: 2, dash: [1, 3]))
+                            .padding(-InterfaceScale.metric(7))
                     }
                 }
                 .overlay {
                     if kind == .frame ? frame == nil : effect == nil {
-                        Image(systemName: "plus.circle.fill").font(.system(size: 24)).foregroundStyle(.secondary)
+                        Image(systemName: "plus.circle.fill").font(.interfaceSystem(size: 24)).foregroundStyle(.secondary)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
@@ -46,12 +46,12 @@ struct ProfileCosmeticTileArtwork: View {
             ZStack(alignment: .topLeading) {
                 Color.black.opacity(0.35)
                 Rectangle().fill(.white.opacity(0.06)).frame(height: geometry.size.height * 0.35)
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: InterfaceScale.metric(5)) {
                     Image(systemName: "person.crop.circle.fill")
                         .font(.system(size: geometry.size.width * 0.25))
-                        .padding(.bottom, 2)
+                        .padding(.bottom, InterfaceScale.metric(2))
                     ForEach([0.5, 0.76, 0.64, 0.3, 0.88], id: \.self) { fraction in
-                        Capsule().frame(width: geometry.size.width * fraction, height: 4)
+                        Capsule().frame(width: geometry.size.width * fraction, height: InterfaceScale.metric(4))
                     }
                 }
                 .foregroundStyle(.white.opacity(0.18))

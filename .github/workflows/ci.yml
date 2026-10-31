@@ -2,6 +2,8 @@ name: CI
 
 on:
   push:
+    branches: [main, nightly]
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
     inputs:
@@ -9,12 +11,23 @@ on:
         description: Existing stable or vMAJOR.MINOR.PATCH-Beta-NUMBER tag to publish or repair
         required: true
         type: string
+      hotfix_commit:
+        description: Optional full commit SHA for a quiet rebuild of the existing regular release (no Discord)
+        required: false
+        type: string
 
 permissions:
   contents: read
   actions: read
 
+# A newer commit supersedes an in-progress pull request run. Every other run
+# gets its own group so branch, tag, and release runs always finish.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('ci-pr-{0}', github.event.pull_request.number) || format('ci-run-{0}', github.run_id) }}
+  cancel-in-progress: true
+
 env:
+  SAKURACORD_HOTFIX_COMMIT: ${{ inputs.hotfix_commit }}
   CI_CONTROL_ROOT: ${{ github.event_name == 'workflow_dispatch' && 'release-control' || '.' }}
   SAKURACORD_RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
@@ -24,17 +37,18 @@ jobs:
     outputs:
       reused: ${{ steps.validation.outputs.reused }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.sha }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && (inputs.hotfix_commit || inputs.tag) || github.sha }}
       - name: Check out current release-control files
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: release-control
           ref: ${{ github.workflow_sha }}
       - name: Find successful validation of this commit
+        if: ${{ !inputs.hotfix_commit }}
         id: validation
         env:
           GH_TOKEN: ${{ github.token }}
@@ -44,14 +58,21 @@ jobs:
     needs: validation
     if: needs.validation.outputs.reused != 'true'
     runs-on: xcode-27
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [packages, protocol, media, app]
+    name: build (${{ matrix.suite }})
+    env:
+      SAKURACORD_STABLE_MTIMES: 1
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.sha }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && (inputs.hotfix_commit || inputs.tag) || github.sha }}
       - name: Check out current release-control files
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: release-control
           ref: ${{ github.workflow_sha }}
@@ -60,28 +81,49 @@ jobs:
           xcodebuild -downloadComponent MetalToolchain
           xcrun --sdk macosx metal --version
       - name: Cache SwiftPM dependencies
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: .codex-runtime/swiftpm-cache
-          key: swiftpm-${{ runner.os }}-${{ runner.arch }}-xcode-27-${{ hashFiles('App/Package.resolved', 'App/Package.swift', 'Packages/**/Package.swift') }}
+          key: swiftpm-${{ runner.os }}-${{ runner.arch }}-xcode-27-${{ matrix.suite }}-${{ hashFiles('App/Package.resolved', 'App/Package.swift', 'Packages/**/Package.swift') }}
           restore-keys: |
-            swiftpm-${{ runner.os }}-${{ runner.arch }}-xcode-27-
+            swiftpm-${{ runner.os }}-${{ runner.arch }}-xcode-27-${{ matrix.suite }}-
       - name: Restore SwiftPM build cache
         id: build-cache
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node "$CI_CONTROL_ROOT/script/ci_reuse.mjs" restore debug
+        run: node "$CI_CONTROL_ROOT/script/ci_reuse.mjs" restore ${{ matrix.suite }}
       - name: Verify checked-out commit
         if: github.event_name != 'workflow_dispatch'
         run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - name: Record clean compilation
+        if: steps.build-cache.outputs.restored == 'false'
+        run: echo 'No compiler outputs were restored; this suite can supply clean release validation.'
       - name: Build and test
         timeout-minutes: 30
-        run: ./script/ci.sh
+        run: ./script/ci.sh ${{ matrix.suite == 'packages' && 'packages-core' || matrix.suite }}
+      - name: Package downloadable pull request app and matching symbols
+        if: github.event_name == 'pull_request' && matrix.suite == 'app'
+        env:
+          # Public verification key; fork PRs cannot read repository variables.
+          SPARKLE_ED_PUBLIC_KEY: 'F2ZNDWO+vOWTt4PAfz69IFPpxJXfMn0AhG85Xx8m/k0='
+        run: ./script/package_pr_build.sh
+      - name: Upload pull request build
+        if: github.event_name == 'pull_request' && matrix.suite == 'app'
+        uses: actions/upload-artifact@v7
+        with:
+          name: pr-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            dist/pr-build/SakuraCord.app.zip
+            dist/pr-build/SakuraCord.dSYM.zip
+            dist/pr-build/build.json
+          compression-level: 0
+          retention-days: 90
+          if-no-files-found: error
       - name: Upload test diagnostics
         if: failure() || cancelled()
         uses: actions/upload-artifact@v7
         with:
-          name: test-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          name: test-diagnostics-${{ matrix.suite }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: .codex-runtime/test-diagnostics
           include-hidden-files: true
           retention-days: 7
@@ -90,14 +132,14 @@ jobs:
         id: cache-archive
         continue-on-error: true
         if: github.event_name == 'push' && (github.ref == 'refs/heads/nightly' || github.ref == 'refs/heads/main')
-        run: node "$CI_CONTROL_ROOT/script/ci_reuse.mjs" archive debug
+        run: node "$CI_CONTROL_ROOT/script/ci_reuse.mjs" archive ${{ matrix.suite }}
       - name: Save SwiftPM build cache
         continue-on-error: true
         if: (github.event_name == 'push' && (github.ref == 'refs/heads/nightly' || github.ref == 'refs/heads/main')) && steps.cache-archive.outcome == 'success'
         uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.build-cache.outputs.key }}
-          path: ${{ runner.temp }}/swiftpm-debug.tar
+          path: ${{ runner.temp }}/swiftpm-${{ matrix.suite }}.tar
           compression-level: 1
           retention-days: 7
           overwrite: true
@@ -109,13 +151,13 @@ jobs:
     outputs:
       published: ${{ steps.existing_release.outputs.published }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.sha }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && (inputs.hotfix_commit || inputs.tag) || github.sha }}
       - name: Check out current release-control files
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: release-control
           ref: ${{ github.workflow_sha }}
@@ -133,21 +175,21 @@ jobs:
             --output dist/release-copy.json \
             --notes-output dist/release-notes.md
       - name: Cache SwiftPM dependencies
-        if: steps.existing_release.outputs.published != 'true'
-        uses: actions/cache@v5
+        if: steps.existing_release.outputs.published != 'true' || inputs.hotfix_commit
+        uses: actions/cache@v6
         with:
           path: .codex-runtime/swiftpm-cache
           key: swiftpm-${{ runner.os }}-${{ runner.arch }}-xcode-27-${{ hashFiles('App/Package.resolved', 'App/Package.swift', 'Packages/**/Package.swift') }}
           restore-keys: |
             swiftpm-${{ runner.os }}-${{ runner.arch }}-xcode-27-
       - name: Restore SwiftPM build cache
-        if: steps.existing_release.outputs.published != 'true'
+        if: steps.existing_release.outputs.published != 'true' || inputs.hotfix_commit
         id: build-cache
         env:
           GH_TOKEN: ${{ github.token }}
         run: node "$CI_CONTROL_ROOT/script/ci_reuse.mjs" restore release
       - name: Validate Sparkle release secrets
-        if: steps.existing_release.outputs.published != 'true'
+        if: steps.existing_release.outputs.published != 'true' || inputs.hotfix_commit
         env:
           SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
           SPARKLE_ED_PUBLIC_KEY: ${{ secrets.SPARKLE_ED_PUBLIC_KEY }}
@@ -168,24 +210,24 @@ jobs:
             exit 1
           fi
       - name: Install Metal toolchain
-        if: steps.existing_release.outputs.published != 'true'
+        if: steps.existing_release.outputs.published != 'true' || inputs.hotfix_commit
         run: |
           xcodebuild -downloadComponent MetalToolchain
           xcrun --sdk macosx metal --version
       - name: Install DMG tooling
-        if: steps.existing_release.outputs.published != 'true'
+        if: steps.existing_release.outputs.published != 'true' || inputs.hotfix_commit
         run: |
           python3 -m venv "$RUNNER_TEMP/dmgbuild"
           "$RUNNER_TEMP/dmgbuild/bin/pip" install "dmgbuild==1.6.7"
           echo "DMGBUILD=$RUNNER_TEMP/dmgbuild/bin/dmgbuild" >> "$GITHUB_ENV"
       - name: Package DMG
-        if: steps.existing_release.outputs.published != 'true'
+        if: steps.existing_release.outputs.published != 'true' || inputs.hotfix_commit
         env:
           SAKURACORD_ENABLE_UPDATES: 1
           SPARKLE_ED_PUBLIC_KEY: ${{ secrets.SPARKLE_ED_PUBLIC_KEY }}
         run: ./script/package_dmg.sh
       - name: Generate and validate signed Sparkle appcast
-        if: steps.existing_release.outputs.published != 'true'
+        if: steps.existing_release.outputs.published != 'true' || inputs.hotfix_commit
         env:
           SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
           SPARKLE_ED_PUBLIC_KEY: ${{ secrets.SPARKLE_ED_PUBLIC_KEY }}
@@ -193,7 +235,7 @@ jobs:
           ./script/generate_appcast.sh \
             "$SAKURACORD_DMG_PATH" dist/appcast.xml dist/release-notes.md
       - name: Upload verified release assets
-        if: steps.existing_release.outputs.published != 'true'
+        if: steps.existing_release.outputs.published != 'true' || inputs.hotfix_commit
         uses: actions/upload-artifact@v7
         with:
           name: release-assets
@@ -236,13 +278,13 @@ jobs:
       contents: write
       actions: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.sha }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && (inputs.hotfix_commit || inputs.tag) || github.sha }}
       - name: Check out current release-control files
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: release-control
           ref: ${{ github.workflow_sha }}
@@ -260,21 +302,27 @@ jobs:
             --output dist/release-copy.json \
             --notes-output dist/release-notes.md
       - name: Require packaged assets for unpublished release
-        if: steps.existing_release.outputs.published != 'true'
+        if: steps.existing_release.outputs.published != 'true' || inputs.hotfix_commit
         env:
           PACKAGE_WAS_PUBLISHED: ${{ needs.package.outputs.published }}
         run: |
-          if [[ "$PACKAGE_WAS_PUBLISHED" == "true" ]]; then
+          if [[ "$PACKAGE_WAS_PUBLISHED" == "true" && -z "$SAKURACORD_HOTFIX_COMMIT" ]]; then
             echo "Release was removed after packaging was skipped; rerun the workflow." >&2
             exit 1
           fi
       - name: Download verified release assets
-        if: steps.existing_release.outputs.published != 'true'
+        if: steps.existing_release.outputs.published != 'true' || inputs.hotfix_commit
         uses: actions/download-artifact@v8
         with:
           name: release-assets
           path: dist
+      - name: Publish quiet hotfix to the existing release
+        if: inputs.hotfix_commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node "$SAKURACORD_RELEASE_CONTROL_ROOT/script/release_hotfix.mjs" publish
       - name: Publish or repair GitHub release
+        if: ${{ !inputs.hotfix_commit }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -305,13 +353,13 @@ jobs:
             gh release edit "$SAKURACORD_RELEASE_TAG" --draft=false
           fi
       - name: Verify published release assets
-        if: steps.existing_release.outputs.published != 'true'
+        if: steps.existing_release.outputs.published != 'true' || inputs.hotfix_commit
         run: |
           published_appcast="$RUNNER_TEMP/published-appcast.xml"
           published_dmg="$RUNNER_TEMP/published.dmg"
           release_prefix="https://github.com/$GITHUB_REPOSITORY/releases/download/$SAKURACORD_RELEASE_TAG"
           curl --fail --location --retry 5 --retry-all-errors --retry-delay 2 \
-            --output "$published_appcast" "$release_prefix/appcast.xml"
+            --output "$published_appcast" "$release_prefix/appcast.xml?run=$GITHUB_RUN_ID"
           cmp dist/appcast.xml "$published_appcast"
           enclosure_url="$(
             xmllint --xpath \
@@ -319,7 +367,7 @@ jobs:
               "$published_appcast"
           )"
           curl --fail --location --retry 5 --retry-all-errors --retry-delay 2 \
-            --output "$published_dmg" "$enclosure_url"
+            --output "$published_dmg" "$enclosure_url?run=$GITHUB_RUN_ID"
           cmp "$SAKURACORD_DMG_PATH" "$published_dmg"
       - name: Resolve the published release
         id: published_release
@@ -347,6 +395,7 @@ jobs:
           echo "id=$(jq -r .databaseId <<< "$release_json")" >> "$GITHUB_OUTPUT"
           echo "url=$(jq -r .url <<< "$release_json")" >> "$GITHUB_OUTPUT"
       - name: Send or update the pre-made Discord release announcement
+        if: ${{ !inputs.hotfix_commit }}
         env:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_RELEASE_CHANNEL_ID: ${{ secrets.DISCORD_RELEASE_CHANNEL_ID }}

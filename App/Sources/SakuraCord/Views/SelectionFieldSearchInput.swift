@@ -19,7 +19,7 @@ struct SelectionFieldSearchInput: NSViewRepresentable {
         field.delegate = context.coordinator
         field.isBordered = false
         field.drawsBackground = false
-        field.font = .systemFont(ofSize: ChatChromeMetrics.pickerSearchHeaderFontSize)
+        field.font = .interfaceSystemFont(ofSize: ChatChromeMetrics.pickerSearchHeaderFontSize)
         field.focusRingType = .none
         field.isAutomaticTextCompletionEnabled = false
         field.allowsWritingTools = false
@@ -35,6 +35,8 @@ struct SelectionFieldSearchInput: NSViewRepresentable {
         coordinator.parent = self
         field.placeholderString = placeholder
         field.setAccessibilityLabel(placeholder)
+        let font = NSFont.interfaceSystemFont(ofSize: ChatChromeMetrics.pickerSearchHeaderFontSize)
+        if field.font != font { field.font = font }
         field.isEditable = searches
         field.isSelectable = searches
         if field.stringValue != query { field.stringValue = query }

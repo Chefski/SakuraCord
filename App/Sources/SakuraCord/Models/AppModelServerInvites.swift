@@ -19,7 +19,6 @@ final class ServerInvitePresentationStore {
     var joining: Set<GuildID> = []
     var leaving: Set<GuildID> = []
     var expanded: Set<ServerInviteReference> = []
-    let captcha = ServerInviteCaptchaStore()
     let creation = ServerInviteCreationStore()
     var showsJoinDialog = false
     var leaveConfirmation: Guild?
@@ -35,7 +34,6 @@ final class ServerInvitePresentationStore {
     }
 
     func reset() {
-        captcha.cancel()
         creation.reset()
         entries = [:]
         joining = []
@@ -56,6 +54,8 @@ extension AppModel {
         for guildID in previous.keys where serverRailGuildsByID[guildID] == nil {
             onboarding.entries[guildID] = nil
             onboarding.members[guildID] = nil
+            onboarding.timeoutExpiryTasks.removeValue(forKey: guildID)?.cancel()
+            onboarding.timeoutRevisions[guildID] = nil
             onboarding.guides[guildID] = nil
             onboarding.channelSelections[guildID] = nil
             if onboarding.presentedGuildID == guildID { onboarding.presentedGuildID = nil }
@@ -142,10 +142,7 @@ extension AppModel {
             }
         }
         do {
-            let accepted = try await session.provider.acceptServerInvite(reference, messageID: messageID) { [weak self] challenge in
-                guard let self else { throw CancellationError() }
-                return try await self.solveInviteCaptcha(challenge, account: session)
-            }
+            let accepted = try await session.provider.acceptServerInvite(reference, messageID: messageID)
             guard isCurrentAccountSession(session), !Task.isCancelled else { return false }
             store.entries[reference]?.invite = accepted.invite
             if accepted.requiresVerification {
@@ -162,30 +159,31 @@ extension AppModel {
     }
 
     private func finishJoiningInvite(_ invite: ServerInvite, account session: AppModelAccountSession) async throws -> Bool {
+        guard let guild = try await awaitJoinedGuild(invite.guildID, account: session) else { return false }
+        // The onboarding workspace replaces the rail's presentation
+        // host. Close its shared state before that host is recreated.
+        serverInvites.showsJoinDialog = false
+        navigateToInvite(invite)
+        if guild.features.contains("GUILD_ONBOARDING") { openChannelsAndRoles(in: guild.id) }
+        loadServerInvite(invite.reference, refresh: true)
+        return true
+    }
+
+    /// Returns `nil` when the account session ended while waiting.
+    func awaitJoinedGuild(_ guildID: GuildID, account session: AppModelAccountSession) async throws -> Guild? {
         // Gateway may arrive before or after REST. Wait only for local reconciliation; never repeat the write.
         for _ in 0 ..< 80 {
-            guard isCurrentAccountSession(session), !Task.isCancelled else { return false }
+            guard isCurrentAccountSession(session), !Task.isCancelled else { return nil }
             // A joined server can legitimately have no channels visible to this member.
-            if let guild = serverRailGuildsByID[invite.guildID], !guild.isUnavailable {
+            if let guild = serverRailGuildsByID[guildID], !guild.isUnavailable {
                 if conversationPermissionBasis(for: guild.id)?.currentUserIsPending == true {
                     throw ServerInviteError.unsupported("This server requires member verification. Finish verification in Discord.")
                 }
-                // The onboarding workspace replaces the rail's presentation
-                // host. Close its shared state before that host is recreated.
-                serverInvites.showsJoinDialog = false
-                navigateToInvite(invite)
-                if guild.features.contains("GUILD_ONBOARDING") { openChannelsAndRoles(in: guild.id) }
-                loadServerInvite(invite.reference, refresh: true)
-                return true
+                return guild
             }
             try await Task.sleep(for: .milliseconds(250))
         }
-        throw ServerInviteError.failed("Discord accepted the invite, but server details have not arrived yet. Reconnect and check your server list before trying again.")
-    }
-
-    private func solveInviteCaptcha(_ challenge: DiscordCaptchaChallenge, account: AppModelAccountSession) async throws -> String {
-        guard isCurrentAccountSession(account) else { throw CancellationError() }
-        return try await serverInvites.captcha.solution(for: challenge)
+        throw ServerInviteError.failed("Discord accepted the join, but server details have not arrived yet. Reconnect and check your server list before trying again.")
     }
 
     private func navigateToInvite(_ invite: ServerInvite) {

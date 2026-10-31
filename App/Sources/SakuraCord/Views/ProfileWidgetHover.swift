@@ -2,7 +2,7 @@ import SwiftUI
 
 struct CompactProfileWidgetHover: ViewModifier {
     var backgroundOpacity = 0.035
-    var cornerRadius: CGFloat = 10
+    var cornerRadius: CGFloat = InterfaceScale.metric(10)
     @Environment(\.isEnabled) private var isEnabled
     @State private var isHovered = false
 

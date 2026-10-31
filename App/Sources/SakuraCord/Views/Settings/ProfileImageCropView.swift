@@ -31,21 +31,21 @@ struct ProfileImageCropView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Edit Image", bundle: #bundle).font(.title2.bold())
+                Text("Edit Image", bundle: #bundle).font(.interface(.title2).bold())
                 Spacer()
                 HoverCloseButton(help: "Close", accessibilityIdentifier: "profile-editor-close", action: cancel)
             }
-            .padding(24)
+            .padding(InterfaceScale.metric(24))
             cropViewport
                 .scaleEffect(viewportScale, anchor: .topLeading)
                 .frame(width: 432 * viewportScale, height: 350 * viewportScale, alignment: .topLeading)
-                .padding(.horizontal, 24)
-            HStack(spacing: 8) {
+                .padding(.horizontal, InterfaceScale.metric(24))
+            HStack(spacing: InterfaceScale.metric(8)) {
                 Spacer()
-                Image(systemName: "photo").font(.caption).accessibilityHidden(true)
+                Image(systemName: "photo").font(.interface(.caption)).accessibilityHidden(true)
                 Slider(value: Binding(get: { geometry.zoom }, set: { geometry.setZoom($0) }), in: 1 ... 2, step: 0.025,
                        onEditingChanged: { if $0 { focusedControl = .zoom } })
-                    .frame(width: 128)
+                    .frame(width: InterfaceScale.metric(128))
                     .accessibilityLabel("Zoom")
                     .accessibilityValue("\(Int(geometry.zoom * 100)) percent")
                     .focusable(interactions: .edit)
@@ -56,20 +56,20 @@ struct ProfileImageCropView: View {
                         geometry.setZoom(geometry.zoom + (increases ? 0.025 : -0.025))
                         return .handled
                     }
-                Image(systemName: "photo").font(.title2).accessibilityHidden(true)
+                Image(systemName: "photo").font(.interface(.title2)).accessibilityHidden(true)
                 Spacer()
                 Button("Rotate Clockwise", systemImage: "rotate.right") { geometry.rotate() }
                     .labelStyle(.iconOnly)
                     .buttonStyle(.plain)
-                    .font(.title2)
+                    .font(.interface(.title2))
             }
-            .padding(.horizontal, 30)
-            .padding(.vertical, 16)
+            .padding(.horizontal, InterfaceScale.metric(30))
+            .padding(.vertical, InterfaceScale.metric(16))
             .disabled(isProcessing)
             Divider()
             if !canApply {
                 Label("This profile image requires Nitro.", systemImage: "sparkles")
-                    .font(.callout).padding(.top, 16)
+                    .font(.interface(.callout)).padding(.top, InterfaceScale.metric(16))
             }
             HStack {
                 Button("Reset") { geometry.reset() }.disabled(!geometry.hasEdits || isProcessing)
@@ -83,7 +83,7 @@ struct ProfileImageCropView: View {
                 .keyboardShortcut(.defaultAction)
             }
             .controlSize(.large)
-            .padding(24)
+            .padding(InterfaceScale.metric(24))
         }
         .windowModalSize(width: 480)
         .defaultFocus($focusedControl, .crop)
@@ -96,7 +96,11 @@ struct ProfileImageCropView: View {
     }
 
     private var viewportScale: CGFloat {
-        min(1, max(1, availableSize.width - 48) / 432, max(1, availableSize.height - 240) / 350)
+        min(
+            1,
+            max(1, availableSize.width - InterfaceScale.metric(48)) / 432,
+            max(1, availableSize.height - InterfaceScale.metric(240)) / 350
+        )
     }
 
     private var cropViewport: some View {
@@ -115,9 +119,11 @@ struct ProfileImageCropView: View {
                 .frame(width: geometry.cropSize.width, height: geometry.cropSize.height)
                 .allowsHitTesting(false)
         }
+        // Crop geometry and export use this fixed coordinate space;
+        // `viewportScale` fits the whole editor to the available size.
         .frame(width: 432, height: 350)
         .clipped()
-        .clipShape(ConcentricRectangle(cornerRadius: 8))
+        .clipShape(ConcentricRectangle(cornerRadius: InterfaceScale.metric(8)))
         .contentShape(Rectangle())
         .gesture(DragGesture(minimumDistance: 0).onChanged { value in
             focusedControl = .crop

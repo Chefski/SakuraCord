@@ -43,6 +43,22 @@ struct MediaViewerStage: View {
                 .padding(.horizontal, horizontalInset)
                 .padding(.top, topInset)
                 .padding(.bottom, bottomInset)
+            case let .youtube(playback):
+                GeometryReader { proxy in
+                    let fittedSize = MediaViewerLayoutPolicy.fittedSize(
+                        mediaWidth: item.width ?? 16, mediaHeight: item.height ?? 9,
+                        availableSize: proxy.size
+                    )
+                    if isVisible {
+                        YouTubePlayerView(playback: playback, openInBrowser: MediaViewerActionService.openInBrowser)
+                            .id(playback)
+                            .frame(width: fittedSize.width, height: fittedSize.height)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                }
+                .padding(.horizontal, horizontalInset)
+                .padding(.top, topInset)
+                .padding(.bottom, bottomInset)
             case .audio:
                 MediaViewerAudio(title: item.title, url: item.url)
                     .padding(.horizontal, horizontalInset)
@@ -354,7 +370,7 @@ private struct MediaViewerTransitionImage: View {
             ZStack {
                 Image(nsImage: source.image)
                     .resizable()
-                    .aspectRatio(contentMode: .fit)
+                    .scaledToFit()
 
                 if presentsRemoteImage {
                     AnimatedRemoteImage(
@@ -599,21 +615,21 @@ private struct MediaViewerAudio: View {
     let url: URL
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: InterfaceScale.metric(14)) {
             Image(systemName: "waveform.circle.fill")
-                .font(.system(size: 52))
+                .font(.interfaceSystem(size: 52))
                 .foregroundStyle(.secondary)
             Text(title)
-                .font(.headline)
+                .font(.interface(.headline))
                 .lineLimit(1)
             ViewerAVPlayer(url: url)
-                .frame(height: 74)
+                .frame(height: InterfaceScale.metric(74))
         }
-        .padding(24)
-        .frame(width: 560)
+        .padding(InterfaceScale.metric(24))
+        .frame(width: InterfaceScale.metric(560))
         .glassEffect(
             .regular,
-            in: ConcentricRectangle(cornerRadius: 24, style: .continuous)
+            in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(24), style: .continuous)
         )
     }
 }
@@ -623,22 +639,22 @@ private struct MediaViewerFile: View {
     let open: () -> Void
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: InterfaceScale.metric(16)) {
             Image(systemName: "doc.fill")
-                .font(.system(size: 56))
+                .font(.interfaceSystem(size: 56))
                 .foregroundStyle(.secondary)
             Text(title)
-                .font(.title3.weight(.semibold))
+                .font(.interface(.title3).weight(.semibold))
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
             Button("Open File…", systemImage: "arrow.up.forward.app", action: open)
                 .buttonStyle(.glassProminent)
         }
-        .padding(30)
-        .frame(width: 420)
+        .padding(InterfaceScale.metric(30))
+        .frame(width: InterfaceScale.metric(420))
         .glassEffect(
             .regular,
-            in: ConcentricRectangle(cornerRadius: 24, style: .continuous)
+            in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(24), style: .continuous)
         )
     }
 }

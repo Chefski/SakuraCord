@@ -3,19 +3,38 @@ import Foundation
 nonisolated extension SettingsCatalog {
     static let interfacePage = page(
         .interface, group: .preferences, title: "Appearance", image: "circle.lefthalf.filled",
-        help: "Choose message appearance, input bar icons, and timestamps.",
-        keywords: ["messages", "bubbles", "density", "composer", "input bar", "clock", "timestamp"]
+        help: "Choose interface size, message appearance, input bar icons, and timestamps.",
+        keywords: ["messages", "bubbles", "density", "composer", "input bar", "clock", "timestamp", "zoom", "size"]
     )
 
     static let interfaceControls: [SettingsControlMetadata] = [
         control(
+            .interfaceSize,
+            page: .interface,
+            section: .interfaceSize,
+            label: "Interface size",
+            help: "Make text, icons, and controls throughout SakuraCord smaller or larger.",
+            keywords: ["zoom", "scale", "text size", "font size", "larger", "smaller", "readability"],
+            scope: .appWideLocal
+        ),
+        control(
             .messageAppearance,
             page: .interface,
             section: .interfaceMessages,
-            label: "Messages",
-            help: "Choose SakuraCord's default message layout or conversation bubbles.",
+            label: "Server channels",
+            help: "Choose the message layout for server channels and threads.",
             keywords: ["messages", "bubbles", "iMessage", "chat", "layout", "default"],
             scope: .appWideLocal
+        ),
+        control(
+            .directMessageAppearance, page: .interface, section: .interfaceMessages,
+            label: "Direct messages", help: "Choose the message layout for one-to-one conversations.",
+            keywords: ["DM", "private", "bubbles", "default", "layout"], scope: .appWideLocal
+        ),
+        control(
+            .groupMessageAppearance, page: .interface, section: .interfaceMessages,
+            label: "Group chats", help: "Choose the message layout for group direct messages.",
+            keywords: ["group DM", "bubbles", "default", "layout"], scope: .appWideLocal
         ),
         control(
             .messageDensity,

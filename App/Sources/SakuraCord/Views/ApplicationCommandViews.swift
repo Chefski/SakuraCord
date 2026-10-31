@@ -37,14 +37,14 @@ struct ApplicationCommandPickerView: View {
                                 }
                             )
                             if section.kind == .frequentlyUsed {
-                                Divider().frame(width: 28).padding(.vertical, 2)
+                                Divider().frame(width: InterfaceScale.metric(28)).padding(.vertical, InterfaceScale.metric(2))
                             }
                         }
                     }
                     Divider()
                 }
                 if sections.isEmpty {
-                    status.frame(maxWidth: .infinity, minHeight: 64)
+                    status.frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(64))
                 } else {
                     NativePickerDocument(
                         rows: composer.pickerDocumentRows,
@@ -69,7 +69,7 @@ struct ApplicationCommandPickerView: View {
                         content: { _ in EmptyView() }
                     )
                     .frame(height: min(348, composer.pickerDocumentHeight))
-                    .padding(.horizontal, 6)
+                    .padding(.horizontal, InterfaceScale.metric(6))
                 }
             }
             .onChange(of: composer.pickerKeyboardSelectionRevision) { _, _ in
@@ -89,7 +89,7 @@ struct ApplicationCommandPickerView: View {
 
     @ViewBuilder private var status: some View {
         if composer.isLoading {
-            HStack(spacing: 8) { InteractionLoadingDotsView(); Text("Loading commands…") }
+            HStack(spacing: InterfaceScale.metric(8)) { InteractionLoadingDotsView(); Text("Loading commands…") }
                 .foregroundStyle(.secondary)
         } else if let error = composer.loadError {
             Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.secondary)
@@ -118,10 +118,10 @@ struct ApplicationCommandComposerBadge: View {
     var body: some View {
         Button(action: cancel) {
             ZStack {
-                CommandApplicationIcon(application: command.application, size: 24)
+                CommandApplicationIcon(application: command.application, size: InterfaceScale.metric(24))
                     .opacity(isHovered ? 0 : 1)
                 Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.interfaceSystem(size: 11, weight: .bold))
                     .foregroundStyle(.secondary)
                     .opacity(isHovered ? 1 : 0)
             }

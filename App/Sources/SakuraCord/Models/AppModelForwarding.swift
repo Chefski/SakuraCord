@@ -18,7 +18,11 @@ extension AppModel {
         case .quickSwitcherUserIDsChanged(let userIDs):
             updateForwardSnapshot { $0.quickSwitcherUserIDs = userIDs }
         case .messageSearchUsersChanged(let users):
-            updateForwardSnapshot { $0.messageSearchUsers = users }
+            // Only message search reads this cache, so the forwarding and quick
+            // switcher index revision stays put.
+            guard snapshotStorage != nil else { break }
+            snapshotStorage?.messageSearchUsers = users
+            refreshSearchSnapshotPresentation()
         case .userSearchAliasesChanged(let aliases):
             updateForwardSnapshot { $0.userSearchAliasesByUserID = aliases }
         case .quickSwitcherGuildMemberUserIDsChanged(let userIDsByGuildID):
@@ -27,18 +31,24 @@ extension AppModel {
             updateForwardSnapshot { $0.quickSwitcherJoinedGuildMemberUserIDs = userIDsByGuildID }
         case .quickSwitcherGuildMemberAliasesChanged(let aliasesByGuildID):
             updateForwardSnapshot { $0.quickSwitcherGuildMemberAliases = aliasesByGuildID }
+        case .relationshipsChanged(let relationships):
+            applyRelationships(relationships)
+        case let .relationshipPresencesChanged(presences, isComplete):
+            applyRelationshipPresences(presences, isComplete: isComplete)
         default:
             return false
         }
         return true
     }
 
+    // Search caches invalidate search consumers without rebuilding workspace chrome.
     private func updateForwardSnapshot(
         _ update: (inout BootstrapSnapshot) -> Void
     ) {
-        guard var value = snapshot else { return }
+        guard var value = snapshotStorage else { return }
         update(&value)
-        snapshot = value
+        snapshotStorage = value
+        refreshSearchSnapshotPresentation()
         forwardSearchSourceRevision &+= 1
     }
 
@@ -69,11 +79,11 @@ extension AppModel {
             return
         }
         forwardDestinationHistory = Array(
-            (UserDefaults.standard.stringArray(forKey: historyKey) ?? [])
+            (PRBuildProfile.defaults.stringArray(forKey: historyKey) ?? [])
                 .compactMap(ChannelID.init)
                 .prefix(8)
         )
-        if let data = UserDefaults.standard.data(forKey: discordFrecencyUsageDeltasDefaultsKey),
+        if let data = PRBuildProfile.defaults.data(forKey: discordFrecencyUsageDeltasDefaultsKey),
            let value = try? JSONDecoder().decode(
                [String: DiscordFrecencyUsage].self,
                from: data
@@ -97,7 +107,7 @@ extension AppModel {
             visiting: channelID
         )
         guard launchMode == .normal else { return }
-        UserDefaults.standard.set(
+        PRBuildProfile.defaults.set(
             forwardDestinationHistory.map(\.description),
             forKey: forwardDestinationHistoryDefaultsKey
         )
@@ -192,7 +202,7 @@ extension AppModel {
         delta.recentUses = Array(delta.recentUses.suffix(10))
         persistedDiscordFrecencyUsageDeltas[key] = delta
         if let data = try? JSONEncoder().encode(persistedDiscordFrecencyUsageDeltas) {
-            UserDefaults.standard.set(data, forKey: discordFrecencyUsageDeltasDefaultsKey)
+            PRBuildProfile.defaults.set(data, forKey: discordFrecencyUsageDeltasDefaultsKey)
         }
     }
 
@@ -437,6 +447,7 @@ extension AppModel {
                     channelID: destinationID, content: context
                 ))
                 guard isCurrentAccountSession(session) else { return nil }
+                recordMessageEmojiUsage(context)
                 confirmSlowmodeMessage(confirmedContext)
             }
             return nil

@@ -3,7 +3,7 @@ import SakuraCordModels
 import SwiftUI
 
 struct ProfileNameStylePicker: View {
-    static let popoverSize = CGSize(width: 380, height: 500)
+    static var popoverSize: CGSize { CGSize(width: InterfaceScale.metric(380), height: InterfaceScale.metric(500)) }
 
     let editor: ProfileEditorState
     @Environment(\.colorScheme) private var colorScheme
@@ -16,30 +16,30 @@ struct ProfileNameStylePicker: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(16)) {
                 ProfileDisplayName(name: profile?.displayName ?? "", style: profile?.user.displayNameStyle, size: 24, wraps: true)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(12)
-                    .frame(maxWidth: .infinity, minHeight: 52)
-                    .background(Color.primary.opacity(0.045), in: .rect(cornerRadius: 8))
+                    .padding(InterfaceScale.metric(12))
+                    .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(52))
+                    .background(Color.primary.opacity(0.045), in: .rect(cornerRadius: InterfaceScale.metric(8)))
                     fontOptions
                     effectOptions
                     HStack {
-                        Text("Colors", bundle: #bundle).font(.subheadline)
+                        Text("Colors", bundle: #bundle).font(.interface(.subheadline))
                         Spacer()
                         ProfileStyleColorOptions(style: Binding(get: { style }, set: { setStyle($0) }), darkAppearance: darkAppearance)
                     }
             }
         }
-        .padding(16)
+        .padding(InterfaceScale.metric(16))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .disabled(editor.isLoading || editor.isSaving || editor.requiresReload || editor.isResolvingScope)
     }
 
     private var fontOptions: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Font", bundle: #bundle).font(.subheadline)
-            LazyVGrid(columns: columns, spacing: 6) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(8)) {
+            Text("Font", bundle: #bundle).font(.interface(.subheadline))
+            LazyVGrid(columns: columns, spacing: InterfaceScale.metric(6)) {
                 ForEach(DiscordProfileNameStyles.catalog.fonts) { font in
                     ProfileNameStyleOption(label: font.id == ProfileNameFontCache.defaultFontID ? String(localized: "Default", bundle: #bundle) : font.name,
                                            isSelected: style.fontID == font.id) {
@@ -56,9 +56,9 @@ struct ProfileNameStylePicker: View {
     }
 
     private var effectOptions: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Effect", bundle: #bundle).font(.subheadline)
-            LazyVGrid(columns: columns, spacing: 6) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(8)) {
+            Text("Effect", bundle: #bundle).font(.interface(.subheadline))
+            LazyVGrid(columns: columns, spacing: InterfaceScale.metric(6)) {
                 ForEach(ProfileNameEffect.allCases) { effect in
                     let selected = style.effectID == effect.rawValue
                     ProfileNameStyleOption(label: String(localized: effect.title), isSelected: selected) {
@@ -73,7 +73,7 @@ struct ProfileNameStylePicker: View {
     }
 
     private var columns: [GridItem] {
-        Array(repeating: GridItem(.flexible(), spacing: 6), count: 4)
+        Array(repeating: GridItem(.flexible(), spacing: InterfaceScale.metric(6)), count: 4)
     }
 
     private func style(for effect: ProfileNameEffect) -> DisplayNameStyle {
@@ -103,18 +103,18 @@ private struct ProfileNameStyleOption<Content: View>: View {
     var body: some View {
         Button(action: action) {
             Color.primary.opacity(isHovered ? 0.09 : 0.045)
-                .frame(height: 52)
+                .frame(height: InterfaceScale.metric(52))
                 .overlay {
                     content()
-                        .padding(.horizontal, 6)
+                        .padding(.horizontal, InterfaceScale.metric(6))
                         .allowsHitTesting(false)
                 }
-                .clipShape(.rect(cornerRadius: 8))
+                .clipShape(.rect(cornerRadius: InterfaceScale.metric(8)))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 8)
+                    RoundedRectangle(cornerRadius: InterfaceScale.metric(8))
                         .stroke(isSelected ? SakuraCordAccentColor.color : Color.primary.opacity(0.1), lineWidth: 1)
                 }
-                .contentShape(.rect(cornerRadius: 8))
+                .contentShape(.rect(cornerRadius: InterfaceScale.metric(8)))
         }
         .buttonStyle(.plain)
         .onModalHover { isHovered = $0 }

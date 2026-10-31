@@ -349,8 +349,7 @@ import Testing
     #expect(directGuild == jsonGuild)
     #expect(directReady.guilds.first?.channels.map(\.id) == ["101"])
     #expect(directReady.guilds.first?.members.map(\.user.username) == ["member"])
-    #expect(directReady.friendUserIDs == jsonReady.friendUserIDs)
-    #expect(directReady.relationshipNicknamesByUserID == jsonReady.relationshipNicknamesByUserID)
+    #expect(directReady.relationships == jsonReady.relationships)
     #expect(directReady.users.map(\.id) == jsonReady.users.map(\.id))
 }
 
@@ -377,8 +376,8 @@ import Testing
     let userDTO = try #require(ready.users.first)
     let user = try userDTO.domain()
 
-    #expect(ready.friendUserIDs == [UserID(rawValue: 200)])
-    #expect(ready.relationshipNicknamesByUserID[UserID(rawValue: 200)]
+    #expect(ready.relationships[UserID(rawValue: 200)]?.type == .friend)
+    #expect(ready.relationships[UserID(rawValue: 200)]?.nickname
         == "USERNAME THIEF!!!")
     #expect(user.tag == "legacy-bot#8860")
 }
@@ -561,7 +560,7 @@ import Testing
                 "emojis":{
                     "op":"full_sync",
                     "items":[
-                        {"id":"200","name":"wave","animated":true,"available":true,"managed":true},
+                        {"id":"200","name":"wave","animated":true,"available":true,"managed":true,"roles":["300"]},
                         {"future_shape":true}
                     ]
                 }
@@ -584,9 +583,11 @@ import Testing
     #expect(emoji.guildID == GuildID(rawValue: 100))
     #expect(emoji.isAnimated)
     #expect(emoji.isManaged)
+    #expect(emoji.roleIDs == [RoleID(rawValue: 300)])
     #expect(try JSONDecoder().decode(DiscordEmoji.self, from: JSONEncoder().encode(emoji)) == emoji)
     let oldCache = Data(#"{"id":"200","name":"wave","isAnimated":true,"guildID":"100","isAvailable":true}"#.utf8)
     #expect(try !JSONDecoder().decode(DiscordEmoji.self, from: oldCache).isManaged)
+    #expect(try JSONDecoder().decode(DiscordEmoji.self, from: oldCache).roleIDs.isEmpty)
 
     let createData = Data(#"""
     {

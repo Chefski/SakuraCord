@@ -144,11 +144,11 @@ import Testing
         isHighlighted: false
     )
 
-    let original = NativeTimelineRowLayout.make(item: item, width: 620, model: model)
+    let original = NativeTimelineRowLayout.make(item: item, width: 620, source: model)
     var settings = AccessibilitySettingsSnapshot.defaults
     settings.underlinesLinks = true
     model.applyAccessibilitySettings(settings, persists: false)
-    let layout = NativeTimelineRowLayout.make(item: item, width: 620, model: model)
+    let layout = NativeTimelineRowLayout.make(item: item, width: 620, source: model)
     #expect(layout.height == original.height)
     #expect(layout.contentFrame == original.contentFrame)
     let content = try #require(layout.attributedContent)
@@ -163,7 +163,10 @@ import Testing
 @MainActor
 @Test func `Interface catalog exposes every control and required search synonym`() {
     let expected: Set<SettingsControlID> = [
+        .interfaceSize,
         .messageAppearance,
+        .directMessageAppearance,
+        .groupMessageAppearance,
         .messageDensity,
         .composerBarAppearance,
         .resetMessageAppearance,
@@ -185,6 +188,8 @@ import Testing
         ("roles", .roleColorDisplay),
         ("bubbles", .messageAppearance),
         ("density", .messageDensity),
+        ("zoom", .interfaceSize),
+        ("text size", .interfaceSize),
         ("input bar", .composerBarAppearance),
         ("defaults", .resetMessageAppearance),
     ]

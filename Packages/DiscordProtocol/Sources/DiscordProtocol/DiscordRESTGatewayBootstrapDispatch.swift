@@ -73,6 +73,12 @@ extension DiscordRESTProvider {
                 "GatewayReadyApplication", interval
             )
         }
+        let previousForumPosts = (posts: cachedForumPosts, order: cachedForumThreadOrder)
+        // READY clears every retained thread's membership and drops the rest,
+        // so a lookup that overlapped it cannot restore the previous member.
+        for threadID in previousForumPosts.posts.values.flatMap(\.keys) {
+            advanceThreadMembershipRevision(threadID)
+        }
         await resetReadySessionState(for: ready)
         // No suspension while collecting the events from this READY payload.
         let delivery = continuation
@@ -91,7 +97,10 @@ extension DiscordRESTProvider {
         schedulePendingStatusEditSave()
         let metadata = applyReadyUserAndReadState(ready)
         applyReadyPrivateChannels(ready)
-        let guildProjection = applyReadyGuildProjection(ready)
+        let guildProjection = applyReadyGuildProjection(
+            ready,
+            previousForumPosts: previousForumPosts
+        )
         applyReadyInboxEvents(body)
         finishReadyApplication(
             ready,
@@ -105,16 +114,25 @@ extension DiscordRESTProvider {
     private func resetReadySessionState(
         for ready: GatewayReadyGuildsDTO
     ) async {
+        resetMemberListSubscriptionWork()
         privateCallsByChannel = [:]
         cancelPendingRoleMemberRequests(error: CancellationError())
         cachedMembers = [:]
+        cachedThreadMemberIDs = [:]
+        for (guildID, threadIDs) in threadMemberSubscriptions {
+            for threadID in threadIDs {
+                continuation?.yield(.threadMembersChanged(guildID: guildID, threadID: threadID, members: nil))
+            }
+        }
         quickSwitcherGuildMemberUserIDsByGuildID = [:]
         quickSwitcherJoinedMemberIDsByGuildID = [:]
         cachedMemberListItems = [:]
         cachedMemberListGroups = [:]
         selectedMemberListID = [:]
         memberListSubscriptions = [:]
+        memberListsNeedingRefresh = [:]
         memberListSubscriptionOrder = [:]
+        memberListViewportRequests = [:]
         cachedGuildChannelDTOs = [:]
         cachedGuildRoles = [:]
         cachedStickersByGuild = [:]
@@ -137,7 +155,7 @@ extension DiscordRESTProvider {
         forwardSearchEligibleUserOrder = []
         await loadStartupSearchCaches()
         cachedBlockedOrIgnoredUserIDs = ready.blockedOrIgnoredUserIDs
-        cachedRelationshipNicknamesByUserID = ready.relationshipNicknamesByUserID
+        adoptReadyRelationships(ready.relationships)
         profileApexAssignments = ready.apexExperiments
         resetProfileEditingState()
     }
@@ -243,10 +261,7 @@ extension DiscordRESTProvider {
         cachePrivateRecipientReferences(ready.privateChannels)
         let privateChannels = Self.orderedPrivateChannels(
             ready.privateChannels.enumerated().compactMap { offset, dto in
-                guard var channel = try? dto.domain(
-                    guildID: nil,
-                    knownUsersByID: cachedGatewayUsersByID
-                ) else { return nil }
+                guard var channel = try? privateChannel(from: dto) else { return nil }
                 // Discord's forwarding search preserves the private
                 // channel store's source order for equal-score GDMs,
                 // even though the DM sidebar is ordered by activity.
@@ -255,15 +270,16 @@ extension DiscordRESTProvider {
             }
         )
         cachedChannels = [nil: privateChannels]
-        cachedFriendUserIDs = ready.friendUserIDs
         for presence in ready.privatePresences {
             cachePrivatePresence(presence)
         }
         continuation?.yield(.privateMembersChanged(privateMembersInChannelOrder()))
+        publishRelationshipPresences(complete: true)
     }
 
     private func applyReadyGuildProjection(
-        _ ready: GatewayReadyGuildsDTO
+        _ ready: GatewayReadyGuildsDTO,
+        previousForumPosts: (posts: [ChannelID: [ChannelID: ForumPost]], order: [ChannelID])
     ) -> (
         voiceStateCount: Int,
         currentUserRolesByGuild: [GuildID: [RoleID]]
@@ -315,6 +331,7 @@ extension DiscordRESTProvider {
                     guild.channels, guildID: guildID
                 ) {
                     cachedChannels[guildID] = channels
+                    restoreForumPostsAfterReady(previousForumPosts, guildID: guildID)
                 }
             }
             if let guildID, !guild.roles.isEmpty {
@@ -574,10 +591,7 @@ extension DiscordRESTProvider {
             )
             var nextSourceOrder = (channels.lazy.map(\.position).max() ?? -1) + 1
             for var channel in supplemental.lazyPrivateChannels.compactMap({
-                try? $0.domain(
-                    guildID: nil,
-                    knownUsersByID: cachedGatewayUsersByID
-                )
+                try? privateChannel(from: $0)
             }) {
                 if let index = indexByID[channel.id] {
                     channel.position = channels[index].position
@@ -603,6 +617,8 @@ extension DiscordRESTProvider {
         {
             continuation?.yield(.privateMembersChanged(privateMembersInChannelOrder()))
         }
+        // READY_SUPPLEMENTAL's merged friend presences are the initial source.
+        publishRelationshipPresences(complete: true)
     }
 
     private func applyReadySupplementalGuildProjection(
@@ -658,18 +674,21 @@ extension DiscordRESTProvider {
             guard !guild.members.isEmpty else { continue }
             let guildRoles = cachedGuildRoles[guildID] ?? []
             let guildRoleCatalog = GuildMemberRoleCatalog(guildRoles)
+            let previousMembers = cachedMemberIndex(guildID: guildID)
             let members = guild.members.compactMap {
                 try? $0.domain(
                     currentUserID: currentUser?.id,
                     currentStatus: presenceStatus,
                     guildRoles: guildRoles,
                     guildRoleCatalog: guildRoleCatalog,
-                    guildID: guildID
+                    guildID: guildID,
+                    previousCommunicationDisabledUntil: UserID($0.user.id).flatMap { previousMembers[$0]?.communicationDisabledUntil }
                 )
             }
             cachedMembers[guildID] = DiscordMemberStoreOrdering.merging(
                 existing: cachedMembers[guildID] ?? [], updates: members
             )
+            publishCurrentMemberTimeoutChange(previousMembers: previousMembers, guildID: guildID)
             if let currentUserID = currentUser?.id,
                let currentMember = members.first(where: { $0.id == currentUserID })
             {

@@ -60,7 +60,7 @@ final class SettingsConversationRestorationStore {
     private let defaults: any PreferenceStoring
     private var pendingLaunchRestoration: SettingsConversationRestoration?
 
-    init(defaults: any PreferenceStoring = UserDefaults.standard) {
+    init(defaults: any PreferenceStoring = PRBuildProfile.defaults) {
         self.defaults = defaults
     }
 
@@ -71,6 +71,13 @@ final class SettingsConversationRestorationStore {
             channelID: channelID
         )
         persist(restoration, forKey: Self.globalKey)
+        persist(restoration, forKey: Self.accountKey(accountID))
+    }
+
+    /// Switching accounts returns to that account's last conversation, the
+    /// way a launch can return to the last one overall.
+    func prepareAccountSwitch(to accountID: String) {
+        pendingLaunchRestoration = restoration(forKey: Self.accountKey(accountID))
     }
 
     func preferredAccountID(for destination: SettingsLaunchDestination) -> String? {
@@ -87,6 +94,10 @@ final class SettingsConversationRestorationStore {
         defer { pendingLaunchRestoration = nil }
         guard pendingLaunchRestoration?.accountID == accountID else { return nil }
         return pendingLaunchRestoration
+    }
+
+    private static func accountKey(_ accountID: String) -> String {
+        "\(globalKey).\(accountID)"
     }
 
     private func restoration(forKey key: String) -> SettingsConversationRestoration? {
@@ -107,7 +118,7 @@ final class GeneralWindowRestorationStore {
     private static let memberListVisibleKey = "settings.memberListVisible"
     private let defaults: any PreferenceStoring
 
-    init(defaults: any PreferenceStoring = UserDefaults.standard) {
+    init(defaults: any PreferenceStoring = PRBuildProfile.defaults) {
         self.defaults = defaults
     }
 

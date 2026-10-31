@@ -1,13 +1,29 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, existsSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { setTimeout } from 'node:timers/promises';
 
 const workflowPath = '.github/workflows/ci.yml';
 const releaseTag = /^v\d+\.\d+\.\d+(?:-Beta-\d+)?$/;
+// Full validation is the union of these jobs from the `build` matrix.
+export const suites = ['packages', 'protocol', 'media', 'app'];
+const archives = {
+  packages: ['SakuraCordModels', 'SakuraCordPersistence',
+    'MessageRendering', 'SakuraCordPluginSDK'].map(name => `Packages/${name}/.build/out`),
+  protocol: ['Packages/DiscordProtocol/.build/out'],
+  media: ['Packages/DaveKit/.build/out', 'Packages/MediaPipeline/.build/out'],
+  app: ['App/.build/out'],
+  release: ['App/.build/out'],
+};
 
-export function trustedRun(run, repository, configuration = 'debug') {
+export function canRestoreCompilerCache(configuration, event, ref) {
+  return configuration === 'release' || event === 'pull_request'
+    || (event === 'push' && ['refs/heads/main', 'refs/heads/nightly'].includes(ref));
+}
+
+export function trustedRun(run, repository, configuration = 'app') {
   const branch = configuration === 'release'
     ? releaseTag.test(run.head_branch)
     : ['main', 'nightly'].includes(run.head_branch);
@@ -18,10 +34,11 @@ export function trustedRun(run, repository, configuration = 'debug') {
 }
 
 export function fullValidation(jobs) {
-  return jobs.some(job => job.name === 'build' && job.conclusion === 'success'
-    && ['Verify checked-out commit', 'Build and test'].every(name =>
+  return suites.every(suite => jobs.some(job => job.name === `build (${suite})`
+    && job.conclusion === 'success'
+    && ['Verify checked-out commit', 'Record clean compilation', 'Build and test'].every(name =>
       job.steps?.some(step => step.name === name
-        && step.status === 'completed' && step.conclusion === 'success')));
+        && step.status === 'completed' && step.conclusion === 'success'))));
 }
 
 export async function findValidation({ api, repository, sha, currentRun }) {
@@ -50,8 +67,34 @@ export async function findCache({ api, repository, key, configuration, currentRu
   return null;
 }
 
-function command(program, args) {
-  return execFileSync(program, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+function command(program, args, options = {}) {
+  return execFileSync(program, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...options }).trim();
+}
+
+function errorDetails(error) {
+  let detail = `${error.message}${error.stderr ? `\n${error.stderr}` : ''}`;
+  for (const token of [process.env.GH_TOKEN, process.env.GITHUB_TOKEN]) {
+    if (token) detail = detail.replaceAll(token, '[redacted]');
+  }
+  // Download errors can include signed storage URLs; retain the host/path only.
+  return detail.replace(/(https?:\/\/[^\s?"<>]+)\?[^\s"<>]+/g, '$1?[redacted]');
+}
+
+async function cacheRequest(stage, operation) {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      const detail = errorDetails(error);
+      console.warn(`Cache ${stage} failed (attempt ${attempt}/3): ${detail}`);
+      const transient = /HTTP (?:429|5\d\d)\b|\b(?:ETIMEDOUT|ECONNRESET|ECONNREFUSED|EAI_AGAIN)\b|timed? out|TLS handshake timeout|connection reset|unexpected EOF|rate limit exceeded/i.test(detail)
+        || error.code === 'ETIMEDOUT';
+      if (!transient || attempt === 3) throw error;
+      const delay = attempt * 2000;
+      console.log(`Retrying cache ${stage} in ${delay / 1000}s.`);
+      await setTimeout(delay);
+    }
+  }
 }
 
 function api(endpoint) {
@@ -75,7 +118,7 @@ function cacheKey(configuration) {
   ]) add(command(program, args));
   const files = command('git', ['ls-files', '-z']).split('\0').filter(path =>
     /(^|\/)Package\.(swift|resolved)$/.test(path)
-    || /^script\/(ci|ci_reuse|test|run_test_diagnostics|runtime|build_and_run|package_dmg)\./.test(path)
+    || /^script\/(ci|ci_reuse|test|run_test_diagnostics|runtime|build_and_run|package_dmg|stabilize_mtimes)\./.test(path)
     || path === workflowPath);
   for (const path of files.sort()) {
     add(path);
@@ -110,27 +153,34 @@ async function main() {
     if (run) console.log(`Reusing full validation: ${run.html_url}`);
     return;
   }
-  if (!['debug', 'release'].includes(configuration)) throw new Error('Expected debug or release configuration.');
+  if (!Object.hasOwn(archives, configuration)) throw new Error('Expected packages, app, or release configuration.');
   const archive = join(process.env.RUNNER_TEMP, `swiftpm-${configuration}.tar`);
   if (mode === 'archive') {
-    const paths = ['App/.build/out'];
-    if (configuration === 'debug') {
-      for (const name of ['SakuraCordModels', 'DiscordProtocol', 'SakuraCordPersistence',
-        'MessageRendering', 'MediaPipeline', 'SakuraCordPluginSDK']) {
-        paths.push(`Packages/${name}/.build/out`);
-      }
-    }
+    const paths = archives[configuration];
     // Archive only compiler outputs, never credentials, app state, or signed dist assets.
     const present = paths.filter(path => existsSync(path));
     if (present.length !== paths.length) throw new Error('Expected SwiftPM build output is missing.');
-    command('tar', ['-cf', archive, ...present]);
+    // Swift Build records nanosecond output mtimes; whole-second archives invalidate the cache.
+    command('tar', ['--format=pax', '-cf', archive, ...present]);
     return;
   }
   if (mode !== 'restore') throw new Error('Expected validation, restore, or archive.');
   const key = cacheKey(configuration);
   output('key', key);
+  output('restored', false);
+  // Release validation stays clean. Ordinary branch pushes and PRs reuse trusted outputs.
+  if (!canRestoreCompilerCache(configuration, process.env.GITHUB_EVENT_NAME, process.env.GITHUB_REF)) {
+    console.log('Release validation compiles from source.');
+    return;
+  }
+  let stage = 'lookup';
+  let directory;
   try {
-    const cached = await findCache({ api, repository, key, configuration, currentRun,
+    console.log(`Looking up ${configuration} compiler outputs.`);
+    const cached = await findCache({
+      api: endpoint => cacheRequest(`lookup: gh api ${endpoint}`, () =>
+        JSON.parse(command('gh', ['api', endpoint], { timeout: 120_000 }))),
+      repository, key, configuration, currentRun,
       isAncestor: sha => {
         try { command('git', ['merge-base', '--is-ancestor', sha, 'HEAD']); return true; }
         catch { return false; }
@@ -139,13 +189,28 @@ async function main() {
       console.log('No compatible build artifact; compiling from source.');
       return;
     }
-    const directory = join(process.env.RUNNER_TEMP, `restore-${configuration}`);
-    command('gh', ['run', 'download', String(cached.run.id), '--repo', repository,
-      '--name', key, '--dir', directory]);
+    stage = 'download';
+    console.log(`Downloading artifact ${cached.artifact.id} from ${cached.run.html_url}.`);
+    await cacheRequest('download: gh run download', () => {
+      if (directory) rmSync(directory, { recursive: true, force: true });
+      directory = mkdtempSync(join(process.env.RUNNER_TEMP, `restore-${configuration}-`));
+      command('gh', ['run', 'download', String(cached.run.id), '--repo', repository,
+        '--name', key, '--dir', directory], { timeout: 600_000 });
+    });
+    stage = 'extraction';
+    console.log(`Extracting ${configuration} compiler outputs.`);
     command('tar', ['-xf', join(directory, `swiftpm-${configuration}.tar`)]);
+    output('restored', true);
     console.log(`Restored ${configuration} compiler outputs from ${cached.run.html_url}`);
-  } catch {
+  } catch (error) {
+    console.warn(`Cache restore failed during ${stage}: ${errorDetails(error)}`);
+    if (stage === 'extraction') {
+      // A failed extraction must not leave partial compiler outputs for the build.
+      for (const path of archives[configuration]) rmSync(path, { recursive: true, force: true });
+    }
     console.log('Build artifact unavailable; continuing with a source build.');
+  } finally {
+    if (directory) rmSync(directory, { recursive: true, force: true });
   }
 }
 

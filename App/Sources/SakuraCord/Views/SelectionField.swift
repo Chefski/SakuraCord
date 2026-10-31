@@ -21,6 +21,14 @@ nonisolated enum SelectionFieldLeading: Hashable, Sendable {
         fallback: String,
         shape: SelectionFieldImageShape = .circle
     )
+
+    var imageURL: URL? {
+        switch self {
+        case .role(_, let iconURL, _): iconURL
+        case .remoteImage(let url, _, _): url
+        case .none, .systemImage, .text: nil
+        }
+    }
 }
 
 nonisolated enum SelectionFieldTitleStyle: Hashable, Sendable {
@@ -175,8 +183,10 @@ struct SelectionField<ID: Hashable & Sendable>: View {
     @State private var highlightedID: ID?
     @State private var resultHeight: CGFloat = 260
     @State private var searchIsFocused = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @Environment(\.isEnabled) private var isEnabled
+
+    private var reduceMotion: Bool { systemReduceMotion || !AppMotionPolicy.animates(.overlays) }
 
     private let source: SelectionFieldSource<ID>
     private let mode: SelectionFieldSelectionMode
@@ -261,17 +271,17 @@ struct SelectionField<ID: Hashable & Sendable>: View {
     }
 
     private var field: some View {
-        HStack(spacing: 6) {
-            ProfileRoleFlowLayout(spacing: 6, alignment: .center) {
+        HStack(spacing: InterfaceScale.metric(6)) {
+            ProfileRoleFlowLayout(spacing: SelectionFieldLayoutMetrics.tokenSpacing, alignment: .center) {
                 ForEach(selectedOptions) { option in
                     token(option)
                         .transition(.opacity.combined(with: .scale(scale: 0.9)))
                 }
                 if selection.isEmpty {
                     Text(configuration.placeholder)
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.interfaceSystem(size: 13, weight: .medium))
                         .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
+                        .frame(maxWidth: .infinity, minHeight: SelectionFieldLayoutMetrics.tokenHeight, alignment: .leading)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -279,24 +289,24 @@ struct SelectionField<ID: Hashable & Sendable>: View {
                 if isExpanded { close(.dismissed) } else { open() }
             } label: {
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.interfaceSystem(size: 11, weight: .semibold))
                     .rotationEffect(.degrees(isExpanded ? 180 : 0))
                     .animation(reduceMotion ? nil : .spring(response: 0.22, dampingFraction: 0.86), value: isExpanded)
                     .foregroundStyle(isExpanded ? SakuraCordAccentColor.color : .secondary)
-                    .frame(width: 22, height: 28)
+                    .frame(width: InterfaceScale.metric(22), height: InterfaceScale.metric(28))
                     .contentShape(.rect)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(isExpanded ? "Close options" : "Show options")
         }
-        .padding(.horizontal, 11)
-        .padding(.vertical, 7)
-        .frame(minHeight: 44)
-        .contentShape(.rect(cornerRadius: 11))
+        .padding(.horizontal, InterfaceScale.metric(11))
+        .padding(.vertical, InterfaceScale.metric(7))
+        .frame(minHeight: InterfaceScale.metric(44))
+        .contentShape(.rect(cornerRadius: InterfaceScale.metric(11)))
         .onTapGesture { open() }
-        .glassEffect(.regular, in: .rect(cornerRadius: 11))
+        .glassEffect(.regular, in: .rect(cornerRadius: InterfaceScale.metric(11)))
         .overlay {
-            RoundedRectangle(cornerRadius: 11)
+            RoundedRectangle(cornerRadius: InterfaceScale.metric(11))
                 .strokeBorder(isExpanded
                     ? SakuraCordAccentColor.color.opacity(0.65)
                     : Color.primary.opacity(hovered ? 0.25 : 0.16), lineWidth: 1)
@@ -311,23 +321,29 @@ struct SelectionField<ID: Hashable & Sendable>: View {
     }
 
     private func token(_ option: Option) -> some View {
-        HStack(spacing: 5) {
+        HStack(spacing: InterfaceScale.metric(5)) {
             SelectionFieldOptionLabel(option: option)
             Button {
                 withAnimation(motion) { selection.removeAll { $0 == option.id } }
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.interfaceSystem(size: 9, weight: .semibold))
                     .foregroundStyle(.secondary)
-                    .frame(width: 16, height: 28)
+                    .frame(width: InterfaceScale.metric(16), height: InterfaceScale.metric(28))
                     .contentShape(.rect)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Remove \(option.title)")
         }
-        .padding(.leading, 9)
-        .padding(.trailing, 5)
-        .frame(width: SelectionFieldLayoutMetrics.tokenWidth(option, availableWidth: fieldWidth - 50), height: 28)
+        .padding(.leading, InterfaceScale.metric(9))
+        .padding(.trailing, InterfaceScale.metric(5))
+        .frame(
+            width: SelectionFieldLayoutMetrics.tokenWidth(
+                option,
+                availableWidth: SelectionFieldLayoutMetrics.tokenAvailableWidth(in: fieldWidth)
+            ),
+            height: SelectionFieldLayoutMetrics.tokenHeight
+        )
         .background(.primary.opacity(hoveredTokenID == option.id ? 0.26 : 0.08), in: Capsule())
         .onModalHover { hoveredTokenID = $0 ? option.id : nil }
         .animation(nil, value: hoveredTokenID == option.id)
@@ -362,10 +378,10 @@ struct SelectionField<ID: Hashable & Sendable>: View {
         }
         // The list floats over message text; a backing keeps rows legible
         // while the glass still picks up the surrounding tint.
-        .background(Color(nsColor: .windowBackgroundColor).opacity(0.78), in: .rect(cornerRadius: 11))
-        .glassEffect(.regular, in: .rect(cornerRadius: 11))
+        .background(Color(nsColor: .windowBackgroundColor).opacity(0.78), in: .rect(cornerRadius: InterfaceScale.metric(11)))
+        .glassEffect(.regular, in: .rect(cornerRadius: InterfaceScale.metric(11)))
         .overlay {
-            RoundedRectangle(cornerRadius: 11).strokeBorder(.primary.opacity(0.1), lineWidth: 0.75)
+            RoundedRectangle(cornerRadius: InterfaceScale.metric(11)).strokeBorder(.primary.opacity(0.1), lineWidth: 0.75)
                 .allowsHitTesting(false)
         }
     }

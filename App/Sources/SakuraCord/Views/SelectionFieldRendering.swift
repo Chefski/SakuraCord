@@ -2,21 +2,31 @@ import AppKit
 
 @MainActor
 enum SelectionFieldLayoutMetrics {
-    static let font = NSFont.systemFont(ofSize: 13, weight: .medium)
-    static let minimumHeight: CGFloat = 44
-    static let leadingInset: CGFloat = 11
+    static var font: NSFont { .interfaceSystemFont(ofSize: 13, weight: .medium) }
+    static var minimumHeight: CGFloat { InterfaceScale.metric(44) }
+    static var leadingInset: CGFloat { InterfaceScale.metric(11) }
+    /// Token geometry shared by measurement, the native painter and the open field.
+    static var tokenHeight: CGFloat { InterfaceScale.metric(28) }
+    static var tokenSpacing: CGFloat { InterfaceScale.metric(6) }
+    static var tokenVerticalPadding: CGFloat { InterfaceScale.metric(7) }
+    /// Width reserved beside the tokens for the chevron and insets.
+    static var tokenTrailingReserve: CGFloat { InterfaceScale.metric(50) }
+
+    static func tokenAvailableWidth(in width: CGFloat) -> CGFloat {
+        max(InterfaceScale.metric(40), width - tokenTrailingReserve)
+    }
 
     static func tokenWidth<ID: Hashable & Sendable>(_ option: SelectionFieldOption<ID>, availableWidth: CGFloat) -> CGFloat {
         let titleWidth = (option.title as NSString).size(withAttributes: [.font: font]).width
-        let leadingWidth: CGFloat = option.leading == .none ? 0 : 28
-        return min(max(40, availableWidth), min(220, ceil(titleWidth + leadingWidth + 35)))
+        let leadingWidth: CGFloat = option.leading == .none ? 0 : InterfaceScale.metric(28)
+        return min(max(InterfaceScale.metric(40), availableWidth), min(InterfaceScale.metric(220), ceil(titleWidth + leadingWidth + InterfaceScale.metric(35))))
     }
 
     static func preferredHeight<ID: Hashable & Sendable>(
         options: [SelectionFieldOption<ID>],
         width: CGFloat
     ) -> CGFloat {
-        let available = max(40, width - 50)
+        let available = tokenAvailableWidth(in: width)
         var lineWidth: CGFloat = 0
         var lines = 1
         let widths = options.map { tokenWidth($0, availableWidth: available) }
@@ -25,9 +35,12 @@ enum SelectionFieldLayoutMetrics {
                 lines += 1
                 lineWidth = 0
             }
-            lineWidth += tokenWidth + 6
+            lineWidth += tokenWidth + tokenSpacing
         }
-        return max(minimumHeight, CGFloat(lines) * 28 + CGFloat(lines - 1) * 6 + 14)
+        return max(
+            minimumHeight,
+            CGFloat(lines) * tokenHeight + CGFloat(lines - 1) * tokenSpacing + tokenVerticalPadding * 2
+        )
     }
 
 }
@@ -40,10 +53,10 @@ enum SelectionFieldRenderer {
     /// The open field's 22×28 chevron button, inside its 11-point inset.
     static func chevronRect(in frame: CGRect) -> CGRect {
         CGRect(
-            x: frame.maxX - SelectionFieldLayoutMetrics.leadingInset - 22,
-            y: frame.midY - 14,
-            width: 22,
-            height: 28
+            x: frame.maxX - SelectionFieldLayoutMetrics.leadingInset - InterfaceScale.metric(22),
+            y: frame.midY - InterfaceScale.metric(14),
+            width: InterfaceScale.metric(22),
+            height: InterfaceScale.metric(28)
         )
     }
 
@@ -67,7 +80,7 @@ enum SelectionFieldRenderer {
             in: CGRect(
                 x: frame.minX + SelectionFieldLayoutMetrics.leadingInset,
                 y: (frame.midY - lineHeight / 2).rounded(),
-                width: max(1, frame.width - 50),
+                width: max(1, frame.width - InterfaceScale.metric(50)),
                 height: lineHeight
             ),
             withAttributes: [
@@ -129,10 +142,10 @@ enum SelectionFieldRenderer {
             ofSize: font.pointSize,
             weight: .medium
         )
-        let height: CGFloat = 28
-        let leadingSize: CGFloat = 20
+        let height: CGFloat = InterfaceScale.metric(28)
+        let leadingSize: CGFloat = InterfaceScale.metric(20)
         let hasLeading = option.leading != .none
-        let closeWidth: CGFloat = 26
+        let closeWidth: CGFloat = InterfaceScale.metric(26)
         let contentWidth = maximumWidth
         return NSImage(size: NSSize(width: contentWidth, height: height), flipped: false) { bounds in
             let card = CGRect(
@@ -148,7 +161,7 @@ enum SelectionFieldRenderer {
             NSColor.labelColor.withAlphaComponent(0.08).setFill()
             shape.fill()
 
-            var contentX: CGFloat = 9
+            var contentX: CGFloat = InterfaceScale.metric(9)
             if hasLeading {
                 let rect = CGRect(
                     x: contentX,
@@ -178,7 +191,7 @@ enum SelectionFieldRenderer {
                 ]
             )
             // The open token's 16×28 remove button, 5 points from its edge.
-            drawSymbol("xmark", pointSize: 9, centeredIn: CGRect(x: contentWidth - 21, y: 0, width: 16, height: height),
+            drawSymbol("xmark", pointSize: 9, centeredIn: CGRect(x: contentWidth - InterfaceScale.metric(21), y: 0, width: InterfaceScale.metric(16), height: height),
                        color: .secondaryLabelColor)
             return true
         }
@@ -235,7 +248,7 @@ enum SelectionFieldRenderer {
             } else {
                 RoleColorIndicatorRenderer.draw(
                     colorHex: colorHex,
-                    in: rect.insetBy(dx: 3, dy: 3)
+                    in: rect.insetBy(dx: InterfaceScale.metric(3), dy: InterfaceScale.metric(3))
                 )
             }
         case .remoteImage(_, let fallback, let shape):
@@ -243,7 +256,7 @@ enum SelectionFieldRenderer {
             case .circle:
                 NSBezierPath(ovalIn: rect)
             case .roundedRectangle:
-                NSBezierPath(roundedRect: rect, xRadius: 4, yRadius: 4)
+                NSBezierPath(roundedRect: rect, xRadius: InterfaceScale.metric(4), yRadius: InterfaceScale.metric(4))
             }
             NSGraphicsContext.saveGraphicsState()
             path.addClip()
@@ -260,7 +273,7 @@ enum SelectionFieldRenderer {
                 NSColor.sakuraCordAccentColor.withAlphaComponent(0.65).setFill()
                 path.fill()
                 let value = String(fallback.prefix(1)).uppercased() as NSString
-                let font = NSFont.systemFont(ofSize: 10, weight: .semibold)
+                let font = NSFont.interfaceSystemFont(ofSize: 10, weight: .semibold)
                 let size = value.size(withAttributes: [.font: font])
                 value.draw(
                     at: CGPoint(

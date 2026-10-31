@@ -24,6 +24,37 @@ import Testing
     #expect(presentation.target == .unresolved)
 }
 
+@MainActor
+@Test func `thread links and mentions present the names of known threads`() async throws {
+    let model = AppModel(launchMode: .offlineTesting)
+    await model.start()
+    let parent = try #require(model.snapshot?.channels.first { $0.kind == .text && $0.guildID != nil })
+    let guildID = try #require(parent.guildID)
+    let joined = MessageThreadSummary(id: ChannelID(rawValue: 9_341_001), guildID: guildID, parentID: parent.id, name: "Joined thread")
+    model.snapshot?.activeJoinedThreads.append(joined)
+    let resolver = MessageMentionResolver(model: model)
+    func presentation(_ token: String) throws -> MentionPresentation {
+        try resolver.presentation(#require(RenderedMention(rawToken: token)))
+    }
+
+    for token in ["<#\(joined.id)>", "https://discord.com/channels/\(guildID)/\(joined.id)"] {
+        let value = try presentation(token)
+        #expect(value.label == "Joined thread")
+        #expect(value.target == .linkedChannel(guildID: guildID, channelID: joined.id))
+        #expect(value.systemImage == SakuraCordSystemSymbol.thread)
+    }
+    let unknown = try presentation("https://discord.com/channels/\(guildID)/9341002")
+    #expect(unknown.label == "unknown-channel")
+    #expect(unknown.isInteractive)
+
+    let messageID = MessageID(rawValue: 9_341_003)
+    let messageLink = try presentation("https://discord.com/channels/\(guildID)/\(joined.id)/\(messageID)")
+    #expect(messageLink.label == "Joined thread ›")
+    #expect(messageLink.target == .message(guildID: guildID, channelID: joined.id, messageID: messageID))
+    let unknownMessage = try presentation("https://discord.com/channels/\(guildID)/9341002/\(messageID)")
+    #expect(unknownMessage.label == "unknown-channel ›")
+}
+
 @Test func `permission resolver applies role overwrites together then member overwrite last`() throws {
     let guildID = GuildID(rawValue: 100)
     let userID = UserID(rawValue: 1)
@@ -390,28 +421,70 @@ func `permission resolver ignores noncanonical numeric member ids`(_ overwriteID
     )
 }
 
-@Test func `new replies button requires actual unread replies below the viewport`() {
-    #expect(
-        ThreadTimelinePresentationPolicy.showsNewRepliesButton(
-            isNearBottom: false,
-            hasUnreadReplies: true,
-            messageCount: 2
+@MainActor
+@Test func `workspace trailing column prefers search then side chats then members`() {
+    let thread = MessageThreadSummary(id: ChannelID(rawValue: 2), parentID: ChannelID(rawValue: 1), name: "Thread")
+    let paneThread = SideConversation.thread(thread, isFullWidth: false)
+    let preview = SideConversation.channelPreview(ChannelID(rawValue: 3), returnTo: nil)
+    func presentation(
+        page: GuildWorkspacePage? = nil,
+        friends: Bool = false,
+        kind: ChannelKindValue? = .text,
+        side: SideConversation? = nil,
+        search: Bool = false,
+        inspector: Bool = true
+    ) -> WorkspacePresentation {
+        WorkspacePresentation(
+            guildPage: page,
+            isFriendsPresented: friends,
+            channelKind: kind,
+            sideConversation: side,
+            showsMessageSearch: search,
+            showsInspector: inspector
         )
-    )
-    #expect(
-        !ThreadTimelinePresentationPolicy.showsNewRepliesButton(
-            isNearBottom: false,
-            hasUnreadReplies: false,
-            messageCount: 2
+    }
+
+    #expect(presentation(side: paneThread).supplementaryPane == .sideConversation(paneThread))
+    #expect(presentation(side: paneThread, search: true).supplementaryPane == .messageSearch)
+    #expect(presentation(search: true).supplementaryPane == .messageSearch)
+    #expect(presentation().supplementaryPane == .memberInspector)
+    #expect(presentation(inspector: false).supplementaryPane == nil)
+    // A full-width thread replaces the primary column and keeps the member list.
+    let fullWidth = presentation(page: .guide, side: .thread(thread, isFullWidth: true))
+    #expect(fullWidth.primary == .fullWidthThread)
+    #expect(fullWidth.supplementaryPane == .memberInspector)
+    // Search results stay beside a full-width thread, with or without members.
+    let fullWidthThread = SideConversation.thread(thread, isFullWidth: true)
+    #expect(presentation(side: fullWidthThread, search: true).supplementaryPane == .messageSearch)
+    #expect(presentation(side: fullWidthThread, search: true, inspector: false).supplementaryPane == .messageSearch)
+    #expect(presentation(side: fullWidthThread, inspector: false).supplementaryPane == nil)
+    // Voice channels show only their chat; guild pages only their side chats.
+    #expect(presentation(kind: .voice).supplementaryPane == nil)
+    #expect(presentation(kind: .voice, side: .voiceChat(ChannelID(rawValue: 4))).paneSideConversation == .voiceChat(ChannelID(rawValue: 4)))
+    #expect(presentation(page: .channelsAndRoles, search: true).supplementaryPane == nil)
+    #expect(presentation(page: .channelsAndRoles, side: preview).paneSideConversation == preview)
+    #expect(presentation(friends: true, side: paneThread).supplementaryPane == nil)
+}
+
+@Test func `newest button shows once the reader is away from the newest message`() {
+    func shows(established: Bool = true, nearBottom: Bool, count: Int = 2) -> Bool {
+        TimelineNewestButtonPolicy.isShown(
+            hasEstablishedInitialPosition: established,
+            isNearBottom: nearBottom,
+            messageCount: count
         )
-    )
-    #expect(
-        !ThreadTimelinePresentationPolicy.showsNewRepliesButton(
-            isNearBottom: true,
-            hasUnreadReplies: true,
-            messageCount: 2
-        )
-    )
+    }
+    #expect(shows(nearBottom: false))
+    #expect(!shows(nearBottom: true))
+    // A timeline still settling its first position, or an empty one, has none.
+    #expect(!shows(established: false, nearBottom: false))
+    #expect(!shows(nearBottom: false, count: 0))
+}
+
+@Test func `wheel input toward newest is downward and vertical`() {
+    #expect(NativeTimelineReadBoundaryPolicy.isScrollTowardNewest(deltaX: 0, deltaY: -4))
+    #expect(!NativeTimelineReadBoundaryPolicy.isScrollTowardNewest(deltaX: 0, deltaY: 4))
+    #expect(!NativeTimelineReadBoundaryPolicy.isScrollTowardNewest(deltaX: -6, deltaY: -2))
 }
 
 @Test func `read eligibility uses established newest message geometry`() {
@@ -448,6 +521,27 @@ func `permission resolver ignores noncanonical numeric member ids`(_ overwriteID
             )
         )
     )
+}
+
+@Test func `fully loaded empty timeline has reached the newest boundary only at its end`() {
+    func reached(
+        hasMoreEarlier: Bool = false,
+        isLoadingEarlier: Bool = false,
+        isLoadingLater: Bool = false,
+        isAtDocumentBottom: Bool = true
+    ) -> Bool {
+        NativeTimelineReadBoundaryPolicy.hasReachedEmptyTimelineBoundary(
+            hasMoreEarlier: hasMoreEarlier,
+            isLoadingEarlier: isLoadingEarlier,
+            isLoadingLater: isLoadingLater,
+            isAtDocumentBottom: isAtDocumentBottom
+        )
+    }
+    #expect(reached())
+    #expect(!reached(hasMoreEarlier: true))
+    #expect(!reached(isLoadingEarlier: true))
+    #expect(!reached(isLoadingLater: true))
+    #expect(!reached(isAtDocumentBottom: false))
 }
 
 @Test func `newest message boundary uses exact viewport space`() {
@@ -522,4 +616,84 @@ func `server verification blocks sends without exposing hidden channels`(state: 
     let other = Message(id: MessageID(rawValue: 101), channelID: first.channelID, author: user, webhookID: "300", content: "Other persona")
     model.consumeMessageUpdated(other, preparedTextPlan: nil)
     #expect(model.liveProfilePresentation(for: .contextual)?.member.user == first.author)
+}
+
+@Test func `change nickname follows Discord role hierarchy and protects the owner`() {
+    let owner = UserID(rawValue: 9)
+    let target = UserID(rawValue: 2)
+    let roles = [
+        GuildRole(id: RoleID(rawValue: 20), name: "Moderator", position: 3),
+        GuildRole(id: RoleID(rawValue: 21), name: "Peer", position: 3),
+        GuildRole(id: RoleID(rawValue: 30), name: "Member", position: 1),
+        GuildRole(id: RoleID(rawValue: 100), name: "@everyone", position: 99),
+    ]
+    func can(
+        _ targetUserID: UserID, _ targetRoleIDs: Set<RoleID>, permissions: UInt64,
+        roleIDs: Set<RoleID> = [RoleID(rawValue: 20)], isOwner: Bool = false, ownerID: UserID? = owner
+    ) -> Bool {
+        NicknamePermissionPolicy.canChangeNickname(of: targetUserID, roleIDs: targetRoleIDs, in: .init(
+            ownerID: ownerID, isOwner: isOwner, permissions: permissions, roleIDs: roleIDs, roles: roles,
+            guildID: GuildID(rawValue: 100)
+        ))
+    }
+    let manage = DiscordPermissionBits.manageNicknames
+
+    #expect(can(target, [RoleID(rawValue: 30)], permissions: manage))
+    #expect(can(target, [], permissions: manage))
+    #expect(can(target, [RoleID(rawValue: 100)], permissions: manage))
+    #expect(!can(target, [RoleID(rawValue: 30)], permissions: manage, roleIDs: [RoleID(rawValue: 100)]))
+    #expect(!can(target, [RoleID(rawValue: 30)], permissions: DiscordPermissionBits.changeNickname))
+    // An equal top role is not below ours; Discord breaks position ties by the older role.
+    #expect(!can(target, [RoleID(rawValue: 20)], permissions: manage))
+    #expect(can(target, [RoleID(rawValue: 21)], permissions: manage))
+    // Administrators stay bound by hierarchy; only the owner bypasses it, and nobody renames the owner.
+    #expect(!can(target, [RoleID(rawValue: 30)], permissions: DiscordPermissionBits.administrator, roleIDs: []))
+    #expect(!can(owner, [], permissions: DiscordPermissionBits.administrator))
+    #expect(can(target, [RoleID(rawValue: 20)], permissions: 0, roleIDs: [], isOwner: true))
+    // Discord compares only loaded roles; unknown target roles have no highest role.
+    #expect(can(target, [RoleID(rawValue: 30)], permissions: manage, ownerID: nil))
+    #expect(can(target, [RoleID(rawValue: 99)], permissions: manage))
+    #expect(!can(target, [], permissions: manage, roleIDs: [RoleID(rawValue: 99)]))
+}
+
+@Test func `nickname management follows Discord member restriction masks`() {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    let user = User(id: UserID(rawValue: 1), username: "moderator", displayName: "Moderator")
+    let target = UserID(rawValue: 2)
+    var context = NicknamePermissionPolicy.Context(
+        ownerID: UserID(rawValue: 9), isOwner: false, permissions: DiscordPermissionBits.manageNicknames,
+        roleIDs: [RoleID(rawValue: 20)], roles: [GuildRole(id: RoleID(rawValue: 20), name: "Moderator")]
+    )
+    func can(_ context: NicknamePermissionPolicy.Context) -> Bool {
+        NicknamePermissionPolicy.canChangeNickname(of: target, roleIDs: [], in: context, now: now)
+    }
+    #expect(can(context))
+    for flags: UInt64 in [16, 128, 256, 1024] {
+        context.currentMember = Member(user: user, roleName: "Moderator", isOnline: true, flags: flags)
+        #expect(!can(context))
+    }
+    context.currentMember = Member(user: user, roleName: "Moderator", isOnline: true, isPending: true)
+    #expect(!can(context))
+    context.currentMember?.isPending = false
+    context.currentMember?.communicationDisabledUntil = now.addingTimeInterval(1)
+    #expect(!can(context))
+    context.currentMember?.communicationDisabledUntil = now
+    #expect(can(context))
+
+    // Administrator bypasses timeout and quarantine, but not pending/guest masks.
+    context = .init(ownerID: context.ownerID, isOwner: false, permissions: DiscordPermissionBits.administrator,
+                    roleIDs: context.roleIDs, roles: context.roles, currentMember: context.currentMember)
+    context.currentMember?.communicationDisabledUntil = now.addingTimeInterval(1)
+    context.currentMember?.flags = 128 | 256 | 1024
+    #expect(can(context))
+    context.currentMember?.isPending = true
+    #expect(!can(context))
+    context.currentMember?.isPending = false
+    context.currentMember?.flags = 16
+    #expect(!can(context))
+
+    // Guild owners bypass the member masks entirely.
+    context = .init(ownerID: user.id, isOwner: true, permissions: 0, roleIDs: [], roles: [],
+                    currentMember: context.currentMember)
+    #expect(can(context))
 }

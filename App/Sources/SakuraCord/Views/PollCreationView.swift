@@ -27,7 +27,7 @@ struct PollCreationView: View {
                 ScrollView(.vertical) {
                     // A scoped container keeps scrolled glass clipped to the list.
                     GlassEffectContainer(spacing: 0) {
-                        VStack(spacing: 8) {
+                        VStack(spacing: InterfaceScale.metric(8)) {
                             ForEach(Array($draft.answers.enumerated()), id: \.element.id) { index, $answer in
                                 PollCreationAnswerRow(model: model, answer: $answer, placeholder: "Answer \(index + 1)",
                                                       canRemove: draft.answers.count > 1, focus: $focus,
@@ -44,14 +44,14 @@ struct PollCreationView: View {
                                 }
                                 .labelsHidden().pickerStyle(.menu).fixedSize()
                             }
-                            .padding(.top, 8)
+                            .padding(.top, InterfaceScale.metric(8))
                             PollCreationSettingRow(symbol: "checklist", title: "Allow Multiple Answers") {
                                 Toggle("Allow Multiple Answers", isOn: $draft.allowsMultipleAnswers)
                                     .labelsHidden().toggleStyle(.switch).controlSize(.small)
                                     .tint(SakuraCordAccentColor.color)
                             }
                         }
-                        .padding(8)
+                        .padding(InterfaceScale.metric(8))
                     }
                 }
                 .scrollBounceBehavior(.basedOnSize)
@@ -60,19 +60,19 @@ struct PollCreationView: View {
                 .clipped()
             }
             if let error {
-                Text(error).font(.callout).foregroundStyle(.red)
+                Text(error).font(.interface(.callout)).foregroundStyle(.red)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 20).padding(.vertical, 12)
+                    .padding(.horizontal, InterfaceScale.metric(20)).padding(.vertical, InterfaceScale.metric(12))
             }
             Divider()
             HStack {
                 ModalGlassButton(symbol: "xmark", label: "Cancel") { dismiss?() }
-                Spacer(minLength: 16)
+                Spacer(minLength: InterfaceScale.metric(16))
                 ModalGlassButton(symbol: "chart.bar.xaxis", label: "Create Poll", primary: true, action: create)
                     .disabled(isSending || draft.validationError != nil)
                     .keyboardShortcut(.return, modifiers: .command)
             }
-            .padding(12)
+            .padding(InterfaceScale.metric(12))
         }
         .frame(width: min(440, availableSize.width))
         .disabled(isSending)
@@ -84,25 +84,25 @@ struct PollCreationView: View {
     }
 
     private var questionField: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 11) {
+        HStack(alignment: .firstTextBaseline, spacing: InterfaceScale.metric(11)) {
             Image(systemName: "chart.bar.xaxis")
-                .font(.system(size: 17, weight: .medium))
+                .font(.interfaceSystem(size: 17, weight: .medium))
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
             TextField("Ask a question", text: $draft.question, axis: .vertical)
                 .textFieldStyle(.plain)
-                .font(.system(size: 19))
+                .font(.interfaceSystem(size: 19))
                 .lineLimit(1 ... 4)
                 .tint(SakuraCordAccentColor.color)
                 .focused($focus, equals: .question)
                 .onSubmit { focus = draft.answers.first.map { .answer($0.id) } }
             if draft.question.utf16.count > 260 {
-                Text("\(draft.question.utf16.count)/300").font(.caption).monospacedDigit()
+                Text("\(draft.question.utf16.count)/300").font(.interface(.caption)).monospacedDigit()
                     .foregroundStyle(draft.question.utf16.count > 300 ? .red : .secondary)
             }
         }
-        .padding(.horizontal, 18).padding(.vertical, 17)
-        .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
+        .padding(.horizontal, InterfaceScale.metric(18)).padding(.vertical, InterfaceScale.metric(17))
+        .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(58), alignment: .leading)
         .contentShape(Rectangle())
         .onTapGesture { focus = .question }
     }
@@ -164,9 +164,9 @@ private struct PollCreationRowBackground: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .padding(8)
-            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
-            .background(.quaternary.opacity(isHighlighted ? 0.9 : 0.5), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .padding(InterfaceScale.metric(8))
+            .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(48), alignment: .leading)
+            .background(.quaternary.opacity(isHighlighted ? 0.9 : 0.5), in: RoundedRectangle(cornerRadius: InterfaceScale.metric(24), style: .continuous))
     }
 }
 
@@ -181,7 +181,7 @@ private struct PollCreationAnswerRow: View {
     @State private var showsEmojiPicker = false
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: InterfaceScale.metric(8)) {
             emojiButton
             TextField(placeholder, text: $answer.text, axis: .vertical)
                 .textFieldStyle(.plain)
@@ -191,15 +191,15 @@ private struct PollCreationAnswerRow: View {
                 .onSubmit(submit)
                 .frame(maxWidth: .infinity, alignment: .leading)
             if answer.text.utf16.count > 45 {
-                Text("\(answer.text.utf16.count)/55").font(.caption).monospacedDigit()
+                Text("\(answer.text.utf16.count)/55").font(.interface(.caption)).monospacedDigit()
                     .foregroundStyle(answer.text.utf16.count > 55 ? .red : .secondary)
             }
             if canRemove {
-                HoverActionButton(systemImage: "xmark", help: "Remove Answer", diameter: 32, action: remove)
+                HoverActionButton(systemImage: "xmark", help: "Remove Answer", diameter: InterfaceScale.metric(32), action: remove)
                     .foregroundStyle(.secondary)
             }
         }
-        .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: InterfaceScale.metric(24), style: .continuous))
         .onTapGesture { focus.wrappedValue = .answer(answer.id) }
         .modifier(PollCreationRowBackground(isHighlighted: focus.wrappedValue == .answer(answer.id)))
         .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
@@ -209,12 +209,12 @@ private struct PollCreationAnswerRow: View {
         Button { showsEmojiPicker.toggle() } label: {
             Group {
                 if let emoji = answer.emoji {
-                    PollAnswerEmoji(emoji: emoji, size: 20)
+                    PollAnswerEmoji(emoji: emoji, size: InterfaceScale.metric(20))
                 } else {
-                    Image(systemName: "face.smiling").font(.system(size: 17)).foregroundStyle(.secondary)
+                    Image(systemName: "face.smiling").font(.interfaceSystem(size: 17)).foregroundStyle(.secondary)
                 }
             }
-            .frame(width: 32, height: 32)
+            .frame(width: InterfaceScale.metric(32), height: InterfaceScale.metric(32))
             .contentShape(Circle())
         }
         .buttonStyle(.plain)
@@ -246,20 +246,20 @@ private struct PollCreationAddAnswerRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 8) {
-                Image(systemName: "plus").font(.body.weight(.semibold)).frame(width: 32, height: 32)
+            HStack(spacing: InterfaceScale.metric(8)) {
+                Image(systemName: "plus").font(.interface(.body).weight(.semibold)).frame(width: InterfaceScale.metric(32), height: InterfaceScale.metric(32))
                 Text("Add Answer")
             }
             .foregroundStyle(isHovered ? .primary : .secondary)
-            .padding(8)
-            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
-            .background(.quaternary.opacity(isHovered ? 0.5 : 0), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .padding(InterfaceScale.metric(8))
+            .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(48), alignment: .leading)
+            .background(.quaternary.opacity(isHovered ? 0.5 : 0), in: RoundedRectangle(cornerRadius: InterfaceScale.metric(24), style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                RoundedRectangle(cornerRadius: InterfaceScale.metric(24), style: .continuous)
                     .strokeBorder(.quaternary, style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
                     .opacity(isHovered ? 0 : 1)
             }
-            .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: InterfaceScale.metric(24), style: .continuous))
         }
         .buttonStyle(.plain)
         .onModalHover { isHovered = $0 }
@@ -273,12 +273,12 @@ private struct PollCreationSettingRow<Control: View>: View {
     @ViewBuilder let control: () -> Control
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: symbol).foregroundStyle(.secondary).frame(width: 32, height: 32)
+        HStack(spacing: InterfaceScale.metric(8)) {
+            Image(systemName: symbol).foregroundStyle(.secondary).frame(width: InterfaceScale.metric(32), height: InterfaceScale.metric(32))
                 .accessibilityHidden(true)
             Text(title)
-            Spacer(minLength: 8)
-            control().padding(.trailing, 6)
+            Spacer(minLength: InterfaceScale.metric(8))
+            control().padding(.trailing, InterfaceScale.metric(6))
         }
         .modifier(PollCreationRowBackground())
     }

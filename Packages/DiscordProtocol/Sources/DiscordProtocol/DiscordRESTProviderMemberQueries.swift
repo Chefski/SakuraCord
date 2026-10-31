@@ -4,6 +4,11 @@ import SakuraCordModels
 public extension DiscordRESTProvider {
     func members(in guildID: GuildID?) async throws -> [Member] {
         guard let guildID else {
+            if let previous = pendingMemberGuildID {
+                memberListRefreshRetryTasks.removeValue(forKey: previous)?.cancel()
+                memberListViewportRestoreTasks.removeValue(forKey: previous)?.cancel()
+            }
+            pendingMemberGuildID = nil
             return privateMembersInChannelOrder()
         }
         if cachedGuildRoles[guildID] == nil {
@@ -16,11 +21,19 @@ public extension DiscordRESTProvider {
                 cachedGuildRoles[guildID] = []
             }
         }
+        if let previous = pendingMemberGuildID, previous != guildID {
+            memberListRefreshRetryTasks.removeValue(forKey: previous)?.cancel()
+            memberListViewportRestoreTasks.removeValue(forKey: previous)?.cancel()
+        }
         pendingMemberGuildID = guildID
         gatewayLogger.info("Member list requested; gatewayReady=\(self.gatewayReady)")
         if gatewayReady {
             await attemptMemberSubscription(guildID: guildID)
         }
+        discardInaccessibleMemberLists(guildID: guildID)
+        guard let memberListID = selectedMemberListID[guildID],
+              isMemberListAccessible(guildID: guildID, memberListID: memberListID)
+        else { return [] }
         return membersWithCurrentStatus(orderedMemberListMembers(guildID: guildID) ?? cachedMembers[guildID] ?? [])
     }
 

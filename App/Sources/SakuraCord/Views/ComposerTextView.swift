@@ -26,16 +26,30 @@ enum ComposerAutocompleteCommand {
 final class ComposerDropInteractionState {
     private(set) var destination: MessageComposerDestination?
     private(set) var isInstant = false
+    /// Last time any file drop target saw the drag, read by the root view's
+    /// watchdog to spot sessions that ended without an exit callback.
+    @ObservationIgnored private(set) var lastDragActivity = ContinuousClock.now
 
     var isTargeted: Bool { destination != nil }
+
+    func noteDragActivity() {
+        lastDragActivity = .now
+    }
 
     func update(
         isTargeted: Bool,
         destination: MessageComposerDestination,
         isInstant: Bool
     ) {
+        if isTargeted { noteDragActivity() }
         self.destination = isTargeted ? destination : nil
         self.isInstant = isTargeted && isInstant
+    }
+
+    func reset() {
+        // `clear(destination:)` can't cover this: a drag that ends without exiting never names its destination.
+        destination = nil
+        isInstant = false
     }
 
     func clear(destination: MessageComposerDestination) {
@@ -69,7 +83,7 @@ nonisolated enum ComposerLatestMessageEditingPolicy {
     ) -> MessageID? {
         guard let currentUserID else { return nil }
         return messages.last(where: {
-            $0.author.id == currentUserID && !$0.hasPoll
+            $0.author.id == currentUserID && !$0.hasPoll && !$0.flags.contains(.voiceMessage)
         })?.id
     }
 }
@@ -82,7 +96,7 @@ extension ComposerView {
         }
         guard let messageID = ComposerLatestMessageEditingPolicy.messageID(
             in: messages,
-            currentUserID: model.snapshot?.currentUser.id
+            currentUserID: model.currentUser?.id
         ) else { return false }
         onEditMessage(messageID)
         return true
@@ -96,7 +110,7 @@ enum ComposerEmojiAttributedText {
 
     static func make(
         _ source: String,
-        font: NSFont = .systemFont(ofSize: 15),
+        font: NSFont = .interfaceSystemFont(ofSize: 15),
         mentionPresentations: [String: MentionPresentation] = [:],
         imageProvider: (String) -> NSImage? = { ComposerEmojiImageStore.shared.cachedImage(for: $0) }
     ) -> NSAttributedString {
@@ -301,6 +315,7 @@ enum ComposerEmojiAttributedText {
 struct ComposerTextView: NSViewRepresentable {
     let text: String
     var conversationID: ChannelID?
+    var translationEditID: UUID?
     let placeholder: String
     let sendWithReturn: Bool
     var generalInputSettings: GeneralInputSettingsSnapshot = .defaults
@@ -318,11 +333,12 @@ struct ComposerTextView: NSViewRepresentable {
     var onCompositionStateChange: ((Bool) -> Void)?
     var capturesUnfocusedTyping = false
     var verticalContentInset: CGFloat = 0
-    var maximumHeight: CGFloat = 150
+    var maximumHeight: CGFloat = InterfaceScale.metric(150)
+    var sendTransitionAnchor: ComposerSendTransitionAnchor?
     @Binding var selection: NSRange?
     @Binding var isFocused: Bool
 
-    private let font = NSFont.systemFont(ofSize: 15)
+    private let font = NSFont.interfaceSystemFont(ofSize: 15)
 
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
@@ -344,7 +360,7 @@ struct ComposerTextView: NSViewRepresentable {
         textView.onFirstResponderChange = { [weak coordinator = context.coordinator] in
             coordinator?.firstResponderDidChange($0)
         }
-        textView.isEditable = context.environment.isEnabled
+        textView.isEditable = context.environment.acceptsComposerInput
         textView.isSelectable = true
         textView.isRichText = true
         textView.importsGraphics = false
@@ -396,7 +412,7 @@ struct ComposerTextView: NSViewRepresentable {
         textView.canReceiveAttachments = { [weak coordinator = context.coordinator] in
             coordinator?.parent.canReceiveAttachments() ?? false
         }
-        textView.capturesUnfocusedTyping = capturesUnfocusedTyping && context.environment.isEnabled
+        textView.capturesUnfocusedTyping = capturesUnfocusedTyping && context.environment.acceptsComposerInput
         ComposerTextCheckingConfiguration.apply(generalInputSettings, to: textView)
 
         let scrollView = NSScrollView()
@@ -407,8 +423,30 @@ struct ComposerTextView: NSViewRepresentable {
         scrollView.hasVerticalScroller = false
         scrollView.autohidesScrollers = true
         scrollView.scrollerStyle = .overlay
+        sendTransitionAnchor?.textView = textView
 
         return scrollView
+    }
+
+    /// The interface size changed: restyle the draft without moving the caret.
+    private func restyleDraft(in textView: ComposerNSTextView) {
+        let selectedRange = textView.selectedRange()
+        textView.font = font
+        textView.plainTypingAttributes = textAttributes
+        textView.typingAttributes = textAttributes
+        textView.textStorage?.setAttributedString(
+            ComposerEmojiAttributedText.make(
+                text,
+                font: font,
+                mentionPresentations: mentionPresentations
+            )
+        )
+        let length = textView.string.utf16.count
+        let location = min(selectedRange.location, length)
+        textView.setSelectedRange(NSRange(
+            location: location,
+            length: min(selectedRange.length, length - location)
+        ))
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
@@ -421,9 +459,13 @@ struct ComposerTextView: NSViewRepresentable {
             textView.unmarkText()
             textView.delegate = context.coordinator
         }
+        let isTranslationEdit = translationEditID != nil
+            && translationEditID != context.coordinator.parent.translationEditID
+            && conversationID == context.coordinator.parent.conversationID
         context.coordinator.parent = self
-        textView.isEditable = context.environment.isEnabled
-        textView.capturesUnfocusedTyping = capturesUnfocusedTyping && context.environment.isEnabled
+        sendTransitionAnchor?.textView = textView
+        textView.isEditable = context.environment.acceptsComposerInput
+        textView.capturesUnfocusedTyping = capturesUnfocusedTyping && context.environment.acceptsComposerInput
         context.coordinator.updateCompositionState(from: textView, deferringNotification: true)
 
         textView.onReturn = { [weak coordinator = context.coordinator] event in
@@ -460,19 +502,27 @@ struct ComposerTextView: NSViewRepresentable {
         ComposerTextCheckingConfiguration.apply(generalInputSettings, to: textView)
         textView.setAccessibilityLabel(placeholder)
 
+        if textView.font != font {
+            restyleDraft(in: textView)
+        }
+
         if ComposerEmojiAttributedText.serialize(textView.attributedString()) != text
             || !ComposerEmojiAttributedText.usesCurrentMentionPresentations(
                 textView.attributedString(),
                 mentionPresentations: mentionPresentations
             )
         {
-            textView.textStorage?.setAttributedString(
-                ComposerEmojiAttributedText.make(
-                    text,
-                    font: font,
-                    mentionPresentations: mentionPresentations
-                )
+            let replacement = ComposerEmojiAttributedText.make(
+                text, font: font, mentionPresentations: mentionPresentations
             )
+            if isTranslationEdit {
+                textView.breakUndoCoalescing()
+                textView.insertText(replacement, replacementRange: NSRange(location: 0, length: textView.attributedString().length))
+                textView.undoManager?.setActionName(String(localized: "Translate Draft"))
+                textView.breakUndoCoalescing()
+            } else {
+                textView.textStorage?.setAttributedString(replacement)
+            }
 
             if selection == nil {
                 textView.setSelectedRange(
@@ -856,6 +906,10 @@ final class ComposerNSTextView: ComposerFocusReportingTextView {
         updateAttachmentDropTarget(sender)
     }
 
+    override func wantsPeriodicDraggingUpdates() -> Bool {
+        true
+    }
+
     override func draggingExited(_ sender: (any NSDraggingInfo)?) {
         onDropTargetChanged?(false, false)
     }
@@ -873,6 +927,10 @@ final class ComposerNSTextView: ComposerFocusReportingTextView {
     }
 
     override func concludeDragOperation(_ sender: (any NSDraggingInfo)?) {
+        onDropTargetChanged?(false, false)
+    }
+
+    override func draggingEnded(_ sender: any NSDraggingInfo) {
         onDropTargetChanged?(false, false)
     }
 
@@ -915,7 +973,7 @@ final class ComposerNSTextView: ComposerFocusReportingTextView {
         restorePlainTypingAttributes()
         if let attributed = insertString as? NSAttributedString {
             let normalized = NSMutableAttributedString(attributedString: attributed)
-            let baseFont = plainTypingAttributes[.font] as? NSFont ?? .systemFont(ofSize: 15)
+            let baseFont = plainTypingAttributes[.font] as? NSFont ?? .interfaceSystemFont(ofSize: 15)
             ComposerMarkdownPresentation.apply(to: normalized, font: baseFont)
             super.insertText(normalized, replacementRange: replacementRange)
         } else {
@@ -947,9 +1005,8 @@ final class ComposerNSTextView: ComposerFocusReportingTextView {
         ),
            onEditLatestMessage?() == true
         {
-            if window?.firstResponder === self {
-                window?.makeFirstResponder(nil)
-            }
+            // The timeline takes focus when it actually opens an editor.
+            // Requests blocked by a send animation keep the composer focused.
             return
         }
         if KeyboardShortcutPolicy.isPlainEscape(keyCode: event.keyCode, modifierFlags: event.modifierFlags) {
@@ -1384,4 +1441,11 @@ final class ComposerFocusSurfaceView: NSView {
     override func mouseDown(with _: NSEvent) {
         focus()
     }
+}
+
+private extension EnvironmentValues {
+    /// A composer in a pane leaving the workspace takes no text: its thread
+    /// has closed, and a picker closing with it can hand the editor focus
+    /// back.
+    var acceptsComposerInput: Bool { isEnabled && !isLeavingWorkspace }
 }

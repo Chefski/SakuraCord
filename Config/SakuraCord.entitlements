@@ -10,12 +10,20 @@
     <true/>
     <key>com.apple.security.device.camera</key>
     <true/>
+    <key>com.apple.security.files.bookmarks.app-scope</key>
+    <true/>
     <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+    <key>com.apple.security.files.user-selected.executable</key>
     <true/>
     <key>com.apple.security.temporary-exception.files.home-relative-path.read-only</key>
     <array>
         <string>/Library/Application Support/discord/Local Storage/leveldb/</string>
         <string>/Library/Application Support/Discord/Local Storage/leveldb/</string>
+    </array>
+    <key>com.apple.security.temporary-exception.files.home-relative-path.read-write</key>
+    <array>
+        <string>/Library/Sounds/</string>
     </array>
     <key>com.apple.security.temporary-exception.mach-lookup.global-name</key>
     <array>

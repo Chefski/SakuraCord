@@ -81,10 +81,10 @@ private struct WindowModalPanelSurface<Content: View>: View {
                     VStack(spacing: 0) {
                         if let title {
                             HStack {
-                                Text(title).font(.headline)
+                                Text(title).font(.interface(.headline))
                                 Spacer()
                                 HoverCloseButton(help: "Close", accessibilityIdentifier: "window-modal-close") { context() }
-                            }.padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 8)
+                            }.padding(.horizontal, InterfaceScale.metric(16)).padding(.top, InterfaceScale.metric(12)).padding(.bottom, InterfaceScale.metric(8))
                         }
                         content()
                     }
@@ -101,11 +101,17 @@ private struct WindowModalPanelSurface<Content: View>: View {
                     .overlayPreferenceValue(ProfileFrameAnchorKey.self) { anchor in
                         ProfileFrameDecoration(anchor: anchor, order: "front")
                     }
-                    .shadow(color: .black.opacity(0.28), radius: 24, y: 10)
+                    .shadow(color: .black.opacity(0.28), radius: InterfaceScale.metric(24), y: 10)
                     .scaleEffect(animationState.isVisible ? 1 : 0.965)
-                    .padding(24)
+                    .padding(InterfaceScale.metric(24))
                     .environment(\.windowModalContext, context)
-                    .environment(\.windowModalAvailableSize, CGSize(width: max(0, geometry.size.width - 48), height: max(0, geometry.size.height - 48 - (title == nil ? 0 : 56))))
+                    .environment(
+                        \.windowModalAvailableSize,
+                        CGSize(
+                            width: max(0, geometry.size.width - InterfaceScale.metric(48)),
+                            height: max(0, geometry.size.height - InterfaceScale.metric(48) - (title == nil ? 0 : InterfaceScale.metric(56)))
+                        )
+                    )
                 }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
         }

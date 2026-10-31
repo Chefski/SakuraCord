@@ -24,10 +24,12 @@ struct StaticRemoteImage: NSViewRepresentable {
     let url: URL
     let maximumPixelDimension: Int
     var contentMode: ContentMode = .fit
+    var retriesFailedLoads = false
 
     struct RequestIdentity: Equatable {
         let url: URL
         let maximumPixelDimension: Int
+        var retriesFailedLoads = false
     }
 
     func makeCoordinator() -> Coordinator {
@@ -46,7 +48,8 @@ struct StaticRemoteImage: NSViewRepresentable {
         context.coordinator.load(
             RequestIdentity(
                 url: url,
-                maximumPixelDimension: max(1, maximumPixelDimension)
+                maximumPixelDimension: max(1, maximumPixelDimension),
+                retriesFailedLoads: retriesFailedLoads
             ),
             into: view
         )
@@ -64,6 +67,25 @@ struct StaticRemoteImage: NSViewRepresentable {
     final class Coordinator {
         private var request: RequestIdentity?
         private var task: Task<Void, Never>?
+        private let loadImage: @MainActor (RequestIdentity) async -> CGImage?
+        private let wait: @MainActor (Duration) async throws -> Void
+        private let retryDelays: [Duration]
+
+        init(
+            retryDelays: [Duration] = [.seconds(1), .seconds(2), .seconds(4), .seconds(8), .seconds(16), .seconds(30)],
+            loadImage: @escaping @MainActor (RequestIdentity) async -> CGImage? = { request in
+                await SharedDecodedImageLoader.shared.image(
+                    for: request.url,
+                    maximumPixelDimension: request.maximumPixelDimension,
+                    priority: StaticRemoteImage.loadPriority
+                )
+            },
+            wait: @escaping @MainActor (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+        ) {
+            self.retryDelays = retryDelays
+            self.loadImage = loadImage
+            self.wait = wait
+        }
 
         func load(
             _ request: RequestIdentity,
@@ -79,28 +101,44 @@ struct StaticRemoteImage: NSViewRepresentable {
                 return
             }
             view.clear()
+            let delays = request.retriesFailedLoads ? retryDelays : []
+            let loadImage = loadImage
+            let wait = wait
             task = Task { @MainActor [weak self, weak view] in
-                let image = await SharedDecodedImageLoader.shared.image(
-                    for: request.url,
-                    maximumPixelDimension:
-                        request.maximumPixelDimension,
-                    // NSViewRepresentable creates this coordinator only for a
-                    // mounted view. Treat that work as visible so the bounded
-                    // prefetch backlog cannot reject it permanently.
-                    priority: StaticRemoteImage.loadPriority
-                )
-                guard !Task.isCancelled,
-                      self?.request == request,
-                      let view
-                else { return }
-                if image == nil {
-                    // Permit a later SwiftUI update to retry a transient load
-                    // or decode failure for the same identity.
+                for attempt in 0 ... delays.count {
+                    guard !Task.isCancelled, self?.request == request, view != nil else { return }
+                    let image = await loadImage(request)
+                    guard !Task.isCancelled,
+                          self?.request == request,
+                          let view
+                    else { return }
+                    if let image {
+                        view.display(image)
+                        return
+                    }
+                    guard attempt < delays.count else { break }
+                    do {
+                        try await wait(delays[attempt])
+                    } catch {
+                        return
+                    }
+                }
+                // A mounted server icon owns a bounded retry sequence. SwiftUI
+                // redraws must not restart that sequence indefinitely. Leaving
+                // the viewport dismantles it, so re-entry can try again.
+                if !request.retriesFailedLoads {
                     self?.request = nil
                 }
-                view.display(image)
             }
         }
+
+#if DEBUG
+        var loadTaskForTesting: Task<Void, Never>? { task }
+
+        func waitForLoadForTesting() async {
+            await task?.value
+        }
+#endif
 
         func cancel() {
             task?.cancel()
@@ -156,7 +194,7 @@ struct AnimatedRemoteImage: View {
     var playback: AnimatedImagePlayback?
     var previewImage: NSImage?
     var fallbackSystemImage: String?
-    var fallbackInset: CGFloat = 2
+    var fallbackInset: CGFloat = InterfaceScale.metric(2)
     var maximumPixelDimension: Int?
     var contentMode: ContentMode = .fit
     var onFailure: (() -> Void)?
@@ -354,7 +392,7 @@ final class AnimatedRemoteImageDisplayCache: @unchecked Sendable {
         )
         let entry = Entry(
             image: image,
-            cost: max(1, image.estimatedByteCount)
+            cost: max(1, image.storedByteCount)
         )
         lock.lock()
         defer { lock.unlock() }
@@ -428,14 +466,18 @@ nonisolated final class DecodedAnimatedImage: @unchecked Sendable {
 
     let frames: [CGImage]
     let frameDurations: [TimeInterval]
+    let frameSchedule: AnimatedImageFrameSchedule
     let playCount: Int?
     let estimatedByteCount: Int
+    /// The memory the animation keeps: frames stay compressed between draws,
+    /// so this, not the expanded size, is what caches should charge.
     let storedByteCount: Int
     let compressedFrameData: [Data?]
 
     init(frames: [CGImage], frameDurations: [TimeInterval], playCount: Int?, compressedFrameData: [Data?]) {
         self.frames = frames
         self.frameDurations = frameDurations
+        frameSchedule = AnimatedImageFrameSchedule(durations: frameDurations)
         self.playCount = playCount
         self.compressedFrameData = compressedFrameData
         estimatedByteCount = frames.reduce(0) { $0 + $1.bytesPerRow * $1.height }
@@ -460,30 +502,15 @@ nonisolated final class DecodedAnimatedImage: @unchecked Sendable {
             )
         }
         try Self.checkInterruption(shouldInterrupt)
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
-            throw CocoaError(.fileReadCorruptFile)
-        }
-        let frameCount = CGImageSourceGetCount(source)
-        guard frameCount > 0 else { throw CocoaError(.fileReadCorruptFile) }
-        let properties = CGImageSourceCopyProperties(source, nil) as? [CFString: Any]
-        let png = properties?[kCGImagePropertyPNGDictionary] as? [CFString: Any]
-        let webP = properties?[kCGImagePropertyWebPDictionary] as? [CFString: Any]
-        playCount = (png?[kCGImagePropertyAPNGLoopCount] as? NSNumber)?.intValue
-            ?? (webP?[kCGImagePropertyWebPLoopCount] as? NSNumber)?.intValue
-
-        var sourceDurations: [TimeInterval] = []
-        sourceDurations.reserveCapacity(frameCount)
-        for index in 0 ..< frameCount {
-            try Self.checkInterruption(shouldInterrupt)
-            sourceDurations.append(
-                AnimatedImageFrameTiming.duration(
-                    source: source,
-                    index: index
-                )
-            )
-        }
+        let source = try Self.frameSource(
+            data: data,
+            maximumPixelDimension: maximumPixelDimension,
+            shouldInterrupt: shouldInterrupt
+        )
+        let frameCount = source.durations.count
+        playCount = source.playCount
         let selections = AnimatedImageFrameSelection.selections(
-            for: sourceDurations
+            for: source.durations
         )
         var frames: [CGImage] = []
         var frameDurations: [TimeInterval] = []
@@ -492,34 +519,12 @@ nonisolated final class DecodedAnimatedImage: @unchecked Sendable {
         var compressedFrameData: [Data?] = []
         frames.reserveCapacity(selections.count)
         frameDurations.reserveCapacity(selections.count)
-        let thumbnailOptions: CFDictionary? = maximumPixelDimension.map { maximumPixelDimension in
-            [
-                kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceCreateThumbnailWithTransform: true,
-                kCGImageSourceShouldCacheImmediately: true,
-                kCGImageSourceThumbnailMaxPixelSize: max(1, maximumPixelDimension),
-            ] as CFDictionary
-        }
-        let imageOptions = [
-            kCGImageSourceShouldCacheImmediately: true,
-        ] as CFDictionary
         for selection in selections {
-            // ImageIO frame expansion is synchronous. Checking between frames
-            // lets a viewport change abandon a large GIF/APNG instead of
-            // finishing obsolete work after the media has scrolled away.
+            // Frame expansion is synchronous. Checking between frames lets a
+            // viewport change abandon a large animation instead of finishing
+            // obsolete work after the media has scrolled away.
             try Self.checkInterruption(shouldInterrupt)
-            let image = thumbnailOptions.flatMap {
-                CGImageSourceCreateThumbnailAtIndex(
-                    source,
-                    selection.index,
-                    $0
-                )
-            } ?? CGImageSourceCreateImageAtIndex(
-                source,
-                selection.index,
-                imageOptions
-            )
-            guard let image else { continue }
+            guard let image = source.makeFrame(selection.index) else { continue }
             // ImageIO has already been asked to decode every selected frame
             // immediately. A second CGContext redraw of every frame doubled
             // memory bandwidth for no visual gain. Prepare only the first
@@ -537,18 +542,87 @@ nonisolated final class DecodedAnimatedImage: @unchecked Sendable {
             storedByteCount += storage.storedByteCount
             compressedFrameData.append(storage.compressedData)
             if storage.image !== prepared {
-                CGImageSourceRemoveCacheAtIndex(source, selection.index)
+                source.discardFrame(selection.index)
             }
         }
         guard !frames.isEmpty else { throw CocoaError(.fileReadCorruptFile) }
         self.frames = frames
         self.frameDurations = frameDurations
+        frameSchedule = AnimatedImageFrameSchedule(durations: frameDurations)
         self.estimatedByteCount = estimatedByteCount
         self.storedByteCount = storedByteCount
         self.compressedFrameData = compressedFrameData
         reportPerformance(
             startedAt: decodeStart, sourceBytes: data.count,
             sourceFrameCount: frameCount, maximumPixelDimension: maximumPixelDimension
+        )
+    }
+
+    private struct FrameSource {
+        let durations: [TimeInterval]
+        let playCount: Int?
+        let makeFrame: (Int) -> CGImage?
+        var discardFrame: (Int) -> Void = { _ in }
+    }
+
+    /// Lottie stickers are rendered frame by frame; everything else is
+    /// expanded by ImageIO.
+    private nonisolated static func frameSource(
+        data: Data,
+        maximumPixelDimension: Int?,
+        shouldInterrupt: @Sendable () -> Bool
+    ) throws -> FrameSource {
+        if let lottie = LottieStickerFrameRenderer(
+            data: data,
+            maximumPixelDimension: maximumPixelDimension
+        ) {
+            return FrameSource(
+                durations: Array(repeating: lottie.frameDuration, count: lottie.frameCount),
+                playCount: nil,
+                makeFrame: lottie.frame(at:)
+            )
+        }
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        let frameCount = CGImageSourceGetCount(source)
+        guard frameCount > 0 else { throw CocoaError(.fileReadCorruptFile) }
+        let properties = CGImageSourceCopyProperties(source, nil) as? [CFString: Any]
+        let png = properties?[kCGImagePropertyPNGDictionary] as? [CFString: Any]
+        let webP = properties?[kCGImagePropertyWebPDictionary] as? [CFString: Any]
+
+        var durations: [TimeInterval] = []
+        durations.reserveCapacity(frameCount)
+        for index in 0 ..< frameCount {
+            try checkInterruption(shouldInterrupt)
+            durations.append(
+                AnimatedImageFrameTiming.duration(
+                    source: source,
+                    index: index
+                )
+            )
+        }
+        let thumbnailOptions: CFDictionary? = maximumPixelDimension.map { maximumPixelDimension in
+            [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceShouldCacheImmediately: true,
+                kCGImageSourceThumbnailMaxPixelSize: max(1, maximumPixelDimension),
+            ] as CFDictionary
+        }
+        let imageOptions = [
+            kCGImageSourceShouldCacheImmediately: true,
+        ] as CFDictionary
+        return FrameSource(
+            durations: durations,
+            playCount: (png?[kCGImagePropertyAPNGLoopCount] as? NSNumber)?.intValue
+                ?? (webP?[kCGImagePropertyWebPLoopCount] as? NSNumber)?.intValue,
+            makeFrame: { index in
+                thumbnailOptions.flatMap {
+                    CGImageSourceCreateThumbnailAtIndex(source, index, $0)
+                } ?? CGImageSourceCreateImageAtIndex(source, index, imageOptions)
+            },
+            discardFrame: { CGImageSourceRemoveCacheAtIndex(source, $0) }
         )
     }
 
@@ -826,7 +900,7 @@ actor SharedAnimatedImageLoader {
             cache.setObject(
                 image,
                 forKey: key.cacheKey,
-                cost: image.estimatedByteCount
+                cost: image.storedByteCount
             )
         }
         return result
@@ -1261,9 +1335,8 @@ final class AnimatedImageCanvas: NSView {
         guard let image = displayedImage, let preference = displayedAnimationPreference, let layer else { return }
         let clock = displayedPlayback?.clock ?? playbackClock
         let elapsed = (clock.pausedAt ?? CACurrentMediaTime()) - clock.pausedDuration - boundedStartTime
-        let index = preference.resetsWhenStopped && !preference.animates ? 0 : AnimatedImageFrameSchedule.frameIndex(
+        let index = preference.resetsWhenStopped && !preference.animates ? 0 : image.frameSchedule.frameIndex(
             elapsed: elapsed,
-            durations: image.frameDurations,
             playCount: image.playCount,
             isLooping: preference.isLooping,
             activeDuration: displayedPlayback?.duration,

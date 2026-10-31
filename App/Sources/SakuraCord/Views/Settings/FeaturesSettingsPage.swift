@@ -11,6 +11,13 @@ struct FeaturesSettingsPage: View {
         )
         SettingsPageForm(page: .features, state: state) {
             Section {
+                Toggle("Read All button", isOn: value.readAllButton)
+                    .tint(SakuraCordAccentColor.color)
+                    .settingsControlAnchor(.readAllButton, state: state)
+            } header: {
+                Text("Notifications", bundle: #bundle)
+            }
+            Section {
                 Toggle("Channel customization", isOn: value.channelManagement)
                     .tint(SakuraCordAccentColor.color)
                     .settingsControlAnchor(.channelManagement, state: state)
@@ -22,6 +29,14 @@ struct FeaturesSettingsPage: View {
                 Text("Channels", bundle: #bundle)
             }
             FakeNitroSettingsSection(value: value, state: state)
+            Section {
+                Toggle("Record voice messages", isOn: value.voiceMessageRecording)
+                    .tint(SakuraCordAccentColor.color)
+                    .settingsControlAnchor(.voiceMessageRecording, state: state)
+                    .help("Show the composer’s record button. Voice messages in conversations play either way.")
+            } header: {
+                Text("Voice Messages", bundle: #bundle)
+            }
             AttachmentSettingsSection(
                 value: Binding(
                     get: { model.attachmentSettings },
@@ -29,6 +44,7 @@ struct FeaturesSettingsPage: View {
                 ),
                 state: state
             )
+            TranslationSettingsSection(model: model, state: state)
         }
     }
 }

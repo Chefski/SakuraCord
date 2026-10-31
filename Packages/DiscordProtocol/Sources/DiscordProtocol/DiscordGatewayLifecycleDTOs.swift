@@ -88,6 +88,9 @@ struct GatewayGuildPatchDTO: Decodable {
     var unavailable: Bool?
     var features: Set<String>?
     var profile: GuildProfileTagDTO?
+    /// Only GUILD_CREATE carries it: when the account joins a server
+    /// mid-session, Discord's read state counts posts from this moment.
+    var joinedAt: String?
     var containsProfile: Bool
     var containsIcon: Bool
     var containsHomeHeader: Bool
@@ -100,6 +103,7 @@ struct GatewayGuildPatchDTO: Decodable {
         case rulesChannelID = "rules_channel_id"
         case nsfwLevel = "nsfw_level"
         case defaultMessageNotifications = "default_message_notifications"
+        case joinedAt = "joined_at"
     }
 
     init(from decoder: any Decoder) throws {
@@ -107,6 +111,7 @@ struct GatewayGuildPatchDTO: Decodable {
         let nested = try? values.decode(
             GatewayGuildPropertiesDTO.self, forKey: .properties
         )
+        joinedAt = try? values.decode(String.self, forKey: .joinedAt)
         nsfwLevel = (try? values.decode(Int.self, forKey: .nsfwLevel)) ?? nested?.nsfwLevel
         id = try values.decode(String.self, forKey: .id)
         name = (try? values.decode(String.self, forKey: .name)) ?? nested?.name
@@ -175,6 +180,7 @@ struct GatewayGuildPatchDTO: Decodable {
             isOwnedByCurrentUser: owner
                 ?? ownerID.map { $0 == currentUserID?.description }
                 ?? existing?.isOwnedByCurrentUser,
+            ownerID: ownerID.flatMap(UserID.init) ?? existing?.ownerID,
             currentUserPermissions: permissions.flatMap(UInt64.init)
                 ?? existing?.currentUserPermissions,
             rulesChannelID: containsRulesChannelID
@@ -188,7 +194,7 @@ struct GatewayGuildPatchDTO: Decodable {
                 ?? existing?.defaultMessageNotifications
                 ?? .onlyMentions,
             isUnavailable: unavailable ?? existing?.isUnavailable ?? false,
-            joinedAt: existing?.joinedAt,
+            joinedAt: joinedAt.flatMap(DiscordDate.parse) ?? existing?.joinedAt,
             isAgeRestricted: nsfwLevel.map { $0 == 1 || $0 == 3 } ?? existing?.isAgeRestricted ?? false
         )
     }

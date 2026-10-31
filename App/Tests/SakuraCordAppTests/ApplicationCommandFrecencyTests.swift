@@ -27,14 +27,14 @@ private func pickerCommand(
 @MainActor
 @Test("command frecency scores recent uses with Discord's day weights")
 func commandFrecencyScoring() {
-    let store = ApplicationCommandFrecencyStore(now: { frecencyNow })
-    store.overwrite(with: ApplicationCommandFrecencyHistory(entries: [
-        ApplicationCommandFrecencyEntry(
+    let store = DiscordFrecencyStore(now: { frecencyNow })
+    store.overwrite(with: DiscordFrecencyHistory(entries: [
+        DiscordFrecencyEntry(
             key: "1", totalUses: 20, recentUses: [millisecondsAgo(days: 20), millisecondsAgo(days: 1)]
         ),
-        ApplicationCommandFrecencyEntry(key: "2", totalUses: 4, recentUses: [millisecondsAgo(days: 100)]),
-        ApplicationCommandFrecencyEntry(key: "3", totalUses: 9, recentUses: []),
-        ApplicationCommandFrecencyEntry(key: "4", totalUses: 1, recentUses: [millisecondsAgo(days: 2)]),
+        DiscordFrecencyEntry(key: "2", totalUses: 4, recentUses: [millisecondsAgo(days: 100)]),
+        DiscordFrecencyEntry(key: "3", totalUses: 9, recentUses: []),
+        DiscordFrecencyEntry(key: "4", totalUses: 1, recentUses: [millisecondsAgo(days: 2)]),
     ]))
 
     #expect(store.score(for: "1") == 1.5)
@@ -50,10 +50,10 @@ func commandFrecencyScoring() {
 @MainActor
 @Test("pending command uses replay over newer synced history until saved")
 func commandFrecencyPendingReplay() {
-    let store = ApplicationCommandFrecencyStore(now: { frecencyNow })
+    let store = DiscordFrecencyStore(now: { frecencyNow })
     store.recordUse("-7")
-    store.overwrite(with: ApplicationCommandFrecencyHistory(entries: [
-        ApplicationCommandFrecencyEntry(key: "-7", totalUses: 4, recentUses: [millisecondsAgo(days: 1)]),
+    store.overwrite(with: DiscordFrecencyHistory(entries: [
+        DiscordFrecencyEntry(key: "-7", totalUses: 4, recentUses: [millisecondsAgo(days: 1)]),
     ]))
 
     #expect(store.hasPendingUsage)

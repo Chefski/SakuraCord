@@ -55,7 +55,7 @@ import Testing
     let layout = NativeTimelineRowLayout.make(
         item: item,
         width: 900,
-        model: model
+        source: model
     )
     #expect(layout.sakuraCordDeepLinkRegions.first?.action == .checkForUpdates)
     #expect(layout.sakuraCordDeepLinkRegions.first?.action.title == "Update SakuraCord")
@@ -131,7 +131,7 @@ import Testing
     let layout = NativeTimelineRowLayout.make(
         item: item,
         width: 900,
-        model: model
+        source: model
     )
     let region = try #require(layout.sakuraCordDeepLinkRegions.first)
     #expect(region.action == .applyTheme(decodedTheme))
@@ -199,7 +199,7 @@ import Testing
             isHighlighted: false
         ),
         width: 900,
-        model: AppModel(launchMode: .offlineTesting)
+        source: AppModel(launchMode: .offlineTesting)
     )
     let regions = layout.sakuraCordDeepLinkRegions
     try #require(regions.count == 3)
@@ -227,22 +227,6 @@ import Testing
             #expect(region.cardFrame.contains(region.buttonFrame))
         }
     }
-}
-
-@MainActor
-@Test func `local emoji cleanup actions remain independently scoped`() {
-    let model = AppModel(launchMode: .offlineTesting)
-    model.emojiRecentKeys = ["one", "two"]
-    model.emojiUsageCounts = ["one": 4]
-
-    model.clearLocalEmojiRecents()
-    #expect(model.emojiRecentKeys.isEmpty)
-    #expect(model.emojiUsageCounts == ["one": 4])
-
-    model.emojiRecentKeys = ["two"]
-    model.resetLocalEmojiRanking()
-    #expect(model.emojiUsageCounts.isEmpty)
-    #expect(model.emojiRecentKeys == ["two"])
 }
 
 @MainActor
@@ -314,6 +298,6 @@ import Testing
         #expect(!model.canDeleteMessage(message))
         #expect(!model.canManagePins(for: message))
         #expect(!message.isForwardable)
-        #expect(canvas.accessibilityMessageActions(row, rowFrame: canvas.bounds, rowIndex: 0).isEmpty)
+        #expect(canvas.accessibilityMessageActions(row, rowIndex: 0).isEmpty)
     }
 }

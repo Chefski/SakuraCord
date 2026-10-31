@@ -87,8 +87,8 @@ private func timestampAttachment(in text: NSAttributedString) -> MentionTextAtta
     let index = try #require(coordinator.items.firstIndex { $0.messageID == messages[0].id })
     let item = coordinator.items[index]
     let wrappingWidth = try #require((180 ... 400).first { width in
-        let earlier = NativeTimelineRowLayout.make(item: item, width: CGFloat(width), model: model, relativeTo: before)
-        let later = NativeTimelineRowLayout.make(item: item, width: CGFloat(width), model: model, relativeTo: after)
+        let earlier = NativeTimelineRowLayout.make(item: item, width: CGFloat(width), source: model, relativeTo: before)
+        let later = NativeTimelineRowLayout.make(item: item, width: CGFloat(width), source: model, relativeTo: after)
         return abs(earlier.height - later.height) >= 0.5
     })
     scrollView.frame.size.width = CGFloat(wrappingWidth)

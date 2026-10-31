@@ -7,6 +7,11 @@ import SwiftUI
 @MainActor
 final class NativeMemberListCanvasView: NSView, WindowModalInputParticipant {
     var cosmeticPolicy = ProfileCosmeticPolicy()
+    weak var serverTagCardModel: AppModel? {
+        didSet {
+            if oldValue !== serverTagCardModel { dismissServerTagCard() }
+        }
+    }
 
     nonisolated struct Header: Equatable, Sendable {
         let id: MemberSection.SectionIdentifier
@@ -57,7 +62,9 @@ final class NativeMemberListCanvasView: NSView, WindowModalInputParticipant {
 
         var height: CGFloat {
             switch self {
-            case .header: NativeMemberListMetrics.sectionHeaderHeight
+            // An untitled section keeps its header item for stable layout but takes no space.
+            case .header(let header): header.title.isEmpty && !header.isLoadingSkeleton
+                ? 0 : NativeMemberListMetrics.sectionHeaderHeight
             case .member, .placeholder: NativeMemberListMetrics.memberRowHeight
             }
         }
@@ -71,6 +78,7 @@ final class NativeMemberListCanvasView: NSView, WindowModalInputParticipant {
         let activity: CTLine?
         let activityTruncationToken: CTLine?
         let activityWidth: CGFloat
+        let serverTag: NativeServerTagPresentation?
 
         init(
             nameFont: NSFont,
@@ -79,7 +87,8 @@ final class NativeMemberListCanvasView: NSView, WindowModalInputParticipant {
             nameWidth: CGFloat,
             activity: CTLine?,
             activityTruncationToken: CTLine?,
-            activityWidth: CGFloat
+            activityWidth: CGFloat,
+            serverTag: NativeServerTagPresentation?
         ) {
             self.nameFont = nameFont
             self.name = name
@@ -88,6 +97,7 @@ final class NativeMemberListCanvasView: NSView, WindowModalInputParticipant {
             self.activity = activity
             self.activityTruncationToken = activityTruncationToken
             self.activityWidth = activityWidth
+            self.serverTag = serverTag
         }
     }
 
@@ -145,6 +155,8 @@ final class NativeMemberListCanvasView: NSView, WindowModalInputParticipant {
     struct AvatarOverlayConfiguration: Equatable {
         let member: Member
         let isHovered: Bool
+        let showsPresence: Bool
+        let opacity: CGFloat
     }
 
     struct ActivityEmojiOverlayPresentation {
@@ -161,18 +173,13 @@ final class NativeMemberListCanvasView: NSView, WindowModalInputParticipant {
             ) == true
     }
 
-    struct GuildTagPresentation {
-        let line: CTLine
-        let width: CGFloat
-        let iconWidth: CGFloat
-        let image: CGImage?
-    }
-
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
+        sectionHeaderLines.removeAll(keepingCapacity: true)
+        fittedTextLines.removeAll(keepingCapacity: true)
         needsDisplay = true
         layer?.setNeedsDisplay()
         rowOverlay?.needsDisplay = true
@@ -192,15 +199,38 @@ final class NativeMemberListCanvasView: NSView, WindowModalInputParticipant {
     var origins: [CGFloat] = []
     var contentHeight: CGFloat = 1
     var preparedText: [ItemID: PreparedText] = [:]
+    var sectionHeaderLines: [SectionHeaderLineKey: CTLine] = [:]
+    var fittedTextLines: [FittedTextLineKey: FittedTextLine] = [:]
     var presentation = NativeMemberListPresentation()
     var loadedItemIndexes: [Int] = []
     var selectedMemberID: UserID?
     var openProfile: ((ProfilePresentationState) -> Void)?
+    var sendProfileMessage: ((UserID, String, String) async -> Bool)?
     var profilePresentation: ProfilePresentationState?
     var isProfilePresented = false
     var dismissProfile: () -> Void = {}
     var selectMember: (Member) -> Void = { _ in }
+    /// Trailing controls hosted only on the hovered row.
+    var rowAccessory: ((Member) -> AnyView)?
+    var rowMenu: ((Member) -> NSMenu?)?
+    var rowAccessibilityActions: ((Member) -> [NSAccessibilityCustomAction])?
     var hoveredIndex: Int?
+    var hoveredServerTagID: ItemID?
+    var serverTagCardPresentation: ServerTagCardPresentation?
+    var memberNameGeometries: [ItemID: MemberNameGeometry] = [:]
+    var serverTagAccessibilityButtons: [ItemID: NativeMemberTagAccessibilityButton] = [:]
+    let serverTagPopoverCoordinator = StableAnchoredPopoverPresenter<AnyView>.Coordinator()
+    lazy var serverTagPopoverAnchor = StablePopoverAnchor(
+        sourceView: self,
+        sourceRect: { [weak self] in
+            guard let self,
+                  let presentation = self.serverTagCardPresentation,
+                  let index = self.itemIndexesByID[presentation.itemID],
+                  self.isCurrentServerTagCardPresentation(presentation)
+            else { return nil }
+            return self.serverTagFrame(at: index)
+        }
+    )
     var isScrolling = false
     var interactionsBlocked = false
     var trackingArea: NSTrackingArea?
@@ -227,6 +257,7 @@ final class NativeMemberListCanvasView: NSView, WindowModalInputParticipant {
         ActivityEmojiOverlayID: ActivityEmojiOverlayConfiguration
     ] = [:]
     var accessibilityRows: [ItemID: NativeMemberAccessibilityProxyView] = [:]
+    var accessibilityHeaders: [ItemID: NSAccessibilityElement] = [:]
     var imageTasks: [URL: Task<Void, Never>] = [:]
     var imageTaskPriorities: [URL: MediaLoadPriority] = [:]
     var imageTaskPixelDimensions: [URL: Int] = [:]
@@ -245,6 +276,12 @@ final class NativeMemberListCanvasView: NSView, WindowModalInputParticipant {
     }
 
     override func updateTrackingAreas() {
+        // The area follows the visible rect by itself. AppKit asks again on
+        // every frame a column moves the list, which changes nothing here.
+        if !interactionsBlocked, let trackingArea, trackingAreas.contains(trackingArea) {
+            super.updateTrackingAreas()
+            return
+        }
         if let trackingArea { removeTrackingArea(trackingArea) }
         guard !interactionsBlocked else {
             trackingArea = nil
@@ -288,10 +325,43 @@ final class NativeMemberListCanvasView: NSView, WindowModalInputParticipant {
             }
         }
     }
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let localPoint = convert(point, from: superview)
+        // The hover row is a contents-free SwiftUI button. Keep its invisible
+        // hit region from swallowing the tag drawn by the native foreground.
+        if serverTagIndex(at: localPoint) != nil { return self }
+        return super.hitTest(point)
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        guard !isScrolling, !interactionsBlocked,
+              WindowModalCoordinator.allowsInput(for: self),
+              let visibleRect = enclosingScrollView?.documentVisibleRect
+        else { return }
+        for index in itemRange(intersecting: visibleRect) {
+            guard canActivateServerTag(at: index),
+                  let frame = serverTagFrame(at: index)
+            else { continue }
+            let cursorRect = frame.intersection(visibleRect)
+            guard !cursorRect.isNull, !cursorRect.isEmpty else { continue }
+            addCursorRect(cursorRect, cursor: .pointingHand)
+        }
+    }
+
     override func mouseMoved(with event: NSEvent) {
         guard WindowModalCoordinator.allowsInput(for: self) else { return }
         guard !isScrolling, !interactionsBlocked else { return }
-        let newIndex = index(at: convert(event.locationInWindow, from: nil))
+        let point = convert(event.locationInWindow, from: nil)
+        // The list scrolls beneath the toolbar, which takes the pointer there.
+        let newIndex: Int?
+        if window?.toolbarCovers(event.locationInWindow) == true {
+            clearServerTagHover()
+            newIndex = nil
+        } else {
+            updateServerTagHover(at: point)
+            newIndex = index(at: point)
+        }
         guard newIndex != hoveredIndex else { return }
         let old = hoveredIndex
         hoveredIndex = newIndex
@@ -301,6 +371,7 @@ final class NativeMemberListCanvasView: NSView, WindowModalInputParticipant {
     }
 
     override func mouseExited(with event: NSEvent) {
+        clearServerTagHover()
         guard let old = hoveredIndex else { return }
         hoveredIndex = nil
         setNeedsDisplay(itemRect(at: old))
@@ -308,11 +379,26 @@ final class NativeMemberListCanvasView: NSView, WindowModalInputParticipant {
     }
 
     override func mouseDown(with event: NSEvent) {
-        guard !interactionsBlocked,
-              let index = index(at: convert(event.locationInWindow, from: nil)),
+        guard !interactionsBlocked, WindowModalCoordinator.allowsInput(for: self)
+        else { return }
+        let point = convert(event.locationInWindow, from: nil)
+        if let index = serverTagIndex(at: point) {
+            activateServerTag(at: index)
+            return
+        }
+        guard let index = index(at: point),
               case .member(let member, _) = items[index]
         else { return }
         selectMember(member)
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        guard !interactionsBlocked, WindowModalCoordinator.allowsInput(for: self) else { return nil }
+        let point = convert(event.locationInWindow, from: nil)
+        guard let index = index(at: point),
+              case .member(let member, _) = items[index]
+        else { return nil }
+        return rowMenu?(member)
     }
 
 }

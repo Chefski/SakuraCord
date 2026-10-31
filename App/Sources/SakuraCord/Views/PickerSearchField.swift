@@ -9,7 +9,7 @@ struct PickerSearchField: View {
     @FocusState private var isFocused: Bool
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: InterfaceScale.metric(8)) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
             TextField(placeholder, text: $text)
@@ -25,13 +25,13 @@ struct PickerSearchField: View {
                 .help("Clear search")
             }
         }
-        .padding(.horizontal, 11)
-        .frame(height: 40)
-        .contentShape(ConcentricRectangle(cornerRadius: 12, style: .continuous))
+        .padding(.horizontal, InterfaceScale.metric(11))
+        .frame(height: InterfaceScale.metric(40))
+        .contentShape(ConcentricRectangle(cornerRadius: InterfaceScale.metric(12), style: .continuous))
         .onTapGesture { isFocused = true }
         .glassEffect(
             .regular.interactive(),
-            in: ConcentricRectangle(cornerRadius: 12, style: .continuous)
+            in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(12), style: .continuous)
         )
         .accessibilityIdentifier(accessibilityIdentifier)
         .task {
@@ -50,7 +50,7 @@ struct PickerSearchHeader<Input: View>: View {
     var body: some View {
         HStack(spacing: ChatChromeMetrics.pickerSearchHeaderSpacing) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: ChatChromeMetrics.pickerSearchHeaderIconSize, weight: .medium))
+                .font(.interfaceSystem(size: ChatChromeMetrics.pickerSearchHeaderIconSize, weight: .medium))
                 .foregroundStyle(.secondary)
             input().frame(maxWidth: .infinity)
             Button {

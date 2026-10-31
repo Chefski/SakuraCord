@@ -77,6 +77,7 @@ public struct DiscordMessageType: RawRepresentable, Codable, Hashable, Sendable 
     public static let stageTopic = Self(rawValue: 31)
     public static let premiumReferral = Self(rawValue: 35)
     public static let pollResult = Self(rawValue: 46)
+    public static let friendRequestAccepted = Self(rawValue: 67)
 
     /// Exact set used by Discord desktop's current `FORWARDABLE` policy.
     public var isForwardable: Bool {
@@ -90,7 +91,7 @@ public struct DiscordMessageType: RawRepresentable, Codable, Hashable, Sendable 
 
     public var hasGeneratedContent: Bool {
         switch rawValue {
-        case 1 ... 12, 18, 22, 27 ... 31, 46:
+        case 1 ... 12, 18, 22, 27 ... 31, 46, 67:
             true
         default:
             false
@@ -309,6 +310,8 @@ public enum StickerFormat: Int, Codable, Hashable, Sendable {
     case apng = 2
     case lottie = 3
     case gif = 4
+
+    public var isAnimated: Bool { self != .png }
 }
 
 public struct MessageSticker: Identifiable, Codable, Hashable, Sendable {
@@ -379,12 +382,15 @@ public struct MessageThreadSummary: Codable, Hashable, Sendable {
     public var messageCount: Int
     public var memberCount: Int
     public var lastMessageID: MessageID?
+    public var isPrivate: Bool
     public var isArchived: Bool
     public var isLocked: Bool
     public var ownerID: UserID?
     public var appliedTagIDs: [ForumTagID]
     public var flags: UInt64
     public var archiveTimestamp: Date?
+    /// Discord's `last_non_message_activity_timestamp`, which extends sidebar relevance.
+    public var lastNonMessageActivityAt: Date?
     public var createdAt: Date?
     public var autoArchiveDuration: Int?
     public var totalMessageSent: Int
@@ -398,8 +404,10 @@ public struct MessageThreadSummary: Codable, Hashable, Sendable {
         ownerID: UserID? = nil, appliedTagIDs: [ForumTagID] = [], flags: UInt64 = 0,
         archiveTimestamp: Date? = nil, createdAt: Date? = nil,
         autoArchiveDuration: Int? = nil, totalMessageSent: Int = 0,
-        notificationSettings: ThreadNotificationSettings? = nil, rateLimitPerUser: Int = 0
+        notificationSettings: ThreadNotificationSettings? = nil, rateLimitPerUser: Int = 0,
+        lastNonMessageActivityAt: Date? = nil, isPrivate: Bool = false
     ) {
+        self.lastNonMessageActivityAt = lastNonMessageActivityAt
         self.rateLimitPerUser = rateLimitPerUser
         self.id = id
         self.guildID = guildID
@@ -408,6 +416,7 @@ public struct MessageThreadSummary: Codable, Hashable, Sendable {
         self.messageCount = messageCount
         self.memberCount = memberCount
         self.lastMessageID = lastMessageID
+        self.isPrivate = isPrivate
         self.isArchived = isArchived
         self.isLocked = isLocked
         self.ownerID = ownerID
@@ -424,9 +433,9 @@ public struct MessageThreadSummary: Codable, Hashable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case id, guildID, parentID, name, messageCount, memberCount, lastMessageID
-        case isArchived, isLocked, ownerID, appliedTagIDs, flags, archiveTimestamp
+        case isPrivate, isArchived, isLocked, ownerID, appliedTagIDs, flags, archiveTimestamp
         case createdAt, autoArchiveDuration, totalMessageSent
-        case notificationSettings, rateLimitPerUser
+        case notificationSettings, rateLimitPerUser, lastNonMessageActivityAt
     }
 
     public init(from decoder: any Decoder) throws {
@@ -439,12 +448,16 @@ public struct MessageThreadSummary: Codable, Hashable, Sendable {
         messageCount = try values.decodeIfPresent(Int.self, forKey: .messageCount) ?? 0
         memberCount = try values.decodeIfPresent(Int.self, forKey: .memberCount) ?? 0
         lastMessageID = try values.decodeIfPresent(MessageID.self, forKey: .lastMessageID)
+        isPrivate = try values.decodeIfPresent(Bool.self, forKey: .isPrivate) ?? false
         isArchived = try values.decodeIfPresent(Bool.self, forKey: .isArchived) ?? false
         isLocked = try values.decodeIfPresent(Bool.self, forKey: .isLocked) ?? false
         ownerID = try values.decodeIfPresent(UserID.self, forKey: .ownerID)
         appliedTagIDs = try values.decodeIfPresent([ForumTagID].self, forKey: .appliedTagIDs) ?? []
         flags = try values.decodeIfPresent(UInt64.self, forKey: .flags) ?? 0
         archiveTimestamp = try values.decodeIfPresent(Date.self, forKey: .archiveTimestamp)
+        lastNonMessageActivityAt = try values.decodeIfPresent(
+            Date.self, forKey: .lastNonMessageActivityAt
+        )
         createdAt = try values.decodeIfPresent(Date.self, forKey: .createdAt)
         autoArchiveDuration = try values.decodeIfPresent(Int.self, forKey: .autoArchiveDuration)
         totalMessageSent = try values.decodeIfPresent(Int.self, forKey: .totalMessageSent) ?? 0
@@ -660,7 +673,8 @@ public struct GIFPickerLanding: Codable, Hashable, Sendable {
 public enum MessageSendProgress: Equatable, Sendable {
     case preparing
     case reserving(files: Int)
-    case uploading(fileName: String, completed: Int64, total: Int64)
+    /// `fileID` is the draft attachment's ID, absent for files sent without a draft.
+    case uploading(fileID: UUID?, fileName: String, completed: Int64, total: Int64)
     case submitting
     case awaitingReconciliation(nonce: String)
     case completed(messageID: MessageID)
@@ -668,8 +682,12 @@ public enum MessageSendProgress: Equatable, Sendable {
 
 public extension Message {
     /// The thread this message shows a card for: the thread it started, or
-    /// the thread a thread-created system message announces.
+    /// the thread a thread-created system message announces. A started thread
+    /// shares the message's ID, and Discord's starter `MESSAGE_UPDATE` carries
+    /// only the has-thread flag.
     var referencedThreadID: ChannelID? {
-        thread?.id ?? (type == .threadCreated ? messageReference?.channelID : nil)
+        if let thread { return thread.id }
+        if type == .threadCreated { return messageReference?.channelID }
+        return flags.contains(.hasThread) ? ChannelID(rawValue: id.rawValue) : nil
     }
 }

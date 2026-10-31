@@ -22,13 +22,13 @@ struct ProfileGameView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(28)) {
                 header
                 if game.metadata?.isProfileAvailable == false {
                     ContentUnavailableView("Game Profile Unavailable", systemImage: "gamecontroller")
                 } else {
-                    HStack(alignment: .top, spacing: 24) {
-                        VStack(alignment: .leading, spacing: 28) {
+                    HStack(alignment: .top, spacing: InterfaceScale.metric(24)) {
+                        VStack(alignment: .leading, spacing: InterfaceScale.metric(28)) {
                             if let metadata = game.metadata {
                                 ProfileGameGallery(game: game)
                                 if let description = metadata.description, !description.isEmpty {
@@ -40,7 +40,7 @@ struct ProfileGameView: View {
                         }
                         .frame(maxWidth: .infinity)
                         if let metadata = game.metadata {
-                            ProfileGameDetails(metadata: metadata, open: openLink).frame(width: 360)
+                            ProfileGameDetails(metadata: metadata, open: openLink).frame(width: InterfaceScale.metric(360))
                         }
                     }
                 }
@@ -51,17 +51,17 @@ struct ProfileGameView: View {
                         Spacer()
                         Button("Retry") { Task { await load() } }.disabled(isLoading)
                     }
-                    .font(.callout).foregroundStyle(.secondary)
+                    .font(.interface(.callout)).foregroundStyle(.secondary)
                 }
-                if let error = editor.errorMessage { Text(error).font(.callout).foregroundStyle(.red) }
+                if let error = editor.errorMessage { Text(error).font(.interface(.callout)).foregroundStyle(.red) }
             }
-            .padding(24)
+            .padding(InterfaceScale.metric(24))
         }
         .windowModalSize(width: 1180, height: 760)
         .background(alignment: .top) {
             if let artwork = game.metadata?.artwork.first {
                 ProfileWidgetImageView(url: artwork, contentMode: .fill)
-                    .frame(height: 220).clipped().opacity(0.15)
+                    .frame(height: InterfaceScale.metric(220)).clipped().opacity(0.15)
                     .mask(LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom))
             }
         }
@@ -73,14 +73,14 @@ struct ProfileGameView: View {
     }
 
     private var header: some View {
-        HStack(alignment: .top, spacing: 16) {
-            ProfileWidgetGameCover(game: game, animates: true).frame(width: 86, height: 114)
-            VStack(alignment: .leading, spacing: 8) {
-                Spacer(minLength: 24)
-                Text(game.name).font(.system(size: 32, weight: .bold))
-                Text(ProfileGameLabels.genres(game.metadata?.genres ?? [])).font(.system(size: 16)).foregroundStyle(.secondary)
+        HStack(alignment: .top, spacing: InterfaceScale.metric(16)) {
+            ProfileWidgetGameCover(game: game, animates: true).frame(width: InterfaceScale.metric(86), height: InterfaceScale.metric(114))
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(8)) {
+                Spacer(minLength: InterfaceScale.metric(24))
+                Text(game.name).font(.interfaceSystem(size: 32, weight: .bold))
+                Text(ProfileGameLabels.genres(game.metadata?.genres ?? [])).font(.interfaceSystem(size: 16)).foregroundStyle(.secondary)
             }
-            Spacer(minLength: 8)
+            Spacer(minLength: InterfaceScale.metric(8))
             if !navigation.isEmpty {
                 Button { if let previous = navigation.popLast() { game = previous } } label: { Image(systemName: "chevron.left") }
                     .accessibilityLabel("Back").disabled(editor.isSaving)
@@ -108,19 +108,19 @@ struct ProfileGameView: View {
             HoverCloseButton(help: "Close", accessibilityIdentifier: "profile-editor-close") { dismiss?() }
                 .disabled(editor.isSaving)
         }
-        .frame(height: 114)
+        .frame(height: InterfaceScale.metric(114))
     }
 
     @ViewBuilder private var announcementSection: some View {
         if let channelID = announcements.channelID, let guildID = announcements.guildID, !announcements.messages.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(12)) {
                 HStack {
-                    Text("Announcements", bundle: #bundle).font(.headline)
+                    Text("Announcements", bundle: #bundle).font(.interface(.headline))
                     Spacer()
                     Button("View All") { openAnnouncement(guildID: guildID, channelID: channelID, messageID: nil) }.buttonStyle(.plain)
                 }
                 ScrollView(.horizontal) {
-                    HStack(alignment: .top, spacing: 16) {
+                    HStack(alignment: .top, spacing: InterfaceScale.metric(16)) {
                         ForEach(announcements.messages) { message in
                             ProfileGameAnnouncementCard(message: message)
                                 .contentShape(.rect)
@@ -137,13 +137,13 @@ struct ProfileGameView: View {
 
     @ViewBuilder private var similarSection: some View {
         if !similar.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Similar Games", bundle: #bundle).font(.headline)
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(12)) {
+                Text("Similar Games", bundle: #bundle).font(.interface(.headline))
                 ScrollView(.horizontal) {
-                    HStack(spacing: 12) {
+                    HStack(spacing: InterfaceScale.metric(12)) {
                         ForEach(similar) { suggestion in
                             Button { navigation.append(game); game = suggestion } label: {
-                                ProfileWidgetGameCover(game: suggestion, animates: true).frame(width: 78, height: 104)
+                                ProfileWidgetGameCover(game: suggestion, animates: true).frame(width: InterfaceScale.metric(78), height: InterfaceScale.metric(104))
                             }.buttonStyle(.plain).disabled(editor.isSaving)
                         }
                     }

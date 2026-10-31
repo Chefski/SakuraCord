@@ -33,6 +33,9 @@ complete-sentence bullets. Lead bullets with direct past-tense verbs such as
 “Added”, “Fixed” or “Improved”. Put features/fixes before relevant maintenance.
 Use no emoji. End with the exact comparison link.
 
+For a release containing one fix, use one section and one fix bullet instead
+of expanding the same change across several sections or bullets.
+
 ```markdown
 SakuraCord vX.Y.Z adds [major features]. It also improves [important areas].
 

@@ -48,7 +48,7 @@ extension DiscordRESTProvider {
         guard let typing = try? JSONValueDecoder().decode(TypingStartDTO.self, from: body),
               let channelID = ChannelID(typing.channelID),
               let userID = UserID(typing.userID),
-              let user = DiscordTypingEventResolver.resolve(.init(
+              var user = DiscordTypingEventResolver.resolve(.init(
                   typing: typing,
                   userID: userID,
                   currentUser: currentUser,
@@ -62,6 +62,9 @@ extension DiscordRESTProvider {
         else {
             gatewayLogger.debug("Ignored an unresolved or malformed typing event")
             return
+        }
+        if typing.guildID == nil, let nickname = cachedRelationshipNicknamesByUserID[userID] {
+            user.displayName = nickname
         }
         continuation?.yield(.typing(channelID: channelID, user: user))
     }
@@ -97,6 +100,7 @@ extension DiscordRESTProvider {
                     .first { $0.id == message.channelID }?.guildID
             }
             attachKnownThread(to: &message)
+            attachKnownStarterPreview(to: &message)
             cacheMessageSearchUsers(dto.searchIndexUsers)
             cacheForwardSearchMessageAliases([message])
             cachedMessages[message.id] = message
@@ -203,7 +207,8 @@ extension DiscordRESTProvider {
             ?? cachedJoinedThreads[channelID]?.guildID
             ?? cachedForumPosts.values.lazy.compactMap { $0[channelID]?.thread.guildID }.first
             ?? cachedChannels.values.lazy.flatMap(\.self).first { $0.id == channelID }?.guildID
-        guard let update = dto.domain(guildID: guildID) else { return }
+        guard var update = dto.domain(guildID: guildID) else { return }
+        attachKnownStartedThread(to: &update)
         if var message = cachedMessages[messageID] {
             update.apply(to: &message)
             cachedMessages[messageID] = message
@@ -225,7 +230,12 @@ extension DiscordRESTProvider {
         for (parentID, posts) in cachedForumPosts {
             guard var post = posts[channelID] else { continue }
             var changed = false
-            if post.firstMessage?.id == messageID { post.firstMessage = nil; changed = true }
+            // A forum starter shares its post's ID.
+            if messageID.rawValue == channelID.rawValue || post.firstMessage?.id == messageID {
+                post.firstMessage = nil
+                post.isFirstMessageLoaded = true
+                changed = true
+            }
             if post.mostRecentMessage?.id == messageID { post.mostRecentMessage = nil; changed = true }
             guard changed else { continue }
             cachedForumPosts[parentID]?[channelID] = post

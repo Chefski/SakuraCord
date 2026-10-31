@@ -5,10 +5,29 @@ extension AppModel {
     // Guild pages retain sidebar selection while replacing its conversation.
     func isConversationPresented(_ channelID: ChannelID) -> Bool {
         guard onboardingEntryGuildID == nil else { return false }
-        if openThread?.id == channelID { return true }
-        guard selectedChannelID == channelID else { return false }
+        // A thread withheld while its access is resolved again is not viewed.
+        // A thread neither in its pane nor at full width is not viewed.
+        if openThread?.id == channelID {
+            return openThreadResolution == nil
+                && (isThreadFullWidth || workspacePresentation.paneSideConversation != nil)
+        }
+        guard !isThreadFullWidth, selectedChannelID == channelID else { return false }
         guard guildWorkspacePage != nil else { return true }
-        return !hasThreadPane && customizationPreviewChannel?.id == channelID
+        return presentedSideConversation?.capabilities.presentsPrimaryConversation == true
+    }
+
+    /// The open thread's timeline has left the window while the thread
+    /// stays open: it is not viewed, and it comes back where the reader
+    /// left it.
+    func suspendOpenThreadPresentation() {
+        guard let threadID = openThread?.id, !isConversationPresented(threadID) else { return }
+        threadTimelinePosition.restore = threadTimelinePosition.reading
+        _ = readState.updatePresentation(
+            channelID: threadID,
+            isPresented: false,
+            initialPositionEstablished: false,
+            hasReachedReadBoundary: false
+        )
     }
 
     func suspendSelectedConversationPresentation() {
@@ -131,14 +150,14 @@ extension AppModel {
         guard isConversationPresented(channelID) else { return }
         preserveUnreadDividerIfNeeded(channelID: channelID)
         let previousBoundary =
-            readState.presentations[channelID]?.hasReachedReadBoundary
+            readState[presentation: channelID]?.hasReachedReadBoundary
         let target = readState.updatePresentation(
             channelID: channelID,
             isPresented: true,
             hasReachedReadBoundary: hasReachedReadBoundary
         )
         if previousBoundary != hasReachedReadBoundary {
-            let eligible = readState.presentations[channelID]?.canAcknowledge == true
+            let eligible = readState.canAcknowledge(channelID)
             let channel = channelID.rawValue
             let reached = hasReachedReadBoundary
             let targetID = target?.rawValue ?? 0
@@ -157,13 +176,19 @@ extension AppModel {
     ) {
         guard isConversationPresented(channelID) else { return }
         preserveUnreadDividerIfNeeded(channelID: channelID)
+        // Opening a long backlog at its newest message shows only its tail.
+        // Like Discord, that visit stays unread until the reader scrolls
+        // toward the newest message again or chooses Mark as Read.
+        let holdsBacklog = hasReachedReadBoundary
+            && hasUnresolvedUnreadBoundary(channelID: channelID)
         let target = readState.updatePresentation(
             channelID: channelID,
             isPresented: true,
             initialPositionEstablished: true,
-            hasReachedReadBoundary: hasReachedReadBoundary
+            hasReachedReadBoundary: hasReachedReadBoundary,
+            blocksAutomaticAcknowledgement: holdsBacklog ? true : nil
         )
-        let eligible = readState.presentations[channelID]?.canAcknowledge == true
+        let eligible = readState.canAcknowledge(channelID)
         let channel = channelID.rawValue
         let reached = hasReachedReadBoundary
         let targetID = target?.rawValue ?? 0
@@ -175,9 +200,20 @@ extension AppModel {
         }
     }
 
-    func reportTimelineUserInteraction(channelID: ChannelID) {
-        guard isConversationPresented(channelID) else { return }
-        readState.unblockAutomaticAcknowledgement(channelID: channelID)
+    /// Releases a held backlog, but not Mark Unread's hold.
+    func reportTimelineScrollTowardNewest(channelID: ChannelID) {
+        guard readState.presentations[channelID]?.isHeldUntilSelectionChange != true else { return }
+        releaseHeldVisit(channelID: channelID)
+    }
+
+    /// A scroll clamped at the newest edge reports no new position, so an
+    /// already visible newest message is acknowledged here.
+    func releaseHeldVisit(channelID: ChannelID) {
+        guard readState.holdsAutomaticAcknowledgement(channelID),
+              isConversationPresented(channelID),
+              let target = readState.unblockAutomaticAcknowledgement(channelID: channelID)
+        else { return }
+        scheduleAcknowledgement(channelID: channelID, messageID: target)
     }
 
     func reportConversationHistoryLoaded(channelID: ChannelID) {

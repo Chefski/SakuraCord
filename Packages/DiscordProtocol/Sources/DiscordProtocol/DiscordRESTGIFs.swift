@@ -138,14 +138,10 @@ public extension DiscordRESTProvider {
             gif: gif,
             isFavorite: isFavorite
         )
-        try await requestEmpty(
-            "/users/@me/settings-proto/2",
-            method: "PATCH",
-            body: ["settings": .string(update.data.base64EncodedString())]
-        )
-        cachedFrecencySettingsProto = update.data
-        cachedGIFFavorites = update.favorites
-        return update.favorites
+        let stored = try await persistFrecencySettingsPatch(frecencyField(2, in: update.data))
+        let favorites = DiscordSettingsProto.gifFavorites(from: stored)
+        cachedGIFFavorites = favorites
+        return favorites
     }
 
     func setEmojiFavorite(_ key: String, isFavorite: Bool) async throws -> EmojiUserSettings {
@@ -156,19 +152,8 @@ public extension DiscordRESTProvider {
         defer { isMutatingFrecencyFavorite = false }
 
         let current = try await frecencySettingsProto()
-        let update = try DiscordSettingsProto.updatingEmojiFavorite(
-            in: current,
-            key: key,
-            isFavorite: isFavorite
-        )
-        try await requestEmpty(
-            "/users/@me/settings-proto/2",
-            method: "PATCH",
-            body: ["settings": .string(update.data.base64EncodedString())]
-        )
-        cachedFrecencySettingsProto = update.data
-        cachedEmojiUserSettings = update.settings
-        return update.settings
+        let patch = try emojiFavoritePatch(key, isFavorite: isFavorite, current: current)
+        return try await persistEmojiSettingsPatch(patch)
     }
 
     func applyFrecencySettingsProtoUpdate(
@@ -196,6 +181,9 @@ public extension DiscordRESTProvider {
             updated = patch
         }
 
+        if let current = cachedFrecencySettingsProto,
+           let incomingVersion = DiscordSettingsProto.dataVersion(in: updated),
+           let currentVersion = DiscordSettingsProto.dataVersion(in: current), incomingVersion < currentVersion { return }
         cachedFrecencySettingsProto = updated
         let emojiSettings = DiscordSettingsProto.emojiSettings(from: updated)
         let publishesSoundboardSettings = cachedSoundboardUserSettings != nil
@@ -239,6 +227,8 @@ public extension DiscordRESTProvider {
         do {
             let data = try await task.value
             frecencySettingsTask = nil
+            if let current = cachedFrecencySettingsProto,
+               (DiscordSettingsProto.dataVersion(in: current) ?? 0) > (DiscordSettingsProto.dataVersion(in: data) ?? 0) { return current }
             cachedFrecencySettingsProto = data
             return data
         } catch {

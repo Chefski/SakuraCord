@@ -12,14 +12,14 @@ struct ComposerReplyHeader: View {
     let cancel: () -> Void
 
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: InterfaceScale.metric(5)) {
             Text("Replying to")
                 .foregroundStyle(.secondary)
-            HStack(spacing: 4) {
+            HStack(spacing: InterfaceScale.metric(4)) {
                 AvatarView(
                     name: authorName,
                     url: avatarURL,
-                    size: 18,
+                    size: InterfaceScale.metric(18),
                     maximumPixelDimension: 36,
                     animates: false
                 )
@@ -30,7 +30,7 @@ struct ComposerReplyHeader: View {
                     .lineLimit(1)
             }
 
-            Spacer(minLength: 8)
+            Spacer(minLength: InterfaceScale.metric(8))
 
             if canMentionAuthor {
                 ComposerReplyMentionButton(
@@ -42,15 +42,15 @@ struct ComposerReplyHeader: View {
             HoverCloseButton(
                 help: "Cancel reply",
                 accessibilityIdentifier: "composer-reply-close",
-                diameter: 30,
+                diameter: InterfaceScale.metric(30),
                 iconSize: 13,
                 action: cancel
             )
         }
-        .font(.callout)
-        .padding(.leading, 12)
-        .padding(.trailing, 8)
-        .padding(.vertical, 2)
+        .font(.interface(.callout))
+        .padding(.leading, InterfaceScale.metric(12))
+        .padding(.trailing, InterfaceScale.metric(8))
+        .padding(.vertical, InterfaceScale.metric(2))
         .background(.primary.opacity(0.035))
     }
 
@@ -66,16 +66,16 @@ private struct ComposerReplyMentionButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 2) {
+            HStack(spacing: InterfaceScale.metric(2)) {
                 Image(systemName: "at")
                 Text(mentionsAuthor ? "ON" : "OFF")
             }
-            .font(.callout.weight(.bold))
+            .font(.interface(.callout).weight(.bold))
             .foregroundStyle(
                 mentionsAuthor ? SakuraCordAccentColor.color : .secondary
             )
-            .padding(.horizontal, 7)
-            .frame(height: 28)
+            .padding(.horizontal, InterfaceScale.metric(7))
+            .frame(height: InterfaceScale.metric(28))
             .contentShape(Capsule())
             .background {
                 Capsule()

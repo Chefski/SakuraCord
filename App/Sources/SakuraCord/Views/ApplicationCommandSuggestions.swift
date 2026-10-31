@@ -277,32 +277,32 @@ struct ApplicationCommandHelpStrip: View {
     let cancel: () -> Void
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 7) {
+        HStack(alignment: .firstTextBaseline, spacing: InterfaceScale.metric(7)) {
             Text(title)
-                .font(.callout.weight(.semibold))
+                .font(.interface(.callout).weight(.semibold))
                 .lineLimit(1)
                 .layoutPriority(1)
             if let issue = visibleIssue {
                 Label(issue, systemImage: "exclamationmark.circle.fill")
-                    .font(.callout)
+                    .font(.interface(.callout))
                     .foregroundStyle(.red)
                     .lineLimit(1)
             } else if let detail, !detail.isEmpty {
                 Text(detail)
-                    .font(.callout)
+                    .font(.interface(.callout))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
-            Spacer(minLength: 8)
-            HoverActionButton(systemImage: "xmark", help: "Cancel command", diameter: 22, action: cancel)
+            Spacer(minLength: InterfaceScale.metric(8))
+            HoverActionButton(systemImage: "xmark", help: "Cancel command", diameter: InterfaceScale.metric(22), action: cancel)
                 .foregroundStyle(.secondary)
                 .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 5 }
         }
-        .padding(.leading, 15)
-        .padding(.trailing, 8)
-        .padding(.top, 8)
-        .padding(.bottom, 6)
+        .padding(.leading, InterfaceScale.metric(15))
+        .padding(.trailing, InterfaceScale.metric(8))
+        .padding(.top, InterfaceScale.metric(8))
+        .padding(.bottom, InterfaceScale.metric(6))
         .accessibilityElement(children: .combine)
     }
 
@@ -335,17 +335,17 @@ struct ApplicationCommandSuggestionPanel: View {
     var cornerRadius: CGFloat = ChatChromeMetrics.composerCornerRadius
     var keyboardSelectionRevision = 0
 
-    private static let rowHeight: CGFloat = 34
+    private static var rowHeight: CGFloat { InterfaceScale.metric(34) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(content.title.uppercased())
-                .font(.caption.weight(.semibold))
+                .font(.interface(.caption).weight(.semibold))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
-                .padding(.horizontal, 14)
-                .padding(.top, 10)
-                .padding(.bottom, 5)
+                .padding(.horizontal, InterfaceScale.metric(14))
+                .padding(.top, InterfaceScale.metric(10))
+                .padding(.bottom, InterfaceScale.metric(5))
             if !content.suggestions.isEmpty {
                 ComposerSuggestionList(
                     rows: content.suggestions,
@@ -368,7 +368,7 @@ struct ApplicationCommandSuggestionPanel: View {
                         )
                     }
                 )
-                .padding(.bottom, 6)
+                .padding(.bottom, InterfaceScale.metric(6))
             }
             statusView
         }
@@ -384,20 +384,20 @@ struct ApplicationCommandSuggestionPanel: View {
         case .ready:
             EmptyView()
         case .loading:
-            HStack(spacing: 8) {
+            HStack(spacing: InterfaceScale.metric(8)) {
                 InteractionLoadingDotsView()
                 Text("Loading options…")
             }
-            .font(.callout)
+            .font(.interface(.callout))
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 14)
-            .padding(.bottom, 12)
+            .padding(.horizontal, InterfaceScale.metric(14))
+            .padding(.bottom, InterfaceScale.metric(12))
         case let .message(text, isError):
             Text(text)
-                .font(.callout)
+                .font(.interface(.callout))
                 .foregroundStyle(isError ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
-                .padding(.horizontal, 14)
-                .padding(.bottom, 12)
+                .padding(.horizontal, InterfaceScale.metric(14))
+                .padding(.bottom, InterfaceScale.metric(12))
         }
     }
 }
@@ -411,10 +411,10 @@ private struct ApplicationCommandSuggestionRow: View {
 
     var body: some View {
         Button(action: select) {
-            HStack(spacing: 8) {
+            HStack(spacing: InterfaceScale.metric(8)) {
                 if suggestion.leadingVisual != .none {
                     ApplicationCommandSuggestionIcon(visual: suggestion.leadingVisual)
-                        .frame(width: 22, height: 22)
+                        .frame(width: InterfaceScale.metric(22), height: InterfaceScale.metric(22))
                 }
                 Text(suggestion.title)
                     .foregroundStyle(
@@ -423,17 +423,17 @@ private struct ApplicationCommandSuggestionRow: View {
                             : .primary
                     )
                     .lineLimit(1)
-                Spacer(minLength: 12)
+                Spacer(minLength: InterfaceScale.metric(12))
                 if let detail = suggestion.detail, !detail.isEmpty {
                     Text(detail)
-                        .font(.caption)
+                        .font(.interface(.caption))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.tail)
-                        .frame(maxWidth: 320, alignment: .trailing)
+                        .frame(maxWidth: InterfaceScale.metric(320), alignment: .trailing)
                 }
             }
-            .padding(.horizontal, 8)
+            .padding(.horizontal, InterfaceScale.metric(8))
             .frame(height: height)
             .background(
                 isSelected ? Color.primary.opacity(0.10) : .clear,
@@ -457,19 +457,19 @@ private struct ApplicationCommandSuggestionIcon: View {
             EmptyView()
         case let .symbol(name):
             Image(systemName: name)
-                .font(.system(size: 14, weight: .medium))
+                .font(.interfaceSystem(size: 14, weight: .medium))
                 .foregroundStyle(.secondary)
         case let .user(name, avatarURL, status):
-            AvatarPresenceView(status: status, avatarSize: 22, indicatorSize: 7) {
-                AvatarView(name: name, url: avatarURL, size: 22)
+            AvatarPresenceView(status: status, avatarSize: InterfaceScale.metric(22), indicatorSize: InterfaceScale.metric(7)) {
+                AvatarView(name: name, url: avatarURL, size: InterfaceScale.metric(22))
             }
         case let .role(colorHex, iconURL, unicodeEmoji):
             if let iconURL {
-                AnimatedRemoteImage(url: iconURL).frame(width: 18, height: 18)
+                AnimatedRemoteImage(url: iconURL).frame(width: InterfaceScale.metric(18), height: InterfaceScale.metric(18))
             } else if let unicodeEmoji, !unicodeEmoji.isEmpty {
-                Text(unicodeEmoji).font(.system(size: 15))
+                Text(unicodeEmoji).font(.interfaceSystem(size: 15))
             } else {
-                RoleColorIndicator(colorHex: colorHex, size: 12)
+                RoleColorIndicator(colorHex: colorHex, size: InterfaceScale.metric(12))
             }
         }
     }

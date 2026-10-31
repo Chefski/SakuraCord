@@ -100,7 +100,7 @@ private struct AccountDeviceLocationsToggle: View {
             isRevealed.toggle()
         } label: {
             Text(isRevealed ? "Hide All Locations" : "Show All Locations", bundle: #bundle)
-                .font(.caption)
+                .font(.interface(.caption))
                 .fontWeight(.regular)
                 .foregroundStyle(.tint)
         }
@@ -122,25 +122,25 @@ private struct AccountDeviceRow: View {
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .center, spacing: InterfaceScale.metric(12)) {
             if device.isCurrentSession, let icon = CurrentMacHardware.icon {
                 Image(nsImage: icon)
                     .renderingMode(.original)
                     .resizable()
                     .interpolation(.high)
                     .scaledToFit()
-                    .frame(width: 28, height: 28)
+                    .frame(width: InterfaceScale.metric(28), height: InterfaceScale.metric(28))
                     .accessibilityHidden(true)
             } else {
                 Image(systemName: systemImage)
-                    .font(.title2)
+                    .font(.interface(.title2))
                     .foregroundStyle(.secondary)
-                    .frame(width: 28)
+                    .frame(width: InterfaceScale.metric(28))
                     .accessibilityHidden(true)
             }
 
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(4)) {
+                HStack(spacing: InterfaceScale.metric(6)) {
                     if let os = device.operatingSystem, !os.isEmpty {
                         Text(os == "Mac OS X" ? "macOS" : os).fontWeight(.semibold)
                     } else {
@@ -160,14 +160,14 @@ private struct AccountDeviceRow: View {
                         AccountDeviceLastUsed(date: lastUsedAt)
                     } else {
                         Text("Last used time unavailable", bundle: #bundle)
-                            .font(.caption)
+                            .font(.interface(.caption))
                             .foregroundStyle(.secondary)
                     }
                 }
             }
             Spacer(minLength: 0)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, InterfaceScale.metric(4))
         .accessibilityElement(children: .contain)
     }
 }
@@ -182,19 +182,19 @@ private struct AccountDeviceLocation: View {
             isRevealed.toggle()
         } label: {
             Text(location)
-                .font(.subheadline)
+                .font(.interface(.subheadline))
                 .foregroundStyle(.primary.opacity(0.8))
                 .lineLimit(nil)
                 .fixedSize(horizontal: false, vertical: true)
                 .blur(radius: isRevealed ? 0 : 5)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(.primary.opacity(isHovered ? 0.06 : 0), in: .rect(cornerRadius: 5))
+                .padding(.horizontal, InterfaceScale.metric(6))
+                .padding(.vertical, InterfaceScale.metric(3))
+                .background(.primary.opacity(isHovered ? 0.06 : 0), in: .rect(cornerRadius: InterfaceScale.metric(5)))
                 .contentShape(.rect)
                 .accessibilityHidden(true)
         }
         .buttonStyle(.plain)
-        .padding(.leading, -6)
+        .padding(.leading, -InterfaceScale.metric(6))
         .onModalHover { isHovered = $0 }
         .help(Text(isRevealed ? "Click to conceal" : "Click to reveal", bundle: #bundle))
         .accessibilityLabel(Text("Location", bundle: #bundle))
@@ -216,15 +216,15 @@ private struct AccountDeviceLastUsed: View {
 
     var body: some View {
         Text("Last used \(date, format: .relative(presentation: .numeric, unitsStyle: .wide))", bundle: #bundle)
-            .font(.caption)
+            .font(.interface(.caption))
             .foregroundStyle(.secondary)
             .onModalHover { isHovered = $0 }
             .nativeHoverPopover(isPresented: $isHovered) {
                 Text(date, format: .dateTime.month(.abbreviated).day().year().hour().minute().second())
-                    .font(.subheadline.weight(.medium))
+                    .font(.interface(.subheadline).weight(.medium))
                     .fixedSize()
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
+                    .padding(.horizontal, InterfaceScale.metric(12))
+                    .padding(.vertical, InterfaceScale.metric(10))
             }
     }
 }

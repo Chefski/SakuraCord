@@ -7,7 +7,7 @@ struct ProfileWidgetsBoard: View {
 
     var body: some View {
         ProfileWidgetBoardViewport {
-            VStack(spacing: 12) {
+            VStack(spacing: InterfaceScale.metric(12)) {
                 ForEach(editor.widgets) { widget in
                     // Keep a stable outer identity around the card's conditional
                     // content and menus for SwiftUI's reorder container.
@@ -16,13 +16,13 @@ struct ProfileWidgetsBoard: View {
                             .overlay { widgetMenu(widget) }
                             .overlay(alignment: .topTrailing) {
                                 widgetMenu(widget, isButton: true)
-                                    .frame(width: 24, height: 24)
+                                    .frame(width: InterfaceScale.metric(24), height: InterfaceScale.metric(24))
                                     .disabled(!editor.canEditWidgets)
-                                    .padding(12)
+                                    .padding(InterfaceScale.metric(12))
                             }
                     }
-                    .contentShape(.interaction, .rect(cornerRadius: 16))
-                    .contentShape(.dragPreview, .rect(cornerRadius: 16))
+                    .contentShape(.interaction, .rect(cornerRadius: InterfaceScale.metric(16)))
+                    .contentShape(.dragPreview, .rect(cornerRadius: InterfaceScale.metric(16)))
                 }
                 .reorderable()
             }
@@ -41,7 +41,7 @@ struct ProfileWidgetsBoard: View {
                 .escapeDismissiblePopover(isPresented: $showsAddPicker) {
                     ProfileAddWidgetPicker(editor: editor) { showsAddPicker = false }
                 }
-                .padding(10)
+                .padding(InterfaceScale.metric(10))
         }
         .onChange(of: editor.draftGeneration) { _, _ in showsAddPicker = false }
         .onChange(of: editor.isResolvingScope) { _, resolving in if resolving { showsAddPicker = false } }

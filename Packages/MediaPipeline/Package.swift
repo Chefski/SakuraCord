@@ -8,7 +8,7 @@ let package = Package(
     dependencies: [
         .package(path: "../SakuraCordModels"),
         .package(path: "../DaveKit"),
-        .package(url: "https://github.com/jedisct1/swift-sodium.git", from: "0.9.1"),
+        .package(url: "https://github.com/jedisct1/swift-sodium.git", from: "0.11.0"),
         .package(url: "https://github.com/SDWebImage/libwebp-Xcode.git", exact: "1.6.0")
     ],
     targets: [

@@ -26,23 +26,41 @@ extension Member {
 }
 
 nonisolated enum NativeMemberListMetrics {
-    static let horizontalInset: CGFloat = 8
-    static let verticalInset: CGFloat = 10
-    static let sectionHeaderHeight: CGFloat = 34
-    static let memberRowHeight: CGFloat = 46
-    static let paintedRowHeight: CGFloat = 44
-    static let avatarSize: CGFloat = 34
-    static let avatarContainerSize: CGFloat = 38.08
-    static let presenceIndicatorSize: CGFloat = 11
-    static let rowCornerRadius: CGFloat = 9
+    static var horizontalInset: CGFloat { InterfaceScale.metric(8) }
+    static var verticalInset: CGFloat { InterfaceScale.metric(10) }
+    static var sectionHeaderHeight: CGFloat { InterfaceScale.metric(38) }
+    static var memberRowHeight: CGFloat { InterfaceScale.metric(46) }
+    static var paintedRowHeight: CGFloat { InterfaceScale.metric(44) }
+    static var avatarSize: CGFloat { InterfaceScale.metric(34) }
+    static var avatarContainerSize: CGFloat { InterfaceScale.metric(38.08) }
+    static var presenceIndicatorSize: CGFloat { InterfaceScale.metric(11) }
+    static var rowCornerRadius: CGFloat { InterfaceScale.metric(9) }
     static let prewarmItemCount = 8
-    static let activityEmojiSize: CGFloat = 15
+    static var activityEmojiSize: CGFloat { InterfaceScale.metric(15) }
     static let maximumVisibleAnimatedEmojiCount = 64
 }
 
 nonisolated struct NativeMemberListPresentation: Equatable, Sendable {
     var roleColorDisplay: RoleColorDisplay = .inNames
     var isDark = false
+    /// Rows are measured and drawn at this interface size.
+    var interfaceScale = InterfaceScale.factor
+    /// Member lists fade offline rows; a friends list does not.
+    var dimsOfflineMembers = true
+    /// Rows such as pending friend requests that show no presence.
+    var presenceHiddenUserIDs: Set<UserID> = []
+    /// Space reserved for hover controls on wider people lists.
+    var trailingAccessoryWidth: CGFloat = 0
+    /// Overrides the usual activity gray for lists displaying secondary names.
+    var activityTextPrimaryOpacity: CGFloat?
+
+    func opacity(for member: Member) -> CGFloat {
+        dimsOfflineMembers && !member.isListedOnline ? 0.55 : 1
+    }
+
+    func status(for member: Member) -> PresenceStatus? {
+        presenceHiddenUserIDs.contains(member.id) ? nil : member.memberListStatus
+    }
 }
 
 nonisolated enum MemberListSkeletonLayout {
@@ -61,7 +79,7 @@ nonisolated enum MemberListSkeletonLayout {
     static func itemsFitting(height: CGFloat, memberCounts: [Int]) -> [Item] {
         let availableHeight = max(
             0,
-            height - NativeMemberListMetrics.verticalInset * 2
+            height - NativeMemberListMetrics.verticalInset
         )
         var result: [Item] = []
         var usedHeight: CGFloat = 0
@@ -85,7 +103,7 @@ nonisolated enum MemberListSkeletonLayout {
 
 struct MemberListSkeletonRow: View {
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: InterfaceScale.metric(8)) {
             ZStack(alignment: .bottomTrailing) {
                 SkeletonShape(
                     cornerRadius: NativeMemberListMetrics.avatarSize / 2
@@ -95,8 +113,8 @@ struct MemberListSkeletonRow: View {
                     height: NativeMemberListMetrics.avatarSize
                 )
 
-                SkeletonShape(cornerRadius: 5.5)
-                    .frame(width: 11, height: 11)
+                SkeletonShape(cornerRadius: InterfaceScale.metric(5.5))
+                    .frame(width: InterfaceScale.metric(11), height: InterfaceScale.metric(11))
                     .overlay {
                         Circle().stroke(
                             Color(nsColor: .controlBackgroundColor),
@@ -110,18 +128,18 @@ struct MemberListSkeletonRow: View {
                 height: NativeMemberListMetrics.avatarContainerSize
             )
 
-            VStack(alignment: .leading, spacing: 9) {
-                SkeletonShape(cornerRadius: 5)
-                    .frame(width: 104, height: 10)
-                SkeletonShape(cornerRadius: 4)
-                    .frame(width: 138, height: 8)
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(9)) {
+                SkeletonShape(cornerRadius: InterfaceScale.metric(5))
+                    .frame(width: InterfaceScale.metric(104), height: InterfaceScale.metric(10))
+                SkeletonShape(cornerRadius: InterfaceScale.metric(4))
+                    .frame(width: InterfaceScale.metric(138), height: InterfaceScale.metric(8))
                     .opacity(0.7)
             }
-            .offset(y: -2.5)
+            .offset(y: -InterfaceScale.metric(2.5))
 
             Spacer(minLength: 0)
         }
-        .padding(.leading, 4)
+        .padding(.leading, InterfaceScale.metric(4))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
@@ -130,9 +148,9 @@ struct MemberListSkeletonRow: View {
 
 struct MemberListSkeletonHeader: View {
     var body: some View {
-        SkeletonShape(cornerRadius: 5)
-            .frame(width: 96, height: 10)
-            .padding(.leading, NativeMemberListMetrics.horizontalInset + 10)
+        SkeletonShape(cornerRadius: InterfaceScale.metric(5))
+            .frame(width: InterfaceScale.metric(96), height: InterfaceScale.metric(10))
+            .padding(.leading, NativeMemberListMetrics.horizontalInset + InterfaceScale.metric(10))
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
@@ -145,7 +163,7 @@ nonisolated enum NativeMemberNameLayout {
         let accessoryFrames: [CGRect]
     }
 
-    static let accessorySpacing: CGFloat = 5
+    static var accessorySpacing: CGFloat { InterfaceScale.metric(5) }
 
     static func layout(
         measuredNameWidth: CGFloat,

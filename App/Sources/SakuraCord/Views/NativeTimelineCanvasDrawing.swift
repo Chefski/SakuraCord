@@ -38,7 +38,6 @@ extension NativeTimelineCanvasView {
         invalidateVisibleMediaProjection(keepingCapacity: true)
         self.storage = storage
         self.model = model
-        refreshInboxDisclosureGeometry()
         reconcilePollPresentations()
         installSpoilerRevealStore(model.timelineSpoilerRevealStore)
         self.actions = actions
@@ -53,6 +52,10 @@ extension NativeTimelineCanvasView {
         // transient geometry reads it.
         reconcileEditingRow()
         self.contentOriginY = transientContentOriginY
+        // After the content origin settles: an expansion measures where its
+        // rows landed the header.
+        refreshDisclosureGeometry()
+        reconcileServerTagCardPresentation()
         contentOriginMoved =
             abs(previousContentOriginY - self.contentOriginY) >= 0.5
         if activeMentionPopoverAnchor?.sourceRect() == nil {
@@ -108,9 +111,11 @@ extension NativeTimelineCanvasView {
         )
         scheduleInitialReactionCountCapture()
         reconcileVisibleReactionPreviewLoads()
+        prefetchVisibleVoiceMessages()
         startVisibleInlineVideosImmediately()
         scheduleAnimatedMediaReconciliation()
         positionAnimatedMediaOverlays()
+        reconcileVoiceMessageOverlay()
         reconcileBeginningSelectionOverlay()
         reconcileActivityIndicators()
         reconcileSpoilerOverlays()
@@ -147,28 +152,35 @@ extension NativeTimelineCanvasView {
     }
 
     func reconcileHistorySkeletonShimmer() {
-        historySkeletonShimmerTask?.cancel()
-        historySkeletonShimmerTask = nil
-        guard historySkeleton != nil,
-              !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        else { return }
-
-        historySkeletonShimmerTask = Task { @MainActor [weak self] in
-            while !Task.isCancelled {
-                guard let frame = self?.historySkeleton?.frame
-                else { return }
-                self?.setNeedsDisplay(frame)
-                do {
-                    try await Task.sleep(
-                        for: .seconds(
-                            SkeletonShimmerStyle.minimumFrameInterval
-                        )
-                    )
-                } catch {
-                    return
-                }
-            }
+        let frame = historySkeleton?.frame.intersection(bounds) ?? .null
+        let animates = !frame.isNull && !frame.isEmpty
+            && !isHiddenOrHasHiddenAncestor
+            && window?.occlusionState.contains(.visible) == true
+            && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            historySkeletonShimmer.update(
+                frame: frame.isNull ? .zero : frame,
+                color: .labelColor, animates: animates
+            )
         }
+        guard animates else { return }
+        guard historySkeletonShimmerFrame != frame
+            || historySkeletonShimmerPresentation != historySkeleton
+            || historySkeletonShimmerScale != InterfaceScale.factor
+        else { return }
+        historySkeletonShimmerFrame = frame
+        historySkeletonShimmerScale = InterfaceScale.factor
+        historySkeletonShimmerPresentation = historySkeleton
+        let path = NSBezierPath()
+        appendHistorySkeletonRows(in: frame, to: path, drawsBase: false)
+        var translation = CGAffineTransform(translationX: -frame.minX, y: -frame.minY)
+        let mask = CAShapeLayer()
+        mask.frame = CGRect(origin: .zero, size: frame.size)
+        mask.path = path.cgPath.copy(using: &translation)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        historySkeletonShimmer.layer.mask = mask
+        CATransaction.commit()
     }
 
     func updateContentOriginY(
@@ -204,7 +216,7 @@ extension NativeTimelineCanvasView {
         positionAnimatedMediaOverlays()
         reconcileBeginningSelectionOverlay()
         positionInlineVideoOverlays()
-        positionLottieStickerOverlays()
+        reconcileVoiceMessageOverlay()
         reconcileActivityIndicators()
         positionSpoilerOverlays()
         componentChoiceOverlay?.repositionWithAnchor()
@@ -231,7 +243,8 @@ extension NativeTimelineCanvasView {
               contentOriginMoved,
               window != nil,
               max(previousContentOriginY, contentOriginY)
-                > ChatDetailLayoutPolicy.timelineTopPadding + 0.5
+                > ChatDetailLayoutPolicy.timelineTopPadding
+                    + (enclosingScrollView?.scrollerInsets.top ?? 0) + 0.5
         else { return }
         // Bottom-aligned timelines move every existing row when a live
         // message consumes some of their leading space. With
@@ -280,7 +293,11 @@ extension NativeTimelineCanvasView {
     /// those bounded bitmaps warm so returning to a recent conversation does
     /// not synchronously raster every visible CoreText row again.
     func invalidateConversationTransientCaches() {
+        reactionDetailsPopover?.close()
         cancelMessageJumpHighlight()
+        finishSendTransitions()
+        cancelTranscriptGlide()
+        finishUnreadDividerFades()
         animatedMediaReconcileTask?.cancel()
         animatedMediaReconcileTask = nil
         visibleMediaRequestTask?.cancel()
@@ -317,16 +334,14 @@ extension NativeTimelineCanvasView {
         // into scrolling, never for each tick.
         guard !suppressesHoverPresentation else { return }
         suppressesHoverPresentation = true
+        finishSendTransitions()
         // Pause native playback once without destroying its presentation.
-        // Recreating AVPlayer and Lottie overlays on each reconciliation
+        // Recreating AVPlayer overlays on each reconciliation
         // produced the benchmark's regular FAST/pause cadence, while removing
         // them made otherwise loaded videos and stickers blink out as soon as
         // scrolling began. Retaining the bounded overlays preserves their
         // current frames and avoids both costs.
         for overlay in inlineVideoOverlays.values {
-            overlay.pauseForScroll()
-        }
-        for overlay in lottieStickerOverlays.values {
             overlay.pauseForScroll()
         }
         for overlay in animatedMediaOverlays.values {
@@ -345,6 +360,7 @@ extension NativeTimelineCanvasView {
         let clearedTargets = pointer.clearHoverAndPressTargets()
         reactionHoverCoordinator.close()
         closeMessageProfilePopover()
+        closeServerTagPopover()
         removeActionCapsule()
         freezeEditingRowForScroll()
         reconcileAccessibilityProxiesIfActive()
@@ -399,7 +415,16 @@ extension NativeTimelineCanvasView {
         {
             setNeedsDisplay(rowFrame(at: index))
         }
-        if let messageID = clearedTargets.ephemeralDismissMessageID,
+        if let messageID = clearedTargets.threadMessageID {
+            invalidateThreadCard(messageID: messageID)
+        }
+        if let messageID = clearedTargets.serverTagMessageID {
+            invalidateVisibleMessageRow(messageID: messageID)
+        }
+        if let messageID = clearedTargets.commandPillMessageID {
+            invalidateVisibleMessageRow(messageID: messageID)
+        }
+        if let messageID = clearedTargets.footerAction?.messageID,
            let index = items.firstIndex(where: { $0.messageID == messageID })
         {
             setNeedsDisplay(rowFrame(at: index))
@@ -453,9 +478,11 @@ extension NativeTimelineCanvasView {
             pressedPollTarget = nil
             hoveredPollTarget = nil
             pollPopover?.close()
+            reactionDetailsPopover?.close()
             pointer.clearHoverAndPressTargets()
             reactionHoverCoordinator.close()
             closeMessageProfilePopover()
+            closeServerTagPopover()
             closeMentionPopover()
             closeComponentChoiceOverlay()
         }
@@ -487,7 +514,17 @@ extension NativeTimelineCanvasView {
             // event repaired the stale launch geometry, making the content
             // visibly jump into place.
             self.frame = frame
+            // Setting the frame after a bounds change of a different size
+            // leaves the two sizes at different scales, which AppKit keeps
+            // through the resize and shows as stretched contents. Settle them
+            // together unless the callback installed newer geometry.
+            if self.frame == frame, self.bounds != bounds {
+                self.bounds = bounds
+                needsDisplay = true
+            }
         }
+        reconcileHistorySkeletonShimmer()
+        presentRowsEnteringViewport()
         // Supplementary Inbox rows are content, not hover presentation. Keep
         // them materialized as the viewport moves, including momentum ticks
         // that stay within the current overscanned backing window.
@@ -506,7 +543,7 @@ extension NativeTimelineCanvasView {
         positionActionCapsule()
         positionAnimatedMediaOverlays()
         positionInlineVideoOverlays()
-        positionLottieStickerOverlays()
+        reconcileVoiceMessageOverlay()
         reconcileActivityIndicators()
         positionSpoilerOverlays()
     }
@@ -521,6 +558,11 @@ extension NativeTimelineCanvasView {
 
     override func viewWillMove(toWindow newWindow: NSWindow?) {
         if newWindow == nil {
+            reactionDetailsPopover?.close()
+            clearDisclosure(redraws: false)
+            finishSendTransitions()
+            cancelTranscriptGlide()
+            finishUnreadDividerFades()
             cancelReactionPreviewLoads()
             mediaInvalidationTask?.cancel()
             mediaInvalidationTask = nil
@@ -550,15 +592,15 @@ extension NativeTimelineCanvasView {
             animatedMediaReconcileTask = nil
             animatedMediaRows.removeAll()
             inlineVideoRows.removeAll()
-            lottieStickerRows.removeAll()
             removeInlineVideoOverlays()
-            removeLottieStickerOverlays()
+            removeVoiceMessageOverlay()
             removeAnimatedMediaOverlays()
             removeActivityIndicators()
             removeSpoilerOverlays()
             reactionPickerCoordinator.close(notifyBinding: false)
             reactionHoverCoordinator.close()
             closeMessageProfilePopover()
+            closeServerTagPopover()
             closeComponentChoiceOverlay()
             closeMentionPopover()
             reactionPickerSource.frame = .zero
@@ -580,9 +622,20 @@ extension NativeTimelineCanvasView {
         }
     }
 
+    override func viewDidHide() {
+        super.viewDidHide()
+        reconcileHistorySkeletonShimmer()
+    }
+
+    override func viewDidUnhide() {
+        super.viewDidUnhide()
+        reconcileHistorySkeletonShimmer()
+    }
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         restoreInboxKeyboardFocus()
+        reconcileHistorySkeletonShimmer()
         if window != nil {
             installReactionMouseMonitor()
             Task { @MainActor [weak self] in
@@ -608,9 +661,7 @@ extension NativeTimelineCanvasView {
         var upper = rowOrigins.count
         while lower < upper {
             let middle = (lower + upper) / 2
-            if displayedRowOrigin(at: middle) + displayedRowHeight(at: middle)
-                <= documentY
-            {
+            if visibleRowSpan(at: middle).upperBound <= documentY {
                 lower = middle + 1
             } else {
                 upper = middle
@@ -627,8 +678,7 @@ extension NativeTimelineCanvasView {
         )
         messageJumpHighlight = highlight
         invalidateMessageJumpHighlight(messageID)
-        let reducesMotion =
-            NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let reducesMotion = !AppMotionPolicy.animatesUncategorized
         messageJumpHighlightTask = Task { @MainActor [weak self] in
             if reducesMotion {
                 do {
@@ -700,8 +750,7 @@ extension NativeTimelineCanvasView {
         else { return nil }
         let opacity = NativeTimelineMessageJumpHighlightPolicy.opacity(
             elapsed: uptime - highlight.startedAt,
-            reducesMotion:
-                NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            reducesMotion: !AppMotionPolicy.animatesUncategorized
         )
         guard opacity > 0 else { return nil }
         let rowFrame = rowFrame(at: index)
@@ -735,6 +784,9 @@ extension NativeTimelineCanvasView {
                 ProcessInfo.processInfo.systemUptime - startUptime
             drawCount += 1
             totalDrawDuration += duration
+#if SAKURACORD_MOTION_BENCHMARK
+            lifetimeDrawDuration += duration
+#endif
             maximumDrawDuration = max(
                 maximumDrawDuration,
                 duration
@@ -749,24 +801,47 @@ extension NativeTimelineCanvasView {
         // composite newly positioned rows over their former positions.
         NSGraphicsContext.current?.cgContext.clear(dirtyRect)
         drawHistorySkeleton(in: dirtyRect)
-        forEachDisplayedRow(in: dirtyRect) { index in
+        var displayedRows: [Int] = []
+        forEachDisplayedRow(in: dirtyRect) { displayedRows.append($0) }
+        drawSuppressedHighlights(for: displayedRows)
+        for index in displayedRows {
             let rowFrame = rowFrame(at: index)
-            guard rowFrame.intersects(dirtyRect) else { return }
-            guard inboxDisclosureRange.contains(index) else {
-                drawTimelineRow(at: index, rowFrame: rowFrame, dirtyRect: dirtyRect, visibleMediaKeys: visibleMediaKeys)
-                return
+            guard rowFrame.intersects(dirtyRect) else { continue }
+            guard disclosureRange.contains(index) else {
+                drawTimelineRowClippedToUnreadDividerGap(
+                    at: index, rowFrame: rowFrame, dirtyRect: dirtyRect, visibleMediaKeys: visibleMediaKeys
+                )
+                continue
             }
-            // An animating Inbox group is clipped to its revealed height.
-            guard rowFrame.minY < inboxDisclosureClipMaxY, let context = NSGraphicsContext.current?.cgContext else { return }
+            // An animating group is clipped to its revealed height.
+            let minY = max(rowFrame.minY, disclosureClipMinY)
+            let maxY = min(rowFrame.maxY, disclosureClipMaxY)
+            guard minY < maxY, let context = NSGraphicsContext.current?.cgContext else { continue }
             context.saveGState()
-            context.clip(to: CGRect(x: rowFrame.minX, y: rowFrame.minY, width: rowFrame.width,
-                                    height: inboxDisclosureClipMaxY - rowFrame.minY))
+            context.clip(to: CGRect(x: rowFrame.minX, y: minY, width: rowFrame.width, height: maxY - minY))
             drawTimelineRow(at: index, rowFrame: rowFrame, dirtyRect: dirtyRect, visibleMediaKeys: visibleMediaKeys)
             context.restoreGState()
         }
     }
 
-    private func drawTimelineRow(
+    /// Blocked and ignored areas span several rows, so they are drawn beneath
+    /// all rows rather than into any one row's cached bitmap.
+    private func drawSuppressedHighlights(for displayedRows: [Int]) {
+        guard let first = displayedRows.first else { return }
+        var headers: [Int] = []
+        if let header = suppressedHeaderIndex(containing: first) { headers.append(header) }
+        for index in displayedRows {
+            guard case .suppressedMessages = items[index], headers.last != index else { continue }
+            headers.append(index)
+        }
+        for header in headers {
+            if let frame = suppressedHighlightFrame(headerIndex: header) {
+                NativeTimelineRowPainter.drawSuppressedHighlight(frame)
+            }
+        }
+    }
+
+    func drawTimelineRow(
         at index: Int,
         rowFrame: CGRect,
         dirtyRect: CGRect,
@@ -777,7 +852,7 @@ extension NativeTimelineCanvasView {
             ?? mediaKeys(for: item, at: index)
         drawMessageJumpHighlight(at: index)
         let revealState = textSpoilerRevealState(at: index)
-        if item.messageID == editingMessageID {
+        if let editingMessageID, item.messageID == editingMessageID {
             drawEditingTimelineRow(
                 item, at: index, rowFrame: rowFrame, dirtyRect: dirtyRect,
                 preparedMediaKeys: preparedMediaKeys
@@ -799,6 +874,10 @@ extension NativeTimelineCanvasView {
         if let hoveredCodeBlock, hoveredCodeBlock.itemIdentifier == item.identifier {
             drawCodeBlockCopyControl(hoveredCodeBlock)
         }
+        clearSendTransitionBubble(for: item, layout: layouts[index], rowFrame: rowFrame)
+        if !unreadDividerFades.isEmpty {
+            clearHeldUnreadDivider(for: item, layout: layouts[index], rowFrame: rowFrame)
+        }
     }
 
     private func drawEditingTimelineRow(
@@ -812,7 +891,7 @@ extension NativeTimelineCanvasView {
         enqueueVisibleMediaRequests(identifier: item.identifier, keys: preparedMediaKeys)
         NativeTimelineRowPainter.draw(
             item: item, layout: layouts[index], in: rowFrame, model: model,
-            isHovered: false, hidesMessageContent: true,
+            isHovered: false, drawsBubbleBackground: false, hidesMessageContent: true,
             spoilerRevealStore: spoilerRevealStore
         )
         editingRowScrollSnapshot?.draw(
@@ -833,6 +912,9 @@ extension NativeTimelineCanvasView {
             || mediaViewerHighlightedMessageID == item.messageID
             || hoveredCompactTimestampRow == index
             || hoveredAuthorMessageID == item.messageID
+            || hoveredServerTagMessageID == item.messageID
+            || serverTagCardPresentation?.messageID == item.messageID
+            || hoveredCommandPillMessageID == item.messageID
             || hoveredMention?.itemIdentifier == item.identifier
             || hoveredTextLink?.itemIdentifier == item.identifier
             || hoveredTextSpoiler?.itemIdentifier == item.identifier
@@ -840,10 +922,17 @@ extension NativeTimelineCanvasView {
             || activeComponentChoiceTarget?.messageID == item.messageID
             || visualPressedComponentButton?.messageID == item.messageID
             || hoveredForwardedSourceMessageID == item.messageID
-            || hoveredEphemeralDismissMessageID == item.messageID
+            || hoveredThreadMessageID == item.messageID
+            || hoveredFooterAction?.messageID == item.messageID
+            || isSuppressedToggleHovered(item)
             || !reactionCountTransitions(inMessageAt: index).isEmpty
             || textSelection?.itemIdentifier == item.identifier
             || !revealState.isEmpty
+    }
+
+    private func isSuppressedToggleHovered(_ item: NativeMessageTimelineItem) -> Bool {
+        guard case let .suppressedMessages(group) = item else { return false }
+        return hoveredFooterAction == .init(messageID: group.id, kind: .suppressedToggle)
     }
 
     private func drawInteractiveTimelineRow(
@@ -863,6 +952,8 @@ extension NativeTimelineCanvasView {
             isHovered: hoveredRow == index || presentsViewerHighlight,
             showsCompactTimestamp: hoveredCompactTimestampRow == index,
             isAuthorHovered: hoveredAuthorMessageID == item.messageID,
+            isServerTagHovered: hoveredServerTagMessageID == item.messageID || serverTagCardPresentation?.messageID == item.messageID,
+            isCommandPillHovered: hoveredCommandPillMessageID == item.messageID,
             hoveredMention: hoveredMention?.itemIdentifier == item.identifier ? hoveredMention : nil,
             hoveredTextLink: hoveredTextLink?.itemIdentifier == item.identifier ? hoveredTextLink : nil,
             hoveredTextSpoiler: hoveredTextSpoiler?.itemIdentifier == item.identifier ? hoveredTextSpoiler : nil,
@@ -871,7 +962,11 @@ extension NativeTimelineCanvasView {
             pressedComponentButton: visualPressedComponentButton?.messageID == item.messageID ? visualPressedComponentButton : nil,
             componentButtonPressProgress: visualPressedComponentButton?.messageID == item.messageID ? componentButtonPressProgress : 0,
             isForwardedSourceHovered: hoveredForwardedSourceMessageID == item.messageID,
-            isEphemeralDismissHovered: hoveredEphemeralDismissMessageID == item.messageID,
+            threadCardInteraction: threadCardInteraction(forMessageID: item.messageID),
+            isEphemeralDismissHovered: hoveredFooterAction?.messageID == item.messageID && hoveredFooterAction?.kind == .ephemeralDismiss,
+            isTranslationActionHovered: hoveredFooterAction?.messageID == item.messageID && hoveredFooterAction?.kind == .translation,
+            hoveredDeliveryAction: hoveredFooterAction?.messageID == item.messageID ? hoveredFooterAction?.kind : nil,
+            isSuppressedToggleHovered: isSuppressedToggleHovered(item),
             hoveredReactionID: hoveredReactionID(inMessageAt: index),
             isAddReactionHovered: isAddReactionHovered(inMessageAt: index),
             textSelection: textSelection,
@@ -879,7 +974,7 @@ extension NativeTimelineCanvasView {
             spoilerRevealStore: spoilerRevealStore,
             reactionCountTransitions: reactionCountTransitions(inMessageAt: index),
             pollPresentation: pollPresentation(for: item.messageID),
-            animatedReactionIDs: animatedReactionIDs(for: item.identifier)
+            animatedOverlayRoles: animatedOverlayRoles(for: item.identifier)
         )
     }
 
@@ -934,7 +1029,7 @@ extension NativeTimelineCanvasView {
                     item: item, layout: layouts[index], in: rowFrame, model: model,
                     isHovered: false, revealedTextSpoilerState: revealState,
                     spoilerRevealStore: spoilerRevealStore,
-                    animatedReactionIDs: animatedReactionIDs(for: item.identifier)
+                    animatedOverlayRoles: animatedOverlayRoles(for: item.identifier)
                 )
             }
         } else {
@@ -981,7 +1076,7 @@ extension NativeTimelineCanvasView {
             NSColor.labelColor.withAlphaComponent(0.10).setFill()
             NSBezierPath(
                 concentricRoundedRect: buttonFrame,
-                cornerRadius: 4
+                cornerRadius: InterfaceScale.metric(4)
             ).fill()
         }
         guard let symbol = NSImage(
@@ -1005,7 +1100,7 @@ extension NativeTimelineCanvasView {
         let iconFrame = NativeTimelineSymbolGeometry.opticallyFitted(
             sourceSize: symbol.size,
             alignmentRect: symbol.alignmentRect,
-            in: buttonFrame.insetBy(dx: 6, dy: 6)
+            in: buttonFrame.insetBy(dx: InterfaceScale.metric(6), dy: InterfaceScale.metric(6))
         )
         symbol.draw(
             in: iconFrame,
@@ -1103,6 +1198,8 @@ extension NativeTimelineCanvasView {
             return nil
         case .content:
             return NativeTimelineTextSpoilerRevealKey.messageContentID
+        case let .translation(id):
+            return "translation:\(id)"
         case let .embed(embedID, textIndex):
             return "embed:\(embedID):\(textIndex)"
         case let .component(layoutIndex, textIndex):
@@ -1120,54 +1217,47 @@ extension NativeTimelineCanvasView {
     }
 
     func drawHistorySkeleton(in dirtyRect: CGRect) {
-        guard let presentation = historySkeleton,
-              presentation.frame.intersects(dirtyRect)
-        else { return }
-
-        let frame = presentation.frame
+        guard let frame = historySkeleton?.frame else { return }
         let clipped = frame.intersection(dirtyRect)
-        guard !clipped.isNull, clipped.height > 0 else { return }
-
-        let rowStride: CGFloat = 76
-        let rowCount = max(1, Int(ceil(frame.height / rowStride)))
-        let firstOrdinal = max(
-            0,
-            Int(floor((frame.maxY - clipped.maxY) / rowStride))
-        )
-        let lastOrdinal = min(
-            rowCount - 1,
-            max(
-                firstOrdinal,
-                Int(ceil((frame.maxY - clipped.minY) / rowStride))
-            )
-        )
+        guard !clipped.isNull, !clipped.isEmpty else { return }
         NSGraphicsContext.saveGraphicsState()
         defer { NSGraphicsContext.restoreGraphicsState() }
         NSBezierPath(rect: clipped).addClip()
-        let shimmerMask = NSBezierPath()
+        appendHistorySkeletonRows(in: dirtyRect, to: NSBezierPath(), drawsBase: true)
+    }
 
+    private func appendHistorySkeletonRows(
+        in dirtyRect: CGRect, to path: NSBezierPath, drawsBase: Bool
+    ) {
+        guard let presentation = historySkeleton else { return }
+        let frame = presentation.frame
+        let clipped = frame.intersection(dirtyRect)
+        guard !clipped.isNull, clipped.height > 0 else { return }
+        let rowStride = InterfaceScale.metric(76)
+        let rowCount = max(1, Int(ceil(frame.height / rowStride)))
+        let firstOrdinal = max(0, Int(floor((frame.maxY - clipped.maxY) / rowStride)))
+        let lastOrdinal = min(
+            rowCount - 1,
+            max(firstOrdinal, Int(ceil((frame.maxY - clipped.minY) / rowStride)))
+        )
         for ordinal in firstOrdinal ... lastOrdinal {
-            let rowTop =
-                frame.maxY - CGFloat(ordinal + 1) * rowStride
             drawHistorySkeletonRow(
                 ordinal: ordinal,
-                rowTop: rowTop,
-                frameWidth: frame.width,
-                shimmerMask: shimmerMask
+                rowTop: frame.maxY - CGFloat(ordinal + 1) * rowStride,
+                frameWidth: frame.width, shimmerMask: path, drawsBase: drawsBase
             )
         }
-
-        drawHistorySkeletonShimmer(mask: shimmerMask, in: frame)
     }
 
     private func drawHistorySkeletonRow(
         ordinal: Int,
         rowTop: CGFloat,
         frameWidth: CGFloat,
-        shimmerMask: NSBezierPath
+        shimmerMask: NSBezierPath,
+        drawsBase: Bool
     ) {
-        let contentX: CGFloat = 64
-        let maximumContentWidth = max(80, frameWidth - contentX - 14)
+        let contentX: CGFloat = InterfaceScale.metric(64)
+        let maximumContentWidth = max(InterfaceScale.metric(80), frameWidth - contentX - InterfaceScale.metric(14))
         let authorWidths: [CGFloat] = [92, 126, 108, 148]
         let lineFractions: [[CGFloat]] = [
             [0.72],
@@ -1176,13 +1266,13 @@ extension NativeTimelineCanvasView {
             [0.64, 0.88],
         ]
         let avatarPath = NSBezierPath(ovalIn: CGRect(
-            x: 14,
-            y: rowTop + 11,
-            width: 38,
-            height: 38
+            x: InterfaceScale.metric(14),
+            y: rowTop + InterfaceScale.metric(11),
+            width: InterfaceScale.metric(38),
+            height: InterfaceScale.metric(38)
         ))
-        NSColor.placeholderTextColor.withAlphaComponent(0.18).setFill()
-        avatarPath.fill()
+        if drawsBase { SkeletonShimmerStyle.baseColor().setFill() }
+        if drawsBase { avatarPath.fill() }
         shimmerMask.append(avatarPath)
 
         let authorWidth = min(
@@ -1192,29 +1282,27 @@ extension NativeTimelineCanvasView {
         let authorPath = NSBezierPath(
             roundedRect: CGRect(
                 x: contentX,
-                y: rowTop + 10,
+                y: rowTop + InterfaceScale.metric(10),
                 width: authorWidth,
-                height: 10
+                height: InterfaceScale.metric(10)
             ),
-            xRadius: 5,
-            yRadius: 5
+            xRadius: InterfaceScale.metric(5),
+            yRadius: InterfaceScale.metric(5)
         )
-        NSColor.placeholderTextColor.withAlphaComponent(0.16).setFill()
-        authorPath.fill()
+        if drawsBase { authorPath.fill() }
         shimmerMask.append(authorPath)
 
         let timestampPath = NSBezierPath(
             roundedRect: CGRect(
-                x: contentX + authorWidth + 8,
-                y: rowTop + 12,
-                width: 38,
-                height: 7
+                x: contentX + authorWidth + InterfaceScale.metric(8),
+                y: rowTop + InterfaceScale.metric(12),
+                width: InterfaceScale.metric(38),
+                height: InterfaceScale.metric(7)
             ),
-            xRadius: 3.5,
-            yRadius: 3.5
+            xRadius: InterfaceScale.metric(3.5),
+            yRadius: InterfaceScale.metric(3.5)
         )
-        NSColor.placeholderTextColor.withAlphaComponent(0.11).setFill()
-        timestampPath.fill()
+        if drawsBase { timestampPath.fill() }
         shimmerMask.append(timestampPath)
 
         let fractions = lineFractions[ordinal % lineFractions.count]
@@ -1222,52 +1310,16 @@ extension NativeTimelineCanvasView {
             let linePath = NSBezierPath(
                 roundedRect: CGRect(
                     x: contentX,
-                    y: rowTop + 28 + CGFloat(line) * 13,
-                    width: max(34, maximumContentWidth * fraction),
-                    height: 8
+                    y: rowTop + InterfaceScale.metric(28) + CGFloat(line) * 13,
+                    width: max(InterfaceScale.metric(34), maximumContentWidth * fraction),
+                    height: InterfaceScale.metric(8)
                 ),
-                xRadius: 4,
-                yRadius: 4
+                xRadius: InterfaceScale.metric(4),
+                yRadius: InterfaceScale.metric(4)
             )
-            linePath.fill()
+            if drawsBase { linePath.fill() }
             shimmerMask.append(linePath)
         }
-    }
-
-    private func drawHistorySkeletonShimmer(
-        mask: NSBezierPath,
-        in frame: CGRect
-    ) {
-        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
-              !mask.isEmpty,
-              let gradient = NSGradient(
-                  colorsAndLocations:
-                  (.clear, 0),
-                  (NSColor.labelColor.withAlphaComponent(0.18), 0.25),
-                  (NSColor.labelColor.withAlphaComponent(0.92), 0.5),
-                  (NSColor.labelColor.withAlphaComponent(0.18), 0.75),
-                  (.clear, 1)
-              )
-        else { return }
-
-        let width = max(frame.width, 1)
-        let phase = SkeletonShimmerStyle.phase(at: Date())
-        let bandFrame = CGRect(
-            x: frame.minX
-                + width
-                    * (
-                        SkeletonShimmerStyle.startingOffsetFraction
-                            + SkeletonShimmerStyle.travelFraction * phase
-                    ),
-            y: frame.minY,
-            width: width * SkeletonShimmerStyle.bandWidthFraction,
-            height: frame.height
-        )
-
-        NSGraphicsContext.saveGraphicsState()
-        defer { NSGraphicsContext.restoreGraphicsState() }
-        mask.addClip()
-        gradient.draw(in: bandFrame, angle: 0)
     }
 
     func resetDrawTelemetry() {
@@ -1356,7 +1408,7 @@ extension NativeTimelineCanvasView {
                 model: model,
                 isHovered: false,
                 spoilerRevealStore: spoilerRevealStore,
-                animatedReactionIDs: animatedReactionIDs(for: item.identifier)
+                animatedOverlayRoles: animatedOverlayRoles(for: item.identifier)
             )
         }
         flippedGraphics.flushGraphics()

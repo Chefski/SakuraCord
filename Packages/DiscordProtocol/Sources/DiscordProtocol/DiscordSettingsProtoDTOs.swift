@@ -26,12 +26,6 @@ struct DiscordGuildLayout: Equatable {
 }
 
 enum DiscordSettingsProto {
-    private struct FrequentEmojiEntry {
-        let key: String
-        let frecency: Int
-        let order: Int
-    }
-
     static func guildOrder(from data: Data) -> [GuildID]? {
         guard let layout = guildLayout(from: data) else { return nil }
         let folderOrder = layout.folders.flatMap(\.guildIDs)
@@ -62,8 +56,6 @@ enum DiscordSettingsProto {
         var reader = ProtoReader(data: data)
         var favorites: [String] = []
         var favoriteSet: Set<String> = []
-        var frequentEntries: [FrequentEmojiEntry] = []
-        var scores: [String: Int] = [:]
         var guildAndChannelScores: [String: Int] = [:]
         var guildAndChannelUsage: [String: DiscordFrecencyUsage] = [:]
         var guildAndChannelUsageOrder: [String] = []
@@ -79,18 +71,6 @@ enum DiscordSettingsProto {
                     where favoriteSet.insert(key).inserted {
                     favorites.append(key)
                 }
-            } else if tag.field == 6 {
-                for entry in stringFrecencyEntries(
-                    from: payload,
-                    nowMilliseconds: nowMilliseconds
-                ) {
-                    scores[entry.key] = max(scores[entry.key, default: 0], entry.score)
-                    frequentEntries.append(FrequentEmojiEntry(
-                        key: entry.key,
-                        frecency: entry.frecency,
-                        order: frequentEntries.count
-                    ))
-                }
             } else if tag.field == 12 {
                 let decoded = guildAndChannelFrecency(
                     from: payload,
@@ -105,22 +85,11 @@ enum DiscordSettingsProto {
                 }
             }
         }
-        var seenFrequent: Set<String> = []
-        let frequentlyUsed =
-            frequentEntries
-                .sorted { left, right in
-                    left.frecency == right.frecency
-                        ? left.order < right.order
-                        : left.frecency > right.frecency
-                }
-                .compactMap { entry in
-                    seenFrequent.insert(entry.key).inserted ? entry.key : nil
-                }
-                .prefix(18)
         return EmojiUserSettings(
             favoriteKeys: favorites,
-            frequentlyUsedKeys: Array(frequentlyUsed),
-            usageScores: scores,
+            dataVersion: dataVersion(in: data),
+            messageHistory: frecencyHistory(from: data, field: 6) ?? .init(),
+            reactionHistory: frecencyHistory(from: data, field: 13) ?? .init(),
             guildAndChannelUsageScores: guildAndChannelScores,
             guildAndChannelUsage: guildAndChannelUsage,
             guildAndChannelUsageOrder: guildAndChannelUsageOrder

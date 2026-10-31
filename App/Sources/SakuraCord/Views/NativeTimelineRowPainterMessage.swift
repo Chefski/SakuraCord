@@ -15,6 +15,8 @@ struct NativeTimelineMessageDrawInput {
     let isHovered: Bool
     let showsCompactTimestamp: Bool
     let isAuthorHovered: Bool
+    let isServerTagHovered: Bool
+    let isCommandPillHovered: Bool
     let hoveredMention: NativeTimelineMentionHover?
     let hoveredTextLink: NativeTimelineTextLinkHover?
     let hoveredTextSpoiler: NativeTimelineTextSpoilerHover?
@@ -23,7 +25,11 @@ struct NativeTimelineMessageDrawInput {
     let pressedComponentButton: NativeTimelineComponentButtonTarget?
     let componentButtonPressProgress: CGFloat
     let isForwardedSourceHovered: Bool
+    let threadCardInteraction: NativeTimelineThreadCard.Interaction
     let isEphemeralDismissHovered: Bool
+    let isTranslationActionHovered: Bool
+    /// A hovered upload cancel or Retry of a local send.
+    let hoveredDeliveryAction: NativeTimelineFooterActionTarget.Kind?
     let hidesMessageContent: Bool
     let hoveredReactionID: String?
     let isAddReactionHovered: Bool
@@ -31,24 +37,27 @@ struct NativeTimelineMessageDrawInput {
     let revealedTextSpoilerState: NativeTimelineTextSpoilerRevealState
     let spoilerRevealStore: NativeTimelineSpoilerRevealStore?
     let pollPresentation: NativeTimelinePollPresentation
-    let animatedReactionIDs: Set<String>
+    let animatedOverlayRoles: Set<NativeTimelineCanvasView.AnimatedMediaOverlayRole>
     let reactionCountTransitions: [String: NativeTimelineReactionCountTransition]
 }
 
 extension NativeTimelineRowPainter {
     static func drawMessage(_ input: NativeTimelineMessageDrawInput) {
-        drawMessageBubbleTint(input)
         drawMessageSearchContext(input)
         drawMessageSeparators(input)
         drawMessageIdentity(input)
         drawMessageReplyAndCommand(input)
         if input.hidesMessageContent { return }
+        drawMessageBubbleTint(input)
         drawForwardedHeaderAndSystemIcon(input)
         drawMessageContent(input)
+        drawMessageTranslation(input)
         drawPoll(input)
         drawPollResult(input)
         drawMessageLinkedImages(input)
         drawMessageAttachments(input)
+        drawMessageUploads(input)
+        drawMessageVoiceMessage(input)
         drawMessageEmbeds(input)
         drawMessageComponentsAndStickers(input)
         drawMessageFooter(input)
@@ -56,7 +65,10 @@ extension NativeTimelineRowPainter {
 
     private static func drawMessageBubbleTint(_ input: NativeTimelineMessageDrawInput) {
         guard let bubbleRegion = input.layout.bubbleRegion else { return }
-        let integratedSectionFrames = input.layout.embedRegions.compactMap {
+        let integratedSectionFrames = input.layout.inviteRegions.map(\.frame)
+            + input.layout.sakuraCordDeepLinkRegions.map(\.frame)
+            + [input.layout.threadFrame, input.layout.pollLayout?.frame].compactMap { $0 }
+            + input.layout.embedRegions.compactMap {
             $0.kind == .bubbleIntegratedCard ? $0.frame : nil
         } + input.layout.componentLayouts.flatMap { componentLayout in
             componentLayout.containers.compactMap { container in
@@ -79,7 +91,7 @@ extension NativeTimelineRowPainter {
             text(
                 context.sectionTitle,
                 in: region.titleFrame,
-                font: .systemFont(
+                font: .interfaceSystemFont(
                     ofSize: NSFont.preferredFont(forTextStyle: .headline).pointSize,
                     weight: .semibold
                 ),
@@ -92,7 +104,7 @@ extension NativeTimelineRowPainter {
                 text(
                     subtitle,
                     in: subtitleFrame,
-                    font: .preferredFont(forTextStyle: .caption1),
+                    font: .interfacePreferredFont(forTextStyle: .caption1),
                     color: .secondaryLabelColor,
                     lineBreakMode: .byTruncatingTail
                 )
@@ -102,10 +114,16 @@ extension NativeTimelineRowPainter {
 
     private static func drawMessageSeparators(_ input: NativeTimelineMessageDrawInput) {
         if let frame = input.layout.daySeparatorFrame {
-            dateSeparator(date: input.row.message.timestamp, frame: frame)
+            dateSeparator(date: input.row.message.timestamp, frame: frame, isUnread: input.layout.foldedUnreadDay != nil)
         }
         if let frame = input.layout.unreadSeparatorFrame {
             newMessagesSeparator(frame: frame)
+        }
+        // While editing, the editor replaces the row's height, so the rule
+        // would sit at the starter's old bottom across later replies.
+        if let frame = input.layout.postStarterDividerFrame, !input.hidesMessageContent {
+            NSColor.labelColor.withAlphaComponent(0.16).setFill()
+            CGRect(x: frame.minX, y: frame.midY, width: frame.width, height: 1).fill()
         }
     }
 
@@ -136,24 +154,25 @@ extension NativeTimelineRowPainter {
             let presentedAuthor =
                 author?.user
                 ?? message.author
-            text(
-                presentedAuthor.displayName,
-                in: frame,
-                font: ProfileNameFontLoader.shared.resolvedFont(for: presentedAuthor, fallback: .systemFont(
-                    ofSize: NSFont.preferredFont(forTextStyle: .headline).pointSize,
-                    weight: .semibold
-                )),
-                color: presentedAuthor.isBot
-                    ? .sakuraCordAccentColor
-                    : input.model?.accessibilitySettings.roleColorDisplay != .inNames
-                    ? .labelColor
-                    : roleColor(author?.roleColorHex) ?? .labelColor,
-                isInteractiveHovered: input.isAuthorHovered
-            )
+            if let context = NSGraphicsContext.current?.cgContext {
+                input.layout.authorText?.draw(
+                    in: frame,
+                    color: presentedAuthor.isBot
+                        ? .sakuraCordAccentColor
+                        : input.model?.accessibilitySettings.roleColorDisplay != .inNames
+                        ? .labelColor : roleColor(author?.roleColorHex) ?? .labelColor,
+                    context: context, isUnderlined: input.isAuthorHovered
+                )
+            }
             if input.model?.accessibilitySettings.roleColorDisplay == .nextToNames,
                let color = roleColor(author?.roleColorHex) {
                 color.setFill()
-                NSBezierPath(ovalIn: CGRect(x: frame.minX - 14, y: frame.midY - 4, width: 8, height: 8)).fill()
+                NSBezierPath(ovalIn: CGRect(
+                    x: frame.minX - InterfaceScale.metric(15),
+                    y: frame.midY - InterfaceScale.metric(4.5),
+                    width: InterfaceScale.metric(9),
+                    height: InterfaceScale.metric(9)
+                )).fill()
             }
         }
         drawMessageIdentityMetadata(input)
@@ -162,33 +181,23 @@ extension NativeTimelineRowPainter {
     private static func drawMessageIdentityMetadata(
         _ input: NativeTimelineMessageDrawInput
     ) {
-        if let frame = input.layout.botBadgeFrame {
-            NSColor.sakuraCordAccentColor.setFill()
-            NSBezierPath(
-                concentricRoundedRect: frame,
-                cornerRadius: 3
-            ).fill()
-            text(
-                "APP",
-                in: frame,
-                font: .systemFont(
-                    ofSize: NSFont.preferredFont(forTextStyle: .caption2).pointSize,
-                    weight: .bold
-                ),
-                color: .white,
-                alignment: .center
-            )
+        if let frame = input.layout.botBadgeFrame,
+           let context = NSGraphicsContext.current?.cgContext {
+            NativeAppBadgePresentation.draw(in: frame, color: .sakuraCordAccentColor, context: context, text: input.layout.botBadgeText)
         }
-        if let frame = input.layout.timestampFrame {
-            text(
-                NativeTimelineTimestamp.headerText(
-                    for: input.row.message.timestamp,
-                    settings: input.model?.interfaceSettings ?? .defaults
-                ),
-                in: frame,
-                font: .preferredFont(forTextStyle: .caption1),
-                color: .secondaryLabelColor
-            )
+        if let region = input.layout.serverTagRegion,
+           let context = NSGraphicsContext.current?.cgContext {
+            region.presentation.draw(in: region.frame, badgeImage: nil,
+                                     isHighlighted: input.isServerTagHovered, context: context)
+            if let url = region.presentation.identity.badgeURL,
+               let frame = region.presentation.badgeFrame(in: region.frame),
+               let image = mediaImage(for: .media(url, maximumPixelDimension: 32)) {
+                drawImage(image, in: frame, cornerRadius: 0, fillsFrame: false)
+            }
+        }
+        if let frame = input.layout.timestampFrame,
+           let context = NSGraphicsContext.current?.cgContext {
+            input.layout.timestampText?.draw(in: frame, color: .secondaryLabelColor, context: context)
         }
         if input.showsCompactTimestamp || input.model?.interfaceSettings.alwaysShowsTimestamps == true,
            let frame = input.layout.compactTimestampFrame
@@ -211,17 +220,16 @@ extension NativeTimelineRowPainter {
             text(
                 "Pinned \(pinnedAt.formatted(date: .abbreviated, time: .shortened))",
                 in: frame,
-                font: .preferredFont(forTextStyle: .caption1),
+                font: .interfacePreferredFont(forTextStyle: .caption1),
                 color: .secondaryLabelColor
             )
         }
-        if let frame = input.layout.editedFrame {
-            text(
-                "(edited)",
-                in: frame,
-                font: .preferredFont(forTextStyle: .caption2),
-                color: .tertiaryLabelColor
-            )
+        if let frame = input.layout.editedFrame,
+           let prepared = input.layout.editedText,
+           let context = NSGraphicsContext.current?.cgContext {
+            prepared.draw(in: frame, color: .tertiaryLabelColor, context: context)
+        } else if let frame = input.layout.editedFrame {
+            text("(edited)", in: frame, font: .interfacePreferredFont(forTextStyle: .caption2), color: .tertiaryLabelColor)
         }
     }
 
@@ -234,21 +242,25 @@ extension NativeTimelineRowPainter {
                     preview: preview,
                     frame: frame,
                     contentFrame: contentFrame,
+                    bubbleConnector: input.layout.bubbleReferenceConnector,
                     message: input.row.message,
                     model: input.model
                 )
             } else {
                 unavailableReplyContext(
                     frame: frame,
-                    contentFrame: contentFrame
+                    contentFrame: contentFrame,
+                    bubbleConnector: input.layout.bubbleReferenceConnector
                 )
             }
         }
         if let region = input.layout.commandInvocationRegion {
             commandInvocation(
                 region,
+                bubbleConnector: input.layout.bubbleReferenceConnector,
                 message: input.row.message,
-                cosmeticPolicy: input.model?.cosmeticPolicy ?? .init()
+                cosmeticPolicy: input.model?.cosmeticPolicy ?? .init(),
+                isPillHovered: input.isCommandPillHovered
             )
         }
     }
@@ -264,7 +276,7 @@ extension NativeTimelineRowPainter {
             ).fill()
         }
         if let headerFrame = input.layout.forwardedHeaderFrame {
-            let baseFont = NSFont.systemFont(
+            let baseFont = NSFont.interfaceSystemFont(
                 ofSize: NSFont.preferredFont(forTextStyle: .caption1).pointSize,
                 weight: .semibold
             )
@@ -280,7 +292,7 @@ extension NativeTimelineRowPainter {
             )
         }
         if let frame = input.layout.systemIconFrame {
-            let currentUserID = input.model?.snapshot?.currentUser.id
+            let currentUserID = input.model?.currentUser?.id
             systemSymbol(
                 SystemMessagePresentation.systemImage(
                     for: input.row.message,
@@ -330,6 +342,7 @@ extension NativeTimelineRowPainter {
                 framesetter: contentFramesetter,
                 in: drawingFrame,
                 model: model,
+                isOutgoingBubble: layout.bubbleRegion?.isOutgoing == true,
                 selectionRange:
                     textSelection?.itemIdentifier == .message(row.identity)
                         && textSelection?.region == .content
@@ -381,13 +394,34 @@ extension NativeTimelineRowPainter {
                 )
                 text(
                     region.reference.label,
-                    in: region.frame.insetBy(dx: 12, dy: 10),
-                    font: .systemFont(ofSize: 12, weight: .medium),
+                    in: region.frame.insetBy(dx: InterfaceScale.metric(12), dy: InterfaceScale.metric(10)),
+                    font: .interfaceSystemFont(ofSize: 12, weight: .medium),
                     color: .secondaryLabelColor,
                     lineBreakMode: .byTruncatingMiddle
                 )
             }
         }
+    }
+
+    static var attachmentCornerRadius: CGFloat { InterfaceScale.metric(8) }
+
+    private static func drawMessageVoiceMessage(_ input: NativeTimelineMessageDrawInput) {
+        guard let region = input.layout.voiceMessageRegion else { return }
+        let playback = input.model?.voiceMessagePlayback
+        let opacity = CGFloat(MessageOutboxPresentation.mediaOpacity(for: input.row.message.outboxState))
+        let context = NSGraphicsContext.current?.cgContext
+        context?.saveGState()
+        defer { context?.restoreGState() }
+        if opacity < 1 {
+            context?.setAlpha(opacity)
+            context?.beginTransparencyLayer(auxiliaryInfo: nil)
+        }
+        NativeTimelineVoiceMessagePainter.drawIdle(
+            region,
+            speedLabel: playback?.speedLabel ?? "1×",
+            isActive: playback?.isActive(region.playbackID) == true
+        )
+        if opacity < 1 { context?.endTransparencyLayer() }
     }
 
     private static func drawMessageAttachments(_ input: NativeTimelineMessageDrawInput) {
@@ -426,14 +460,14 @@ extension NativeTimelineRowPainter {
             if isConcealed {
                 spoilerConcealedBase(
                     in: region.frame,
-                    cornerRadius: 8
+                    cornerRadius: attachmentCornerRadius
                 )
                 continue
             }
             NSColor.secondaryLabelColor.withAlphaComponent(0.10).setFill()
             NSBezierPath(
                 concentricRoundedRect: region.frame,
-                cornerRadius: 8
+                cornerRadius: attachmentCornerRadius
             ).fill()
             switch attachment.mediaKind {
             case .image, .animatedImage, .video:
@@ -442,11 +476,13 @@ extension NativeTimelineRowPainter {
                     drawImage(
                         image,
                         in: region.frame,
-                        cornerRadius: 8,
+                        cornerRadius: attachmentCornerRadius,
                         fillsFrame: attachmentFillsFrame
                     )
+                } else if let placeholder = region.placeholder?.image {
+                    drawImage(placeholder, in: region.frame, cornerRadius: attachmentCornerRadius, fillsFrame: true)
                 } else if isVideo {
-                    systemSymbol("film", in: region.frame, color: .secondaryLabelColor, inset: 30)
+                    systemSymbol("film", in: region.frame, color: .secondaryLabelColor, inset: InterfaceScale.metric(30))
                 }
                 if isVideo { mediaPlayGlyph(in: region.frame) }
             case .audio:
@@ -458,10 +494,10 @@ extension NativeTimelineRowPainter {
                 systemSymbol(
                     "doc",
                     in: CGRect(
-                        x: region.frame.midX - 19,
-                        y: region.frame.midY - 34,
-                        width: 38,
-                        height: 38
+                        x: region.frame.midX - InterfaceScale.metric(19),
+                        y: region.frame.midY - InterfaceScale.metric(34),
+                        width: InterfaceScale.metric(38),
+                        height: InterfaceScale.metric(38)
                     ),
                     color: .labelColor,
                     inset: 1
@@ -469,12 +505,12 @@ extension NativeTimelineRowPainter {
                 text(
                     attachment.filename,
                     in: CGRect(
-                        x: region.frame.minX + 12,
-                        y: region.frame.midY + 11,
-                        width: max(1, region.frame.width - 24),
-                        height: 38
+                        x: region.frame.minX + InterfaceScale.metric(12),
+                        y: region.frame.midY + InterfaceScale.metric(11),
+                        width: max(1, region.frame.width - InterfaceScale.metric(24)),
+                        height: InterfaceScale.metric(38)
                     ),
-                    font: .preferredFont(forTextStyle: .body),
+                    font: .interfacePreferredFont(forTextStyle: .body),
                     color: .labelColor,
                     alignment: .center,
                     lineBreakMode: .byTruncatingTail
@@ -554,12 +590,14 @@ extension NativeTimelineRowPainter {
                     cornerRadius: imageRegion.cornerRadius,
                     fillsFrame: false
                 )
+            } else if let placeholder = imageRegion.placeholder?.image {
+                drawImage(placeholder, in: imageRegion.frame, cornerRadius: imageRegion.cornerRadius, fillsFrame: false)
             } else {
                 systemSymbol(
                     imageRegion.fallbackSystemImage,
                     in: imageRegion.frame,
                     color: .secondaryLabelColor,
-                    inset: imageRegion.frame.width >= 70 ? 22 : 2
+                    inset: imageRegion.frame.width >= InterfaceScale.metric(70) ? InterfaceScale.metric(22) : InterfaceScale.metric(2)
                 )
             }
         }
@@ -571,14 +609,18 @@ extension NativeTimelineRowPainter {
               )
         else { return }
         NativeTimelineSemanticColor.opacity(.secondaryLabelColor, 0.10).setFill()
-        NSBezierPath(concentricRoundedRect: frame, cornerRadius: 8).fill()
-        if let image = mediaImage(for: .media(url)) {
-            drawImage(image, in: frame, cornerRadius: 8, fillsFrame: false)
-            if region.mediaIsVideo { mediaPlayGlyph(in: frame) }
+        NSBezierPath(concentricRoundedRect: frame, cornerRadius: InterfaceScale.metric(8)).fill()
+        if let image = mediaImage(for: .media(region.mediaPreviewURL ?? url)) {
+            drawImage(
+                image, in: frame, cornerRadius: InterfaceScale.metric(8),
+                fillsFrame: region.mediaPosterFillsFrame
+            )
+        } else if let placeholder = region.mediaPlaceholder?.image {
+            drawImage(placeholder, in: frame, cornerRadius: InterfaceScale.metric(8), fillsFrame: true)
         } else if region.mediaIsVideo {
-            systemSymbol("film", in: frame, color: .secondaryLabelColor, inset: 30)
-            mediaPlayGlyph(in: frame)
+            systemSymbol("film", in: frame, color: .secondaryLabelColor, inset: InterfaceScale.metric(30))
         }
+        if region.mediaIsVideo { mediaPlayGlyph(in: frame) }
     }
 
     private static func drawMessageComponentsAndStickers(
@@ -600,7 +642,7 @@ extension NativeTimelineRowPainter {
         let componentButtonPressProgress = input.componentButtonPressProgress
         for card in layout.inviteRegions {
             let target = NativeTimelineComponentButtonTarget(messageID: message.id, componentID: card.componentID)
-            inviteCard(card, isHovered: hoveredComponentButton == target,
+            inviteCard(card, bubbleRegion: layout.bubbleRegion, isHovered: hoveredComponentButton == target,
                        pressProgress: pressedComponentButton == target ? componentButtonPressProgress : 0)
         }
         for region in layout.sakuraCordDeepLinkRegions {
@@ -610,6 +652,7 @@ extension NativeTimelineRowPainter {
             )
             sakuraCordDeepLinkCard(
                 region,
+                bubbleRegion: layout.bubbleRegion,
                 isButtonHovered: hoveredComponentButton == target,
                 buttonPressProgress:
                     pressedComponentButton == target
@@ -655,9 +698,8 @@ extension NativeTimelineRowPainter {
             let sticker = message.stickers.indices.contains(index)
                 ? message.stickers[index]
                 : nil
-            if sticker?.format == .lottie {
-                // A bounded native Lottie overlay owns loading, playback, and
-                // reduced-motion presentation for this exact layout frame.
+            if let sticker,
+               input.animatedOverlayRoles.contains(.sticker(sticker.id)) {
                 continue
             }
             let image = sticker?.mediaURL.flatMap {
@@ -666,13 +708,13 @@ extension NativeTimelineRowPainter {
                 )
             }
             if let image {
-                drawImage(image, in: frame, cornerRadius: 8, fillsFrame: false)
+                drawImage(image, in: frame, cornerRadius: InterfaceScale.metric(8), fillsFrame: false)
             } else {
                 card(frame, tint: .systemPink)
                 text(
                     sticker?.name ?? "Sticker",
-                    in: frame.insetBy(dx: 12, dy: 10),
-                    font: .systemFont(ofSize: 13, weight: .medium),
+                    in: frame.insetBy(dx: InterfaceScale.metric(12), dy: InterfaceScale.metric(10)),
+                    font: .interfaceSystemFont(ofSize: 13, weight: .medium),
                     color: .secondaryLabelColor
                 )
             }
@@ -698,12 +740,13 @@ extension NativeTimelineRowPainter {
                     toX: frame.minX - 4
                 )
             }
-            threadSummary(
+            threadCard(
                 thread,
                 preview: model?.threadPreviewMessages[thread.id],
-                message: message,
                 model: model,
-                in: frame
+                in: frame,
+                bubbleRegion: layout.bubbleRegion,
+                interaction: input.threadCardInteraction
             )
         }
         ComponentUnicodeEmojiRenderer.prepareImages(
@@ -716,14 +759,14 @@ extension NativeTimelineRowPainter {
             reaction(
                 region,
                 model: model,
-                isHovered: hoveredReactionID == region.reaction.id,
+                isHovered: hoveredReactionID == region.reaction.id && model?.canUpdateReactions(on: message) != false,
                 countTransition: reactionCountTransitions[
                     region.reaction.id
                 ],
-                hasAnimatedEmojiOverlay: input.animatedReactionIDs.contains(region.reaction.id)
+                hasAnimatedEmojiOverlay: input.animatedOverlayRoles.contains(.reaction(region.reaction.id))
             )
         }
-        if let frame = layout.addReactionFrame {
+        if let frame = layout.addReactionFrame, model?.canCreateReactions(on: message) != false {
             reactionAddControl(
                 in: frame,
                 isHovered: isAddReactionHovered
@@ -733,29 +776,41 @@ extension NativeTimelineRowPainter {
             ephemeralFooter(region, isDismissHovered: input.isEphemeralDismissHovered)
         }
         if let frame = layout.failedFrame {
-            systemSymbol(
-                "exclamationmark.circle",
-                in: CGRect(
-                    x: frame.minX,
-                    y: frame.minY + 1,
-                    width: 12,
-                    height: 12
-                ),
-                color: .systemRed,
-                inset: 0
-            )
-            text(
-                "Failed",
-                in: CGRect(
-                    x: frame.minX + 16,
-                    y: frame.minY,
-                    width: max(0, frame.width - 16),
-                    height: frame.height
-                ),
-                font: .preferredFont(forTextStyle: .caption2),
+            failureNotice(
+                MessageOutboxPresentation.failureText(for: input.row.message),
+                in: frame,
+                font: .interfacePreferredFont(forTextStyle: .caption2),
                 color: .systemRed
             )
         }
+        if let frame = layout.failedRetryFrame {
+            text(
+                MessageOutboxPresentation.retryTitle,
+                in: frame,
+                font: .interfacePreferredFont(forTextStyle: .caption2),
+                color: .sakuraCordAccentColor,
+                isInteractiveHovered: input.hoveredDeliveryAction == .retrySend
+            )
+        }
+    }
+
+    /// A failed send's icon and wording, so the state also reads without colour.
+    static func failureNotice(_ notice: String, in frame: CGRect, font: NSFont, color: NSColor) {
+        let iconSize = InterfaceScale.metric(12)
+        let inset = InterfaceScale.metric(16)
+        systemSymbol(
+            "exclamationmark.circle",
+            in: CGRect(x: frame.minX, y: frame.minY + 1, width: iconSize, height: iconSize),
+            color: color,
+            inset: 0
+        )
+        text(
+            notice,
+            in: CGRect(x: frame.minX + inset, y: frame.minY, width: max(0, frame.width - inset), height: frame.height),
+            font: font,
+            color: color,
+            lineBreakMode: .byWordWrapping
+        )
     }
 
     private static func drawForwardedSource(_ input: NativeTimelineMessageDrawInput) {
@@ -773,14 +828,14 @@ extension NativeTimelineRowPainter {
                     name: source.label,
                     url: source.iconURL,
                     in: CGRect(
-                        x: source.frame.minX + 6,
-                        y: source.frame.minY + 2,
-                        width: 18,
-                        height: 18
+                        x: source.frame.minX + InterfaceScale.metric(6),
+                        y: source.frame.minY + InterfaceScale.metric(2),
+                        width: InterfaceScale.metric(18),
+                        height: InterfaceScale.metric(18)
                     )
                 )
             }
-            let labelX = source.frame.minX + 6 + iconWidth + (iconWidth > 0 ? 6 : 0)
+            let labelX = source.frame.minX + InterfaceScale.metric(6) + iconWidth + (iconWidth > 0 ? InterfaceScale.metric(6) : 0)
             let dateText = source.timestamp.formatted(date: .abbreviated, time: .shortened)
             let label = "\(source.label)  •  \(dateText)  ›"
             text(
@@ -791,7 +846,7 @@ extension NativeTimelineRowPainter {
                     width: max(1, source.frame.maxX - labelX),
                     height: source.frame.height
                 ),
-                font: .systemFont(
+                font: .interfaceSystemFont(
                     ofSize: NSFont.preferredFont(forTextStyle: .caption1).pointSize,
                     weight: .medium
                 ),
@@ -827,7 +882,7 @@ extension NativeTimelineRowPainter {
         text(
             String(name.prefix(1)).uppercased(),
             in: frame.insetBy(
-                dx: 4,
+                dx: InterfaceScale.metric(4),
                 dy: frame.height * 0.26
             ),
             font: .systemFont(
@@ -860,98 +915,39 @@ extension NativeTimelineRowPainter {
         preview: MessageReplyPreview,
         frame: CGRect,
         contentFrame: CGRect,
+        bubbleConnector: NativeTimelineRowLayout.ReferenceConnector?,
         message: Message,
         model: AppModel?
     ) {
-        let connectorFrame = CGRect(
-            x: frame.minX,
-            y: frame.minY,
-            width: max(
-                0,
-                contentFrame.minX - frame.minX
-                    - NativeTimelineReplyMetrics.horizontalSpacing
-            ),
-            height: 20
-        )
-        replyConnector(in: connectorFrame)
-
+        referenceConnector(bubbleConnector, frame: frame, contentFrame: contentFrame)
+        // A bubble's preview is laid out at its natural width.
         replyPreviewLine(
             preview,
-            frame: frame,
+            frame: bubbleConnector == nil
+                ? CGRect(x: frame.minX, y: contentFrame.minY, width: frame.width, height: frame.height)
+                : contentFrame,
             avatarFrame: NativeTimelineAvatarPresentation.replyAvatarFrame(in: contentFrame),
-            trailingInset: 48,
+            trailingInset: bubbleConnector == nil ? 48 : 0,
+            reservesSummary: bubbleConnector != nil,
             message: message,
             model: model
         )
     }
 
-    /// One line of a referenced message: avatar, author, and a plain summary.
-    static func replyPreviewLine(
-        _ preview: MessageReplyPreview,
-        frame: CGRect,
-        avatarFrame: CGRect,
-        trailingInset: CGFloat,
-        message: Message,
-        model: AppModel?
-    ) {
-        let authorFrame = replyAuthor(
-            preview: preview,
-            frame: frame,
-            avatarFrame: avatarFrame,
-            message: message,
-            model: model
-        )
-        let replySummary = if let model {
-            MessageReplySummary.summary(
-                content: preview.content,
-                mentionLabel: MessageMentionResolver(model: model, message: message).label
-            )
-        } else {
-            MessageReplySummary.summary(content: preview.content)
-        }
-        let summary = replySummary.text
-        let mediaSymbol: String? = switch preview.mediaKind {
-        case .image, .animatedImage: "photo.fill"
-        case .video: "film.fill"
-        case .audio: "waveform"
-        case .file: "paperclip"
-        case nil: nil
-        }
-        let summaryX = authorFrame.maxX + NativeTimelineReplyMetrics.horizontalSpacing
-        let summaryWidth = max(
-            0,
-            min(
-                NativeTimelineReplyMetrics.textWidth(summary, font: NativeTimelineReplyMetrics.summaryFont),
-                // A media symbol takes 24 points, from the trailing inset when there is one.
-                frame.maxX - summaryX - (mediaSymbol == nil ? trailingInset : max(24, trailingInset - 24))
-            )
-        )
-        text(
-            summary,
-            in: CGRect(
-                x: summaryX,
-                y: frame.minY,
-                width: summaryWidth,
-                height: 20
-            ),
-            font: NativeTimelineReplyMetrics.summaryFont,
-            color: .secondaryLabelColor,
-            concealedSpoilerRanges: replySummary.spoilerRanges
-        )
-        if let mediaSymbol {
-            systemSymbol(
-                mediaSymbol,
-                in: CGRect(x: summaryX + summaryWidth + 4, y: frame.minY + 1, width: 18, height: 18),
-                color: .secondaryLabelColor,
-                inset: 2
-            )
-        }
-    }
-
-    static func unavailableReplyContext(
+    private static func referenceConnector(
+        _ bubbleConnector: NativeTimelineRowLayout.ReferenceConnector?,
         frame: CGRect,
         contentFrame: CGRect
     ) {
+        if let bubbleConnector {
+            elbowConnector(
+                stemX: bubbleConnector.stemX,
+                fromY: bubbleConnector.fromY,
+                cornerY: bubbleConnector.cornerY,
+                toX: bubbleConnector.toX
+            )
+            return
+        }
         replyConnector(in: CGRect(
             x: frame.minX,
             y: frame.minY,
@@ -960,22 +956,102 @@ extension NativeTimelineRowPainter {
                 contentFrame.minX - frame.minX
                     - NativeTimelineReplyMetrics.horizontalSpacing
             ),
-            height: 20
+            height: NativeTimelineReplyMetrics.lineHeight
         ))
-        let baseFont = NativeTimelineReplyMetrics.summaryFont
-        let italicFont = NSFont(
-            descriptor: baseFont.fontDescriptor.withSymbolicTraits(.italic),
-            size: baseFont.pointSize
-        ) ?? baseFont
+    }
+
+    /// One line of a referenced message: avatar, author, and a plain summary.
+    static func replyPreviewLine(
+        _ preview: MessageReplyPreview,
+        frame: CGRect,
+        avatarFrame: CGRect,
+        trailingInset: CGFloat,
+        reservesSummary: Bool = false,
+        showsReplyMention: Bool = true,
+        message: Message,
+        model: AppModel?,
+        foregroundColor: NSColor? = nil
+    ) {
+        let replySummary = NativeTimelineReplyMetrics.summary(for: preview, in: message, model: model)
+        let summary = replySummary.text
+        let mediaSymbol = NativeTimelineReplyMetrics.mediaSymbol(for: preview)
+        let mediaReserve = NativeTimelineReplyMetrics.mediaSymbolReserve
+        // A preview narrower than its natural width keeps part of the line
+        // for the summary and media symbol instead of giving it all to a
+        // long author name.
+        let summaryReserve = reservesSummary
+            ? min(
+                frame.width * 0.45,
+                NativeTimelineReplyMetrics.horizontalSpacing
+                    + NativeTimelineReplyMetrics.textWidth(summary, font: NativeTimelineReplyMetrics.summaryFont)
+                    + (mediaSymbol == nil ? 0 : mediaReserve)
+            )
+            : 0
+        let authorFrame = replyAuthor(
+            preview: preview,
+            frame: CGRect(
+                x: frame.minX,
+                y: frame.minY,
+                width: max(0, frame.width - summaryReserve),
+                height: frame.height
+            ),
+            avatarFrame: avatarFrame,
+            showsReplyMention: showsReplyMention,
+            message: message,
+            model: model,
+            foregroundColor: foregroundColor
+        )
+        let summaryX = authorFrame.maxX + NativeTimelineReplyMetrics.horizontalSpacing
+        let summaryWidth = max(
+            0,
+            min(
+                NativeTimelineReplyMetrics.textWidth(summary, font: NativeTimelineReplyMetrics.summaryFont),
+                // A media symbol takes 26 points, from the trailing inset when there is one.
+                frame.maxX - summaryX - (mediaSymbol == nil ? trailingInset : max(mediaReserve, trailingInset - mediaReserve))
+            )
+        )
         text(
-            "Message could not be loaded",
+            summary,
+            in: CGRect(
+                x: summaryX,
+                y: frame.minY,
+                width: summaryWidth,
+                height: NativeTimelineReplyMetrics.lineHeight
+            ),
+            font: NativeTimelineReplyMetrics.summaryFont,
+            color: foregroundColor?.withAlphaComponent(0.72) ?? .secondaryLabelColor,
+            concealedSpoilerRanges: replySummary.spoilerRanges
+        )
+        let mediaSymbolFrame = CGRect(
+            x: summaryX + summaryWidth + InterfaceScale.metric(4),
+            y: frame.minY + (NativeTimelineReplyMetrics.lineHeight - InterfaceScale.metric(20)) / 2,
+            width: InterfaceScale.metric(20), height: InterfaceScale.metric(20)
+        )
+        if let mediaSymbol, !reservesSummary || mediaSymbolFrame.maxX <= frame.maxX + 1 {
+            systemSymbol(
+                mediaSymbol,
+                in: mediaSymbolFrame,
+                color: foregroundColor?.withAlphaComponent(0.72) ?? .secondaryLabelColor,
+                inset: InterfaceScale.metric(2)
+            )
+        }
+    }
+
+    static func unavailableReplyContext(
+        frame: CGRect,
+        contentFrame: CGRect,
+        bubbleConnector: NativeTimelineRowLayout.ReferenceConnector?
+    ) {
+        referenceConnector(bubbleConnector, frame: frame, contentFrame: contentFrame)
+        text(
+            NativeTimelineReplyMetrics.unavailableText,
             in: CGRect(
                 x: contentFrame.minX,
-                y: frame.minY,
+                y: contentFrame.minY,
                 width: contentFrame.width,
-                height: 20
+                height: NativeTimelineReplyMetrics.lineHeight
             ),
-            font: italicFont,
+            font: NativeTimelineReplyMetrics.unavailableFont,
             color: .secondaryLabelColor
         )
     }
@@ -984,8 +1060,10 @@ extension NativeTimelineRowPainter {
         preview: MessageReplyPreview,
         frame: CGRect,
         avatarFrame: CGRect,
+        showsReplyMention: Bool,
         message: Message,
-        model: AppModel?
+        model: AppModel?,
+        foregroundColor: NSColor? = nil
     ) -> CGRect {
         let presentation = model?.authorPresentation(for: preview, in: message)
         let author = presentation?.user ?? preview.author
@@ -994,14 +1072,17 @@ extension NativeTimelineRowPainter {
             url: author.avatarURL,
             in: avatarFrame
         )
-        let font = ProfileNameFontLoader.shared.resolvedFont(for: author, fallback: NativeTimelineReplyMetrics.authorFont)
+        let font = ProfileNameFontCache.font(id: author.displayNameStyle?.fontID, fallback: NativeTimelineReplyMetrics.authorFont)
+        let displayName = showsReplyMention
+            ? NativeTimelineReplyMetrics.authorDisplayName(author, in: message)
+            : author.displayName
         let width = NativeTimelineReplyMetrics.textWidth(
-            author.displayName,
+            displayName,
             font: font
         )
         let roleColor = roleColor(presentation?.roleColorHex)
         let showsIndicator = model?.accessibilitySettings.roleColorDisplay == .nextToNames && roleColor != nil
-        let indicatorWidth: CGFloat = showsIndicator ? 14 : 0
+        let indicatorWidth: CGFloat = showsIndicator ? InterfaceScale.metric(16) : 0
         let authorFrame = CGRect(
             x: avatarFrame.maxX
                 + NativeTimelineReplyMetrics.horizontalSpacing + indicatorWidth,
@@ -1014,19 +1095,24 @@ extension NativeTimelineRowPainter {
                         - NativeTimelineReplyMetrics.horizontalSpacing - indicatorWidth
                 )
             ),
-            height: 20
+            height: NativeTimelineReplyMetrics.lineHeight
         )
         text(
-            author.displayName,
+            displayName,
             in: authorFrame,
             font: font,
-            color: author.isBot
+            color: foregroundColor ?? (author.isBot
                 ? .sakuraCordAccentColor
-                : model?.accessibilitySettings.roleColorDisplay == .inNames ? roleColor ?? .labelColor : .labelColor
+                : model?.accessibilitySettings.roleColorDisplay == .inNames ? roleColor ?? .labelColor : .labelColor)
         )
         if showsIndicator, let roleColor {
             roleColor.setFill()
-            NSBezierPath(ovalIn: CGRect(x: authorFrame.minX - indicatorWidth, y: authorFrame.midY - 4, width: 8, height: 8)).fill()
+            NSBezierPath(ovalIn: CGRect(
+                x: authorFrame.minX - indicatorWidth,
+                y: authorFrame.midY - InterfaceScale.metric(5),
+                width: InterfaceScale.metric(10),
+                height: InterfaceScale.metric(10)
+            )).fill()
         }
         return CGRect(x: authorFrame.minX - indicatorWidth, y: authorFrame.minY, width: authorFrame.width + indicatorWidth, height: authorFrame.height)
     }
@@ -1040,19 +1126,20 @@ extension NativeTimelineRowPainter {
         )
     }
 
-    /// A rounded elbow: a vertical stem from `fromY` that turns right at
-    /// `cornerY` and runs to `toX`. The stem may run up or down.
+    /// A rounded elbow: a vertical stem from `fromY` that turns toward `toX`
+    /// at `cornerY`. The stem may run up or down, and the arm left or right.
     static func elbowConnector(stemX: CGFloat, fromY: CGFloat, cornerY: CGFloat, toX: CGFloat) {
         let direction: CGFloat = fromY > cornerY ? 1 : -1
+        let horizontalDirection: CGFloat = toX >= stemX ? 1 : -1
         let connector = NSBezierPath()
         connector.lineWidth = 1.25
         connector.lineCapStyle = .round
         connector.move(to: CGPoint(x: stemX, y: fromY))
         connector.line(to: CGPoint(x: stemX, y: cornerY + 4 * direction))
         connector.curve(
-            to: CGPoint(x: stemX + 4, y: cornerY),
+            to: CGPoint(x: stemX + InterfaceScale.metric(4) * horizontalDirection, y: cornerY),
             controlPoint1: CGPoint(x: stemX, y: cornerY + 1.8 * direction),
-            controlPoint2: CGPoint(x: stemX + 2.2, y: cornerY)
+            controlPoint2: CGPoint(x: stemX + InterfaceScale.metric(2.2) * horizontalDirection, y: cornerY)
         )
         connector.line(to: CGPoint(x: toX, y: cornerY))
         NSColor.tertiaryLabelColor.setStroke()
@@ -1061,10 +1148,21 @@ extension NativeTimelineRowPainter {
 
     static func commandInvocation(
         _ region: NativeTimelineRowLayout.CommandInvocationRegion,
+        bubbleConnector: NativeTimelineRowLayout.ReferenceConnector?,
         message: Message,
-        cosmeticPolicy: ProfileCosmeticPolicy
+        cosmeticPolicy: ProfileCosmeticPolicy,
+        isPillHovered: Bool
     ) {
-        replyConnector(in: region.connectorFrame)
+        if let bubbleConnector {
+            elbowConnector(
+                stemX: bubbleConnector.stemX,
+                fromY: bubbleConnector.fromY,
+                cornerY: bubbleConnector.cornerY,
+                toX: bubbleConnector.toX
+            )
+        } else {
+            replyConnector(in: region.connectorFrame)
+        }
         let user = message.interactionMetadata?.user.map(cosmeticPolicy.user)
         if let frame = region.avatarFrame, let user {
             avatar(
@@ -1083,7 +1181,7 @@ extension NativeTimelineRowPainter {
         text(
             user?.displayName ?? "Someone",
             in: region.userFrame,
-            font: ProfileNameFontLoader.shared.resolvedFont(for: user, fallback: .systemFont(
+            font: ProfileNameFontCache.font(id: user?.displayNameStyle?.fontID, fallback: .interfaceSystemFont(
                 ofSize: NSFont.preferredFont(
                     forTextStyle: .caption2
                 ).pointSize,
@@ -1094,32 +1192,34 @@ extension NativeTimelineRowPainter {
         text(
             "used",
             in: region.usedFrame,
-            font: .preferredFont(forTextStyle: .caption1),
+            font: .interfacePreferredFont(forTextStyle: .caption1),
             color: .secondaryLabelColor
         )
-        NSColor.sakuraCordAccentColor.withAlphaComponent(0.16).setFill()
+        // Like Discord, hovering fills the pill and turns its content white.
+        let pillContentColor: NSColor = isPillHovered ? .white : .sakuraCordAccentColor
+        NSColor.sakuraCordAccentColor.withAlphaComponent(isPillHovered ? 1 : 0.16).setFill()
         NSBezierPath(
             roundedRect: region.pillFrame,
-            xRadius: 4,
-            yRadius: 4
+            xRadius: InterfaceScale.metric(4),
+            yRadius: InterfaceScale.metric(4)
         ).fill()
         systemSymbol(
             SakuraCordSystemSymbol.applicationCommands,
             in: region.commandSymbolFrame,
-            color: .sakuraCordAccentColor,
+            color: pillContentColor,
             inset: 0,
             weight: .semibold
         )
         text(
             message.interactionMetadata?.displayName ?? "command",
             in: region.commandFrame,
-            font: .systemFont(
+            font: .interfaceSystemFont(
                 ofSize: NSFont.preferredFont(
                     forTextStyle: .caption1
                 ).pointSize,
                 weight: .semibold
             ),
-            color: .sakuraCordAccentColor,
+            color: pillContentColor,
             lineBreakMode: .byTruncatingTail
         )
     }
@@ -1134,7 +1234,7 @@ extension NativeTimelineRowPainter {
             color: .secondaryLabelColor,
             inset: 0
         )
-        let font = NSFont.preferredFont(forTextStyle: .caption1)
+        let font = NSFont.interfacePreferredFont(forTextStyle: .caption1)
         text(
             "Only you can see this",
             in: region.visibilityFrame,
@@ -1156,15 +1256,27 @@ extension NativeTimelineRowPainter {
         )
     }
 
-    static func dateSeparator(date: Date, frame: CGRect) {
+    /// `isUnread` folds the NEW divider in, as Discord does when both fall on
+    /// the same message: the rule and date turn red and the pill ends the line.
+    static func dateSeparator(date: Date, frame: CGRect, isUnread: Bool = false) {
         let label = date.formatted(
             .dateTime.day().month(.wide).year()
         )
-        let labelFrame = NativeTimelineDateSeparatorMetrics.labelFrame(
+        let pill = newMessagesPillFrame(in: frame)
+        let pillLineEnd = lineEnd(before: pill)
+        var labelFrame = NativeTimelineDateSeparatorMetrics.labelFrame(
             for: label,
             in: frame
         )
-        NSColor.labelColor.withAlphaComponent(0.16).setFill()
+        // In a narrow timeline the date keeps clear of where NEW folds in,
+        // so it stays put while NEW fades in or out over it.
+        if labelFrame.maxX > pillLineEnd {
+            labelFrame.origin.x = max(frame.minX, pillLineEnd - labelFrame.width)
+            labelFrame.size.width = pillLineEnd - labelFrame.minX
+        }
+        let ruleEnd = isUnread ? pillLineEnd : frame.maxX
+        if isUnread { drawNewMessagesPill(pill) }
+        (isUnread ? MentionRed.nsColor : NSColor.labelColor.withAlphaComponent(0.16)).setFill()
         CGRect(
             x: frame.minX,
             y: frame.midY,
@@ -1182,7 +1294,7 @@ extension NativeTimelineRowPainter {
             y: frame.midY,
             width: max(
                 0,
-                frame.maxX
+                ruleEnd
                     - labelFrame.maxX
                     - NativeTimelineDateSeparatorMetrics.lineSpacing
             ),
@@ -1192,40 +1304,40 @@ extension NativeTimelineRowPainter {
             label,
             in: labelFrame,
             font: NativeTimelineDateSeparatorMetrics.font,
-            color: .secondaryLabelColor,
+            color: isUnread ? MentionRed.nsColor : .secondaryLabelColor,
             alignment: .center,
             lineBreakMode: .byClipping
         )
     }
 
     static func newMessagesSeparator(frame: CGRect) {
-        let font = NSFont.systemFont(ofSize: 10, weight: .bold)
-        let labelWidth = ceil(
-            measuredTextWidth("NEW", font: font) + 14
-        )
-        let capsuleFrame = CGRect(
-            x: frame.maxX - labelWidth,
-            y: frame.minY
-                + NativeTimelineUnreadSeparatorMetrics.verticalPadding,
-            width: labelWidth,
-            height: NativeTimelineUnreadSeparatorMetrics.capsuleHeight
-        )
-        NSColor.systemRed.setFill()
-        CGRect(
-            x: frame.minX,
-            y: frame.midY,
-            width: max(0, capsuleFrame.minX - 8 - frame.minX),
-            height: 1
-        ).fill()
-        NSBezierPath(
-            roundedRect: capsuleFrame,
-            xRadius: capsuleFrame.height / 2,
-            yRadius: capsuleFrame.height / 2
-        ).fill()
+        let pill = newMessagesPillFrame(in: frame)
+        drawNewMessagesPill(pill)
+        MentionRed.nsColor.setFill()
+        CGRect(x: frame.minX, y: frame.midY, width: max(0, lineEnd(before: pill) - frame.minX), height: 1).fill()
+    }
+
+    /// Where a divider's line stops short of the NEW pill.
+    private static func lineEnd(before pill: CGRect) -> CGFloat {
+        pill.minX - InterfaceScale.metric(8)
+    }
+
+    private static var newMessagesPillFont: NSFont { .interfaceSystemFont(ofSize: 10, weight: .bold) }
+
+    /// Where the red NEW pill sits at the end of a divider's `frame`.
+    private static func newMessagesPillFrame(in frame: CGRect) -> CGRect {
+        let width = ceil(measuredTextWidth("NEW", font: newMessagesPillFont) + 14)
+        let height = NativeTimelineUnreadSeparatorMetrics.capsuleHeight
+        return CGRect(x: frame.maxX - width, y: frame.midY - height / 2, width: width, height: height)
+    }
+
+    private static func drawNewMessagesPill(_ pill: CGRect) {
+        MentionRed.nsColor.setFill()
+        NSBezierPath(roundedRect: pill, xRadius: pill.height / 2, yRadius: pill.height / 2).fill()
         text(
             "NEW",
-            in: capsuleFrame,
-            font: font,
+            in: pill,
+            font: newMessagesPillFont,
             color: .white,
             alignment: .center,
             lineBreakMode: .byClipping
@@ -1236,13 +1348,13 @@ extension NativeTimelineRowPainter {
         tint.withAlphaComponent(0.09).setFill()
         NSBezierPath(
             concentricRoundedRect: frame,
-            cornerRadius: 8
+            cornerRadius: InterfaceScale.metric(8)
         ).fill()
         tint.withAlphaComponent(0.55).setStroke()
         let edge = NSBezierPath()
         edge.lineWidth = 3
-        edge.move(to: CGPoint(x: frame.minX + 1.5, y: frame.minY + 7))
-        edge.line(to: CGPoint(x: frame.minX + 1.5, y: frame.maxY - 7))
+        edge.move(to: CGPoint(x: frame.minX + InterfaceScale.metric(1.5), y: frame.minY + InterfaceScale.metric(7)))
+        edge.line(to: CGPoint(x: frame.minX + InterfaceScale.metric(1.5), y: frame.maxY - InterfaceScale.metric(7)))
         edge.stroke()
     }
 
@@ -1271,7 +1383,7 @@ extension NativeTimelineRowPainter {
         CGRect(
             x: frame.minX,
             y: frame.minY,
-            width: 4,
+            width: InterfaceScale.metric(4),
             height: frame.height
         ).fill()
         NSGraphicsContext.restoreGraphicsState()
@@ -1290,37 +1402,37 @@ extension NativeTimelineRowPainter {
 
     static func sakuraCordDeepLinkCard(
         _ region: NativeTimelineRowLayout.SakuraCordDeepLinkRegion,
+        bubbleRegion: NativeTimelineBubbleRegion? = nil,
         isButtonHovered: Bool,
         buttonPressProgress: CGFloat
     ) {
         let colors = sakuraCordDeepLinkColors(for: region.action)
-        let accent = colors.first ?? NSColor.sakuraCordAccentColor
+        let outgoing = bubbleRegion?.isOutgoing == true
+        let accent = outgoing ? NSColor.white : colors.first ?? NSColor.sakuraCordAccentColor
         let cardCornerRadius = ChatChromeMetrics.composerCornerRadius
         let shape = NSBezierPath(
             concentricRoundedRect: region.cardFrame,
             cornerRadius: cardCornerRadius
         )
 
-        NSGraphicsContext.saveGraphicsState()
-        let glow = NSShadow()
-        glow.shadowColor = accent.withAlphaComponent(0.28)
-        glow.shadowBlurRadius = 13
-        glow.shadowOffset = .zero
-        glow.set()
-        accent.withAlphaComponent(0.20).setFill()
-        shape.fill()
-        NSGraphicsContext.restoreGraphicsState()
+        if let bubbleRegion {
+            bubbleIntegratedSection(region.frame, bubbleRegion: bubbleRegion, accentColor: nil,
+                drawsTopSeparator: region.frame.minY - bubbleRegion.frame.minY > 8.5, drawsNeutralRail: false)
+        } else {
+            NSGraphicsContext.saveGraphicsState()
+            let glow = NSShadow()
+            glow.shadowColor = accent.withAlphaComponent(0.28)
+            glow.shadowBlurRadius = 13
+            glow.shadowOffset = .zero
+            glow.set()
+            accent.withAlphaComponent(0.20).setFill()
+            shape.fill()
+            NSGraphicsContext.restoreGraphicsState()
 
-        sakuraCordGradient(colors)?.draw(in: shape, angle: 0)
-        NativeTimelineSemanticColor.opacity(
-            .controlBackgroundColor,
-            0.94
-        ).setFill()
-        NSBezierPath(
-            concentricRoundedRect:
-                region.cardFrame.insetBy(dx: 1, dy: 1),
-            cornerRadius: cardCornerRadius - 1
-        ).fill()
+            sakuraCordGradient(colors)?.draw(in: shape, angle: 0)
+            NativeTimelineSemanticColor.opacity(.controlBackgroundColor, 0.94).setFill()
+            NSBezierPath(concentricRoundedRect: region.cardFrame.insetBy(dx: 1, dy: 1), cornerRadius: cardCornerRadius - 1).fill()
+        }
 
         accent.withAlphaComponent(0.16).setFill()
         NSBezierPath(
@@ -1330,14 +1442,14 @@ extension NativeTimelineRowPainter {
             region.action.systemImage,
             in: region.symbolFrame,
             color: accent,
-            inset: 2,
+            inset: InterfaceScale.metric(2),
             weight: .semibold
         )
         text(
             region.action.title,
             in: region.titleFrame,
-            font: .systemFont(ofSize: 14, weight: .semibold),
-            color: .labelColor,
+            font: .interfaceSystemFont(ofSize: 14, weight: .semibold),
+            color: NativeTimelineBubbleDrawing.foregroundColor(for: bubbleRegion),
             lineBreakMode: .byTruncatingTail
         )
 
@@ -1353,12 +1465,9 @@ extension NativeTimelineRowPainter {
             outline.stroke()
         }
 
-        sakuraCordDeepLinkButton(
-            region,
-            isHovered: isButtonHovered,
-            pressProgress: buttonPressProgress,
-            colors: colors
-        )
+        sakuraCordButton(title: region.action.buttonTitle, frame: region.buttonFrame,
+            isHovered: isButtonHovered, pressProgress: buttonPressProgress,
+            colors: outgoing ? [.white] : colors, foreground: outgoing ? .sakuraCordAccentColor : .white)
     }
 
     static func sakuraCordDeepLinkButton(

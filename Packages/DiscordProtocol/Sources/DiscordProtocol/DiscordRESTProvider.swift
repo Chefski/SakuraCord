@@ -12,11 +12,14 @@ nonisolated struct AttachmentUploadFile: Equatable, Sendable {
     let url: URL
     let name: String
     let description: String?
+    /// The draft attachment this file came from, which lets the user stop it alone.
+    let id: UUID?
 
-    init(url: URL, name: String, description: String? = nil) {
+    init(url: URL, name: String, description: String? = nil, id: UUID? = nil) {
         self.url = url
         self.name = name
         self.description = description
+        self.id = id
     }
 }
 
@@ -60,6 +63,8 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
     static let maximumReactionReactorCacheEntries = 256
     static let maximumConcurrentReactionReactorReads = 4
 
+    var prepareEmojiFrecencySave: (@Sendable () async -> EmojiFrecencySaveContribution?)?
+
     var credentialSource: DiscordCredentialSource
     var accountID: String?
     var restSession: URLSession
@@ -72,6 +77,9 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
     let usesDesktopHeartbeat: Bool
     let clientMetadata: DiscordClientMetadata
     let apiDiagnostics: DiscordAPIDiagnosticStore
+    /// The app's human-solving presentation, shared by every REST route.
+    var captchaHandler: DiscordCaptchaHandler?
+    var captchaPresentations: [UUID: Task<String?, Never>] = [:]
     let usesEmojiDiskCache: Bool
     let usesForwardSearchPeopleDiskCache: Bool
     let persistsResolvedInstallationID: Bool
@@ -112,10 +120,30 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
     var guildChannelTasks: [GuildID: Task<[Channel], Error>] = [:]
     var privateChannelTasks: [UserID: Task<Channel, Error>] = [:]
     var messageSendTasks: [String: Task<Message, Error>] = [:]
+    var attachmentUploadDelegates: [UUID: AttachmentUploadTaskDelegate] = [:]
+    var cancelledAttachmentUploads: Set<UUID> = []
+    var postingAttachmentUploads: Set<UUID> = []
+    /// Staged files storing ahead of their message, by draft attachment ID; each yields its stored name.
+    var attachmentPreuploads: [UUID: Task<String, Error>] = [:]
     var cachedForumPosts: [ChannelID: [ChannelID: ForumPost]] = [:]
     var cachedForumThreadOrder: [ChannelID] = []
     var cachedJoinedThreads: [ChannelID: MessageThreadSummary] = [:]
     var cachedJoinedThreadOrder: [ChannelID] = []
+    /// Advanced by each authoritative thread record or deletion; a REST
+    /// result is applied only when no newer record arrived meanwhile.
+    var threadRecordRevisions: [ChannelID: UInt64] = [:]
+    /// Advanced by authoritative membership changes and each local join or
+    /// leave; a REST result carries membership only when none arrived meanwhile.
+    var threadMembershipRevisions: [ChannelID: UInt64] = [:]
+    /// Advanced only by changes that supersede a pending mutation's result:
+    /// Gateway records and deletions, and accepted local mutations. Reads
+    /// advance the revisions above but never these, so an observation cannot
+    /// cancel a mutation's confirmation.
+    var threadRecordEpochs: [ChannelID: UInt64] = [:]
+    /// Gateway membership events and the start of each local join or leave.
+    var threadMembershipEpochs: [ChannelID: UInt64] = [:]
+    /// The latest pending edit per thread; the next edit waits for it.
+    var threadMutationTails: [ChannelID: Task<Void, Never>] = [:]
     var cachedGuildNotificationSettings: [GuildID?: GuildNotificationSettings] = [:]
     var forumCatalogueTasks: [ForumCatalogueLoadKey: Task<Void, Never>] = [:]
     var forumCatalogueTaskIDs: [ForumCatalogueLoadKey: UUID] = [:]
@@ -154,7 +182,6 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
         [String: [UUID: CheckedContinuation<Void, Never>]] = [:]
     var requestSafetyCircuitIsOpen = false
     var requestSafetyStopReason = "Discord networking is stopped for this session."
-    var unexpectedNotFoundCounts: [String: Int] = [:]
     var gatewaySession: GatewaySession?
     var gatewayEventTask: Task<Void, Never>?
     var gatewayGuildIDs: [GuildID] = []
@@ -185,10 +212,32 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
         [GuildID: [String: [GuildMemberListUpdateDTO.Item?]]] = [:]
     var cachedMemberListGroups:
         [GuildID: [String: [GuildMemberListGroup]]] = [:]
+    var threadMemberSubscriptions: [GuildID: [ChannelID]] = [:]
+    var threadMemberSubscriptionRequestIDs: [GuildID: [ChannelID: UUID]] = [:]
+    var cachedThreadMemberIDs: [ChannelID: [UserID]] = [:]
     var selectedMemberListID: [GuildID: String] = [:]
     var memberListSubscriptions:
         [GuildID: [String: DiscordMemberListSubscription]] = [:]
     var memberListSubscriptionOrder: [GuildID: [String]] = [:]
+    /// The selected viewport can move while a cooldown prevents committing it.
+    var memberListViewportRequests:
+        [GuildID: (memberListID: String, subscription: DiscordMemberListSubscription)] = [:]
+    /// Selection can replace the desired viewport while an older send is suspended.
+    var memberListInFlightRequests:
+        [GuildID: DiscordMemberListInFlightRequest] = [:]
+    /// Retained member lists whose subscribed ranges were invalidated and
+    /// still need a subscription send to get a fresh SYNC.
+    var memberListsNeedingRefresh: [GuildID: [String: UUID]] = [:]
+    var guildSubscriptionTasks: [GuildID: Task<Void, any Error>] = [:]
+    #if DEBUG
+        var guildSubscriptionQueueWaitersForTesting:
+            [GuildID: [CheckedContinuation<Void, Never>]] = [:]
+    #endif
+    var guildSubscriptionGenerations: [GuildID: UUID] = [:]
+    var guildSubscriptionTaskIDs: [GuildID: UUID] = [:]
+    var memberListRefreshRetryTasks: [GuildID: Task<Void, Never>] = [:]
+    var memberListViewportRestoreTasks: [GuildID: Task<Void, Never>] = [:]
+    var memberListRefreshRetryAttempts: [GuildID: Set<String>] = [:]
     var cachedGatewayUsersByID: [String: UserDTO] = [:]
     var cachedGatewayUserOrder: [String] = []
     var cachedGatewayUserIDs: Set<String> = []
@@ -213,6 +262,18 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
     var cachedFriendUserIDs: Set<UserID> = []
     var cachedBlockedOrIgnoredUserIDs: Set<UserID> = []
     var cachedRelationshipNicknamesByUserID: [UserID: String] = [:]
+    /// Authoritative relationship records; the friend and nickname caches derive from them.
+    var cachedRelationships: [UserID: RelationshipRecord] = [:]
+    /// Advances with each READY; a full relationship read is scoped to one.
+    var relationshipGeneration: UInt64 = 0
+    /// The generation whose full relationship read has started or finished.
+    var relationshipLoadGeneration: UInt64?
+    /// Per-user revisions keep unrelated relationship events from suppressing saves.
+    var relationshipRevisions: [UserID: UInt64] = [:]
+    /// Per-group revisions keep an Edit Group response from replacing a newer Gateway update.
+    var privateChannelRevisions: [ChannelID: UInt64] = [:]
+    var cachedUserRevisions: [String: UInt64] = [:]
+    var relationshipUserPublicationTask: Task<Void, Never>?
     var cachedGuildRoles: [GuildID: [GuildRoleDTO]] = [:]
     var guildRoleTasks: [GuildID: Task<[GuildRoleDTO], Error>] = [:]
     var pendingMemberSearchRequests: [String: PendingMemberSearchRequest] = [:]
@@ -240,6 +301,7 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
     var profileEditingGeneration: UInt64 = 0
     var profilePresentationGeneration: UInt64 = 0
     var profilePresentationRevisions: [UserID: UInt64] = [:]
+    var memberPresentationRevisions: [ProfileCacheKey: UInt64] = [:]
     var profileResponses: [ProfileCacheKey: UserProfileDTO] = [:]
     var profileSaveID: UUID?
     var cachedEmojis: [GuildID: EmojiCacheEntry] = [:]
@@ -276,6 +338,7 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
     var reactionReactorCacheOrder: [ReactionReactorCacheKey] = []
     var reactionReactorTasks: [ReactionReactorCacheKey: Task<[ReactionReactor], Error>] =
         [:]
+    var reactionReactorTaskIDs: [ReactionReactorCacheKey: UUID] = [:]
     var cachedApplicationCommandCatalogs:
         [ApplicationCommandIndexTarget: ApplicationCommandCatalog] = [:]
     var applicationCommandCatalogTasks:
@@ -303,6 +366,7 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
         var eventOverflowDidStopRequestsForTesting: (@Sendable () -> Void)?
         var derivedCacheClearDidBeginForTesting: (@Sendable () -> Void)?
         var emojiResponseReceivedForTesting: (@Sendable () async -> Void)?
+        var reactorResponseReceivedForTesting: (@Sendable () async -> Void)?
     #endif
 
     struct ForumCatalogueLoadKey: Hashable {
@@ -347,6 +411,10 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
                 nextIndex = 0
             }
         }
+    }
+
+    public func setCaptchaHandler(_ handler: @escaping DiscordCaptchaHandler) async {
+        captchaHandler = handler
     }
 
     public func updateClientAppState(isFocused: Bool) async {

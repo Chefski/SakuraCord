@@ -157,12 +157,14 @@ func `Public beta accents migrate into native-surface single-color themes`(
     let selected = AppearanceSettingsSnapshot(
         colorScheme: .light,
         composerBarAppearance: .legacy,
-        messageAppearance: .bubbles,
+        directMessageAppearance: .bubbles,
+        groupMessageAppearance: .defaultStyle,
+        serverMessageAppearance: .bubbles,
         messageSpacing: 12
     )
     store.save(selected)
 
-    #expect(store.load() == selected)
+    #expect(AppearanceSettingsStore(preferences: SettingsPreferenceStore(defaults: defaults)).load() == selected)
     let appearanceExport = preferences.export(scope: .appWide, page: .appearance)
     #expect(
         appearanceExport.values[SettingsControlID.appColorScheme.rawValue]
@@ -177,10 +179,18 @@ func `Public beta accents migrate into native-surface single-color themes`(
         interfaceExport.values[SettingsControlID.messageAppearance.rawValue]
             == .string(MessageAppearance.bubbles.rawValue)
     )
+    #expect(interfaceExport.values[SettingsControlID.directMessageAppearance.rawValue] == .string("bubbles"))
+    #expect(interfaceExport.values[SettingsControlID.groupMessageAppearance.rawValue] == .string("default"))
     #expect(
         interfaceExport.values[SettingsControlID.messageDensity.rawValue]
             == .double(12)
     )
+
+    let importedPreferences = SettingsPreferenceStore(defaults: InMemoryPreferences())
+    let archive = SettingsTransferService(preferences: preferences).export(pages: [.interface, .appearance])
+    let report = SettingsTransferService(preferences: importedPreferences).importPreferences(archive)
+    #expect(report.unsupportedKeys.isEmpty)
+    #expect(AppearanceSettingsStore(preferences: importedPreferences).load() == selected)
 
     preferences.reset(scope: .appWide, page: .interface)
     #expect(store.load().colorScheme == .light)
@@ -863,4 +873,46 @@ private final class ThemeIntermediateFrameProbe {
             }
         }
     }
+}
+
+@MainActor
+@Test func `Interface size persists normalized and stays independent of density`() throws {
+    let preferences = SettingsPreferenceStore(defaults: InMemoryPreferences())
+    let store = AppearanceSettingsStore(preferences: preferences)
+    #expect(store.load().interfaceSize == InterfaceScale.defaultFactor)
+
+    var selected = AppearanceSettingsSnapshot.defaults
+    selected.interfaceSize = 1.27
+    store.save(selected)
+    let loaded = store.load()
+    #expect(loaded.interfaceSize == 1.3)
+    #expect(loaded.messageSpacing == AppearanceSettingsSnapshot.defaultMessageSpacing)
+
+    selected.interfaceSize = 9
+    store.save(selected)
+    #expect(store.load().interfaceSize == InterfaceScale.range.upperBound)
+
+    let registration = try #require(
+        SettingsPreferenceRegistry.foundation.registrations.first { $0.id == .interfaceSize }
+    )
+    #expect(SettingsImportValidation.accepts(.double(0.8), registration: registration))
+    #expect(!SettingsImportValidation.accepts(.double(2), registration: registration))
+    #expect(!SettingsImportValidation.accepts(.double(.nan), registration: registration))
+}
+
+@MainActor
+@Test func `Legacy message appearance migrates once and preserves context choices`() {
+    let defaults = InMemoryPreferences()
+    defaults.set("bubbles", forKey: "settings.appearance.messages")
+    defaults.set("default", forKey: "settings.appearance.groupMessages")
+    let preferences = SettingsPreferenceStore(defaults: defaults)
+    let migrated = AppearanceSettingsStore(preferences: preferences).load()
+    #expect(migrated.directMessageAppearance == .bubbles)
+    #expect(migrated.groupMessageAppearance == .defaultStyle)
+    #expect(migrated.serverMessageAppearance == .bubbles)
+    #expect(defaults.object(forKey: "settings.appearance.messages") == nil)
+
+    preferences.reset(scope: .appWide, page: .interface)
+    let restored = AppearanceSettingsStore(preferences: SettingsPreferenceStore(defaults: defaults))
+    #expect(restored.load() == .defaults)
 }

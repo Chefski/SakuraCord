@@ -99,13 +99,15 @@ extension DiscordRESTProvider {
                 cacheLiveSearchUsers(catalogMembers.map(\.user))
                 let guildRoles = cachedGuildRoles[guildID] ?? []
                 let guildRoleCatalog = GuildMemberRoleCatalog(guildRoles)
+                let previousMembers = cachedMemberIndex(guildID: guildID)
                 let members = catalogMembers.compactMap {
                     try? $0.domain(
                         currentUserID: currentUser?.id,
                         currentStatus: presenceStatus,
                         guildRoles: guildRoles,
                         guildRoleCatalog: guildRoleCatalog,
-                        guildID: guildID
+                        guildID: guildID,
+                        previousCommunicationDisabledUntil: UserID($0.user.id).flatMap { previousMembers[$0]?.communicationDisabledUntil }
                     )
                 }
                 cachedMembers[guildID] = DiscordMemberStoreOrdering.merging(
@@ -178,6 +180,9 @@ extension DiscordRESTProvider {
         else { return }
         cachedGuilds[guildID] = guild
         continuation?.yield(.guildChanged(guild))
+        if discardInaccessibleMemberLists(guildID: guildID) {
+            publishMembers(guildID: guildID, members: [], groups: [])
+        }
     }
 
     func handleGuildEmojisUpdateDispatch(

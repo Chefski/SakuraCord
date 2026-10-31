@@ -466,3 +466,23 @@ func `composer repeated mixed formatting toggles preserve the selected content`(
     #expect(!pastedFont.fontDescriptor.symbolicTraits.contains(.bold))
     #expect(view.textStorage?.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor == .labelColor)
 }
+
+@MainActor
+@Test func `Unshifted equals records as the interface size plus binding`() throws {
+    let recorded = try #require(KeyboardShortcutChord(key: "=", modifiers: .command))
+    #expect(recorded == KeyboardShortcutAction.increaseInterfaceSize.defaultShortcut)
+    #expect(
+        KeyboardShortcutPolicy.validate(
+            recorded,
+            for: .toggleMemberList,
+            shortcuts: [.increaseInterfaceSize: recorded]
+        ) == .conflict(.increaseInterfaceSize)
+    )
+
+    // A saved Command-= assignment from before this default existed keeps precedence.
+    let preferences = SettingsPreferenceStore(defaults: InMemoryPreferences())
+    preferences.set(.string(recorded.storageValue), for: KeyboardShortcutAction.toggleMemberList.controlID)
+    let shortcuts = KeyboardShortcutSettingsStore(preferences: preferences)
+    #expect(shortcuts.shortcut(for: .toggleMemberList) == recorded)
+    #expect(shortcuts.shortcut(for: .increaseInterfaceSize) == nil)
+}

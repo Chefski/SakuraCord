@@ -115,11 +115,11 @@ public final class DiscordClientMetadata: @unchecked Sendable {
     nonisolated static let installationDefaultsKey = "dev.sakuracord.discord-installation-id"
 
     static func persistedInstallationID() -> String? {
-        UserDefaults.standard.string(forKey: installationDefaultsKey)
+        DiscordLocalPreferences.defaults.string(forKey: installationDefaultsKey)
     }
 
     static func persistInstallationID(_ installationID: String) {
-        UserDefaults.standard.set(installationID, forKey: installationDefaultsKey)
+        DiscordLocalPreferences.defaults.set(installationID, forKey: installationDefaultsKey)
     }
 
     func currentHeartbeatSession() -> DiscordHeartbeatSession {
@@ -215,6 +215,8 @@ public final class DiscordClientMetadata: @unchecked Sendable {
 
     static let messageContextHeader = Data(#"{"location":"chat_input"}"#.utf8).base64EncodedString()
     static let forwardingContextHeader = Data(#"{"location":"forwarding"}"#.utf8)
+        .base64EncodedString()
+    static let groupDirectMessageMenuContextHeader = Data(#"{"location":"group dm context menu"}"#.utf8)
         .base64EncodedString()
 
     private nonisolated static var architecture: String {

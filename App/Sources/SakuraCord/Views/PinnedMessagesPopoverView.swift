@@ -12,14 +12,14 @@ struct PinnedMessagesPopoverView: View {
         VStack(spacing: 0) {
             HStack {
                 Label("Pinned Messages", systemImage: "pin.fill")
-                    .font(.headline)
+                    .font(.interface(.headline))
                 Spacer()
                 if pins.isLoadingMore {
                     ProgressView().controlSize(.small)
                 }
             }
-            .padding(.horizontal, 14)
-            .frame(height: 44)
+            .padding(.horizontal, InterfaceScale.metric(14))
+            .frame(height: InterfaceScale.metric(44))
 
             Divider()
 
@@ -31,7 +31,7 @@ struct PinnedMessagesPopoverView: View {
                     )
             }
         }
-        .frame(width: 440, height: 560)
+        .frame(width: InterfaceScale.metric(440), height: InterfaceScale.metric(560))
         .onExitCommand { model.dismissPinnedMessages() }
         .onAppear { AppPerformanceSignposts.reportPinnedMessagesPanelReady() }
         .onDisappear {
@@ -51,10 +51,10 @@ struct PinnedMessagesPopoverView: View {
                 description: Text("You need permission to view this channel's message history.")
             )
         } else if pins.isLoading, pins.items.isEmpty {
-            VStack(spacing: 10) {
+            VStack(spacing: InterfaceScale.metric(10)) {
                 ProgressView()
                 Text("Loading pinned messages…")
-                    .font(.caption)
+                    .font(.interface(.caption))
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -68,7 +68,7 @@ struct PinnedMessagesPopoverView: View {
                 Button("Try Again") {
                     model.presentPinnedMessages(channelID: pins.channelID)
                 }
-                    .padding(.bottom, 24)
+                    .padding(.bottom, InterfaceScale.metric(24))
             }
         } else if pins.items.isEmpty {
             ContentUnavailableView(

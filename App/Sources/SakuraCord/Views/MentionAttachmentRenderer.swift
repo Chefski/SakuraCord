@@ -54,7 +54,7 @@ nonisolated final class MentionTextAttachment: NSTextAttachment {
 enum MentionAttachmentRenderer {
     static func attributedString(
         presentation: MentionPresentation,
-        font: NSFont = .systemFont(ofSize: 15)
+        font: NSFont = .interfaceSystemFont(ofSize: 15)
     ) -> NSAttributedString {
         let attachment = MentionTextAttachment(
             presentation: presentation,
@@ -87,9 +87,9 @@ enum MentionAttachmentRenderer {
         let height = max(21, ceil(font.pointSize + 6))
         let avatarSize = height - 6
         let iconSize = height - 7
-        let horizontalPadding: CGFloat = 6
-        let avatarGap: CGFloat = showsAvatar ? 4 : 0
-        let iconGap: CGFloat = showsLeadingIcon ? 4 : 0
+        let horizontalPadding: CGFloat = InterfaceScale.metric(6)
+        let avatarGap: CGFloat = showsAvatar ? InterfaceScale.metric(4) : 0
+        let iconGap: CGFloat = showsLeadingIcon ? InterfaceScale.metric(4) : 0
         let width = ceil(
             horizontalPadding * 2 + labelSize.width
                 + (showsAvatar ? avatarSize + avatarGap : 0)
@@ -106,7 +106,7 @@ enum MentionAttachmentRenderer {
             )
             let shape = NSBezierPath(
                 concentricRoundedRect: bounds,
-                cornerRadius: 5.5
+                cornerRadius: InterfaceScale.metric(5.5)
             )
             background.setFill()
             shape.fill()
@@ -122,10 +122,8 @@ enum MentionAttachmentRenderer {
                     pointSize: iconSize,
                     weight: .semibold
                 ).applying(NSImage.SymbolConfiguration(paletteColors: [color]))
-                if let icon = NSImage(
-                    systemSymbolName: systemImage,
-                    accessibilityDescription: nil
-                )?.withSymbolConfiguration(iconConfiguration) {
+                if let icon = SakuraCordSystemSymbol.image(named: systemImage)?
+                    .withSymbolConfiguration(iconConfiguration) {
                     let iconRect = NSRect(
                         x: horizontalPadding,
                         y: (height - iconSize) / 2,

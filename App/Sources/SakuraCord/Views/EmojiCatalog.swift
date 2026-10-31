@@ -77,8 +77,8 @@ struct NativeEmoji: Identifiable {
             [name, aliases] + shortcodes
                 + shortcodes.map { $0.replacingOccurrences(of: "_", with: " ") }
         ).joined(separator: " ").lowercased()
-        var discordKeys = Set(aliases.split(separator: " ").map(String.init))
-        discordKeys.formUnion(shortcodes)
+        // Search terms such as "bug" on snail are not emoji identities.
+        var discordKeys = Set(shortcodes)
         discordKeys.insert(discordKey)
         discordKeys.insert(value)
         self.discordKeys = discordKeys
@@ -341,6 +341,15 @@ enum NativeEmojiPickerIndex {
         guard case let .native(emoji) = item else { return NativeEmojiCategory.smileys }
         return emoji.category
     }
+
+    private static let emojiByValue = Dictionary(
+        NativeEmojiCatalog.items.map { (EmojiFrecencyKeys.normalized($0.value), $0) },
+        uniquingKeysWith: { first, _ in first }
+    )
+
+    static func emoji(forValue value: String) -> NativeEmoji? {
+        emojiByValue[EmojiFrecencyKeys.normalized(value)]
+    }
 }
 
 enum NativeEmojiCatalogDiagnostics {
@@ -470,9 +479,7 @@ enum NativeEmojiAutocompleteCatalog {
 
     static func search(_ query: String) -> [NativeEmojiAutocompleteResult] {
         let normalized = EmojiSearchMatcher.autocompleteNormalized(query)
-        let tone =
-            NativeEmojiSkinTone(rawValue: UserDefaults.standard.string(forKey: "emojiSkinTone") ?? "")
-                ?? .standard
+        let tone = NativeEmojiSkinTone.preferred
         var results: [NativeEmojiAutocompleteResult] = []
         results.reserveCapacity(normalized.isEmpty ? searchEntries.count : 64)
         for entry in searchEntries

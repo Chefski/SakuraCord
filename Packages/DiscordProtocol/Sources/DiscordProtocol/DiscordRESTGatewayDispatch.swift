@@ -10,6 +10,7 @@ extension DiscordRESTProvider {
         if await handleGatewayInteractionEvent(name: name, body: body) { return }
         if await handleGatewayMessageEvent(name: name, body: body) { return }
         if await handleGatewayMemberEvent(name: name, body: body) { return }
+        if await handleGatewayRelationshipEvent(name: name, body: body) { return }
         _ = await handleGatewayVoiceEvent(name: name, body: body)
     }
 }

@@ -47,7 +47,7 @@ enum ComposerMarkdownPresentation {
 extension ComposerNSTextView {
     func refreshMarkdownPresentation() {
         guard !hasMarkedText(), let textStorage else { return }
-        let baseFont = plainTypingAttributes[.font] as? NSFont ?? .systemFont(ofSize: 15)
+        let baseFont = plainTypingAttributes[.font] as? NSFont ?? .interfaceSystemFont(ofSize: 15)
         let rendered = ComposerMarkdownPresentation.rendered(textStorage, font: baseFont)
         // Only changed runs should invalidate layout. Most keystrokes leave all
         // existing attributes intact, even though delimiter recognition is global.

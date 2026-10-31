@@ -35,14 +35,14 @@ struct ProfileWidgetEditableImage: View {
         ZStack {
             ProfileWidgetImageView(url: image?.url, animates: animates, contentMode: .fill)
             if let editor, editor.canEditPersonalWidget, image == nil {
-                Button { importing = true } label: { Image(systemName: "photo.badge.plus").font(.system(size: 20))
-                    .frame(width: 24, height: 24)
+                Button { importing = true } label: { Image(systemName: "photo.badge.plus").font(.interfaceSystem(size: 20))
+                    .frame(width: InterfaceScale.metric(24), height: InterfaceScale.metric(24))
                     .nativeHoverPopover(isPresented: .constant(isActive)) {
-                        Text("Upload Image", bundle: #bundle).font(.subheadline.weight(.medium))
-                            .fixedSize().padding(.horizontal, 12).padding(.vertical, 10)
+                        Text("Upload Image", bundle: #bundle).font(.interface(.subheadline).weight(.medium))
+                            .fixedSize().padding(.horizontal, InterfaceScale.metric(12)).padding(.vertical, InterfaceScale.metric(10))
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: purpose == .widgetCover ? .topLeading : .center)
-                    .padding(purpose == .widgetCover ? 16 : 0)
+                    .padding(purpose == .widgetCover ? InterfaceScale.metric(16) : 0)
                     .contentShape(Rectangle()) }
                     .buttonStyle(.plain).accessibilityLabel("Upload Image")
             } else if editor?.canEditPersonalWidget == true, purpose == .widgetField {
@@ -52,11 +52,11 @@ struct ProfileWidgetEditableImage: View {
             if busy { ProgressView().controlSize(.small) }
         }
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: InterfaceScale.metric(8))
                 .fill(.primary.opacity(isActive && editor?.canEditPersonalWidget == true ? 0.07 : 0))
                 .allowsHitTesting(false)
         }
-        .clipShape(.rect(cornerRadius: 8))
+        .clipShape(.rect(cornerRadius: InterfaceScale.metric(8)))
         .overlay(alignment: .topTrailing) {
             if editor?.canEditPersonalWidget == true, image != nil || removeImage != nil, isActive {
                 HoverActionPill {
@@ -71,7 +71,7 @@ struct ProfileWidgetEditableImage: View {
                             }
                             Button("Remove Image", role: .destructive) { remove() }
                         } label: {
-                            HoverActionControlLabel { Image(systemName: "pencil").font(.callout.weight(.medium)) }
+                            HoverActionControlLabel { Image(systemName: "pencil").font(.interface(.callout).weight(.medium)) }
                         }
                         .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
                         .accessibilityLabel("Change Image")
@@ -82,9 +82,9 @@ struct ProfileWidgetEditableImage: View {
                 }
                 .onModalHover { isActionHovered = $0 }
                 .onDisappear { isActionHovered = false }
-                .padding(.trailing, purpose == .widgetCover ? 48 : 0)
-                .padding(.top, purpose == .widgetCover ? 8 : 0)
-                .offset(x: purpose == .widgetCover ? 0 : 8, y: purpose == .widgetCover ? 0 : -8)
+                .padding(.trailing, purpose == .widgetCover ? InterfaceScale.metric(48) : 0)
+                .padding(.top, purpose == .widgetCover ? InterfaceScale.metric(8) : 0)
+                .offset(x: purpose == .widgetCover ? 0 : InterfaceScale.metric(8), y: purpose == .widgetCover ? 0 : -InterfaceScale.metric(8))
             }
         }
         .onModalHover { isHovered = $0 }

@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Grid cards keep identical corners regardless of their surrounding containers.
 enum ProfileEditorCardStyle {
-    static var shape: RoundedRectangle { RoundedRectangle(cornerRadius: 12, style: .continuous) }
+    static var shape: RoundedRectangle { RoundedRectangle(cornerRadius: InterfaceScale.metric(12), style: .continuous) }
 }
 
 extension EnvironmentValues {
@@ -50,9 +50,9 @@ private struct ProfileEditorTextHover: ViewModifier {
     func body(content: Content) -> some View {
         content
             .overlay {
-                RoundedRectangle(cornerRadius: 4)
+                RoundedRectangle(cornerRadius: InterfaceScale.metric(4))
                     .strokeBorder(.primary.opacity(isEnabled && (isEditing || isHovered) ? 0.3 : 0), lineWidth: 1)
-                    .padding(-3).allowsHitTesting(false)
+                    .padding(-InterfaceScale.metric(3)).allowsHitTesting(false)
             }
             .onModalHover { isHovered = $0 }
     }
@@ -67,11 +67,11 @@ struct ProfileWidgetSectionInsertion: View {
 
     var body: some View {
         Button(action: action) {
-            Color.clear.frame(height: 16).contentShape(Rectangle())
+            Color.clear.frame(height: InterfaceScale.metric(16)).contentShape(Rectangle())
                 .overlay {
                     HStack(spacing: 0) {
                         Rectangle().frame(height: 1)
-                        Image(systemName: "plus.circle.fill").font(.system(size: 18))
+                        Image(systemName: "plus.circle.fill").font(.interfaceSystem(size: 18))
                         Rectangle().frame(height: 1)
                     }
                     .foregroundStyle(.secondary)
@@ -94,12 +94,12 @@ struct ProfileWidgetAddField: View {
 
     var body: some View {
         Button(action: action) {
-            Color.clear.frame(maxWidth: .infinity).frame(height: 48).contentShape(Rectangle())
+            Color.clear.frame(maxWidth: .infinity).frame(height: InterfaceScale.metric(48)).contentShape(Rectangle())
                 .overlay {
                     Label("Add Field", systemImage: "photo.badge.plus")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(.primary.opacity(isHovered ? 0.06 : 0), in: .rect(cornerRadius: 8))
-                        .overlay { RoundedRectangle(cornerRadius: 8).strokeBorder(.primary.opacity(0.15), style: StrokeStyle(lineWidth: 1, dash: [4, 3])) }
+                        .background(.primary.opacity(isHovered ? 0.06 : 0), in: .rect(cornerRadius: InterfaceScale.metric(8)))
+                        .overlay { RoundedRectangle(cornerRadius: InterfaceScale.metric(8)).strokeBorder(.primary.opacity(0.15), style: StrokeStyle(lineWidth: 1, dash: [4, 3])) }
                         .opacity(alwaysVisible || isHovered || isFocused ? 1 : 0)
                         .allowsHitTesting(false)
                 }

@@ -49,12 +49,17 @@ final class NativeTimelinePointerState {
         let codeBlock: NativeTimelineCodeBlockPointerTarget?
         let componentButton: NativeTimelineComponentButtonTarget?
         let forwardedSourceMessageID: MessageID?
-        let ephemeralDismissMessageID: MessageID?
+        let threadMessageID: MessageID?
+        let footerAction: NativeTimelineFooterActionTarget?
+        let serverTagMessageID: MessageID?
+        let commandPillMessageID: MessageID?
     }
 
     var hoveredRow: Int?
     var hoveredCompactTimestampRow: Int?
     var hoveredAuthorMessageID: MessageID?
+    var hoveredServerTagMessageID: MessageID?
+    var hoveredCommandPillMessageID: MessageID?
     var hoveredMention: NativeTimelineMentionHover?
     var hoveredTextLink: NativeTimelineTextLinkHover?
     var hoveredTextSpoiler: NativeTimelineTextSpoilerHover?
@@ -62,7 +67,8 @@ final class NativeTimelinePointerState {
     var pressedCodeBlockCopyButton: NativeTimelineCodeBlockPointerTarget?
     var hoveredComponentButton: NativeTimelineComponentButtonTarget?
     var hoveredForwardedSourceMessageID: MessageID?
-    var hoveredEphemeralDismissMessageID: MessageID?
+    var hoveredThreadMessageID: MessageID?
+    var hoveredFooterAction: NativeTimelineFooterActionTarget?
     var pressedComponentButton: NativeTimelineComponentButtonTarget?
     var visualPressedComponentButton: NativeTimelineComponentButtonTarget?
     var componentButtonPressProgress: CGFloat = 0
@@ -75,6 +81,7 @@ final class NativeTimelinePointerState {
     var textSelection: NativeTimelineTextSelection?
     var textSelectionGesture: NativeTimelineTextSelectionGesture?
     var didDragTextSelection = false
+    var didForceClickLookup = false
     var trackingArea: NSTrackingArea?
     var rowTrackingAreas: [NSTrackingArea] = []
     var reactionMouseMonitor: Any?
@@ -91,11 +98,16 @@ final class NativeTimelinePointerState {
             componentButton:
                 visualPressedComponentButton ?? hoveredComponentButton,
             forwardedSourceMessageID: hoveredForwardedSourceMessageID,
-            ephemeralDismissMessageID: hoveredEphemeralDismissMessageID
+            threadMessageID: hoveredThreadMessageID,
+            footerAction: hoveredFooterAction,
+            serverTagMessageID: hoveredServerTagMessageID,
+            commandPillMessageID: hoveredCommandPillMessageID
         )
         hoveredRow = nil
         hoveredCompactTimestampRow = nil
         hoveredAuthorMessageID = nil
+        hoveredServerTagMessageID = nil
+        hoveredCommandPillMessageID = nil
         hoveredMention = nil
         hoveredTextLink = nil
         hoveredTextSpoiler = nil
@@ -103,7 +115,8 @@ final class NativeTimelinePointerState {
         pressedCodeBlockCopyButton = nil
         hoveredComponentButton = nil
         hoveredForwardedSourceMessageID = nil
-        hoveredEphemeralDismissMessageID = nil
+        hoveredThreadMessageID = nil
+        hoveredFooterAction = nil
         pressedComponentButton = nil
         visualPressedComponentButton = nil
         componentButtonPressProgress = 0
@@ -136,6 +149,8 @@ final class NativeTimelinePointerState {
         hoveredRow != nil
             || hoveredCompactTimestampRow != nil
             || hoveredAuthorMessageID != nil
+            || hoveredServerTagMessageID != nil
+            || hoveredCommandPillMessageID != nil
             || hoveredMention != nil
             || hoveredTextLink != nil
             || hoveredTextSpoiler != nil
@@ -143,7 +158,8 @@ final class NativeTimelinePointerState {
             || pressedCodeBlockCopyButton != nil
             || hoveredComponentButton != nil
             || hoveredForwardedSourceMessageID != nil
-            || hoveredEphemeralDismissMessageID != nil
+            || hoveredThreadMessageID != nil
+            || hoveredFooterAction != nil
             || pressedComponentButton != nil
             || visualPressedComponentButton != nil
             || componentButtonPressProgress != 0
@@ -261,6 +277,16 @@ extension NativeTimelineCanvasView {
         set { pointer.hoveredCompactTimestampRow = newValue }
     }
 
+    var hoveredServerTagMessageID: MessageID? {
+        get { pointer.hoveredServerTagMessageID }
+        set { pointer.hoveredServerTagMessageID = newValue }
+    }
+
+    var hoveredCommandPillMessageID: MessageID? {
+        get { pointer.hoveredCommandPillMessageID }
+        set { pointer.hoveredCommandPillMessageID = newValue }
+    }
+
     var hoveredAuthorMessageID: MessageID? {
         get { pointer.hoveredAuthorMessageID }
         set { pointer.hoveredAuthorMessageID = newValue }
@@ -301,9 +327,14 @@ extension NativeTimelineCanvasView {
         set { pointer.hoveredForwardedSourceMessageID = newValue }
     }
 
-    var hoveredEphemeralDismissMessageID: MessageID? {
-        get { pointer.hoveredEphemeralDismissMessageID }
-        set { pointer.hoveredEphemeralDismissMessageID = newValue }
+    var hoveredThreadMessageID: MessageID? {
+        get { pointer.hoveredThreadMessageID }
+        set { pointer.hoveredThreadMessageID = newValue }
+    }
+
+    var hoveredFooterAction: NativeTimelineFooterActionTarget? {
+        get { pointer.hoveredFooterAction }
+        set { pointer.hoveredFooterAction = newValue }
     }
 
     var pressedComponentButton: NativeTimelineComponentButtonTarget? {
@@ -333,7 +364,11 @@ extension NativeTimelineCanvasView {
 
     var pressedActivationTarget: NativeTimelinePointerActivationTarget? {
         get { pointer.pressedActivationTarget }
-        set { pointer.pressedActivationTarget = newValue }
+        set {
+            let old = pointer.pressedActivationTarget
+            pointer.pressedActivationTarget = newValue
+            invalidatePressedThreadCard(old, newValue)
+        }
     }
 
     var hoveredReaction: NativeTimelineReactionPointerTarget? {

@@ -6,6 +6,7 @@ import SwiftUI
 final class StablePopoverPresentationContext {
     private(set) var hasFinishedPresenting = false
     var dismiss: (() -> Void)?
+    var contentSizeDidChange: (() -> Void)?
     var preventsDismissal = false
     var escapeAction: (() -> Void)?
 
@@ -24,8 +25,8 @@ nonisolated struct StablePopoverPlacement: Equatable {
 }
 
 nonisolated enum StablePopoverPlacementPolicy {
-    static let sourceClearance: CGFloat = 18
-    static let screenInset: CGFloat = 8
+    static var sourceClearance: CGFloat { InterfaceScale.metric(18) }
+    static var screenInset: CGFloat { InterfaceScale.metric(8) }
 
     static func placement(
         sourceFrame: CGRect,
@@ -135,21 +136,25 @@ struct StablePopoverConfiguration {
     let ignoresMouseEvents: Bool
     let contentSizing: StablePopoverContentSizing
     let stabilizesInitialContentSize: Bool
+    var reusesPresentationOnIdentityChange = false
 
     func fixedContentSize(_ size: CGSize) -> Self {
         Self(preferredEdge: preferredEdge, behavior: behavior, animates: animates,
              ignoresMouseEvents: ignoresMouseEvents, contentSizing: .fixed(size),
-             stabilizesInitialContentSize: stabilizesInitialContentSize)
+             stabilizesInitialContentSize: stabilizesInitialContentSize,
+             reusesPresentationOnIdentityChange: reusesPresentationOnIdentityChange)
     }
 
-    static let hover = StablePopoverConfiguration(
-        preferredEdge: .minY,
-        behavior: .applicationDefined,
-        animates: true,
-        ignoresMouseEvents: true,
-        contentSizing: .constrained(CGSize(width: 400, height: 600)),
-        stabilizesInitialContentSize: false
-    )
+    static var hover: StablePopoverConfiguration {
+        StablePopoverConfiguration(
+            preferredEdge: .minY,
+            behavior: .applicationDefined,
+            animates: true,
+            ignoresMouseEvents: true,
+            contentSizing: .constrained(CGSize(width: InterfaceScale.metric(400), height: InterfaceScale.metric(600))),
+            stabilizesInitialContentSize: false
+        )
+    }
 
     static let intrinsicHoverLabel = StablePopoverConfiguration(
         preferredEdge: .minY,
@@ -160,32 +165,39 @@ struct StablePopoverConfiguration {
         stabilizesInitialContentSize: false
     )
 
-    static let interactive = StablePopoverConfiguration(
-        preferredEdge: .maxX,
-        behavior: .transient,
-        animates: true,
-        ignoresMouseEvents: false,
-        contentSizing: .constrained(CGSize(width: 520, height: 760)),
-        stabilizesInitialContentSize: false
-    )
+    static var interactive: StablePopoverConfiguration {
+        StablePopoverConfiguration(
+            preferredEdge: .maxX,
+            behavior: .transient,
+            animates: true,
+            ignoresMouseEvents: false,
+            contentSizing: .constrained(CGSize(width: InterfaceScale.metric(520), height: InterfaceScale.metric(760))),
+            stabilizesInitialContentSize: false
+        )
+    }
 
-    static let memberProfile = StablePopoverConfiguration(
-        preferredEdge: .maxX,
-        behavior: .semitransient,
-        animates: true,
-        ignoresMouseEvents: false,
-        contentSizing: .constrained(CGSize(width: 520, height: 760)),
-        stabilizesInitialContentSize: true
-    )
+    static var memberProfile: StablePopoverConfiguration {
+        StablePopoverConfiguration(
+            preferredEdge: .maxX,
+            behavior: .semitransient,
+            animates: true,
+            ignoresMouseEvents: false,
+            contentSizing: .constrained(CGSize(width: InterfaceScale.metric(520), height: InterfaceScale.metric(760))),
+            stabilizesInitialContentSize: true,
+            reusesPresentationOnIdentityChange: true
+        )
+    }
 
-    static let toolbarPanel = StablePopoverConfiguration(
-        preferredEdge: .minY,
-        behavior: .semitransient,
-        animates: true,
-        ignoresMouseEvents: false,
-        contentSizing: .constrained(CGSize(width: 520, height: 760)),
-        stabilizesInitialContentSize: true
-    )
+    static var toolbarPanel: StablePopoverConfiguration {
+        StablePopoverConfiguration(
+            preferredEdge: .minY,
+            behavior: .semitransient,
+            animates: true,
+            ignoresMouseEvents: false,
+            contentSizing: .constrained(CGSize(width: InterfaceScale.metric(520), height: InterfaceScale.metric(760))),
+            stabilizesInitialContentSize: true
+        )
+    }
 }
 
 nonisolated struct StablePopoverAnchorSnapshot: Equatable, Sendable {
@@ -359,6 +371,7 @@ struct StablePopoverHostedContent<Content: View>: View {
             \.stablePopoverPresentationContext,
             presentationContext
         )
+        .interfaceScaleRoot()
         .tint(SakuraCordAccentColor.color)
     }
 }
@@ -369,6 +382,7 @@ struct StableAnchoredPopoverPresenter<Content: View>: NSViewRepresentable {
     let anchorSnapshot: StablePopoverAnchorSnapshot?
     let configuration: StablePopoverConfiguration
     let onDismiss: () -> Void
+    let onWillDismiss: (() -> Void)?
     @ViewBuilder var content: () -> Content
 
     init(
@@ -377,6 +391,7 @@ struct StableAnchoredPopoverPresenter<Content: View>: NSViewRepresentable {
         anchorSnapshot: StablePopoverAnchorSnapshot? = nil,
         configuration: StablePopoverConfiguration,
         onDismiss: @escaping () -> Void = {},
+        onWillDismiss: (() -> Void)? = nil,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.isPresented = isPresented
@@ -384,6 +399,7 @@ struct StableAnchoredPopoverPresenter<Content: View>: NSViewRepresentable {
         self.anchorSnapshot = anchorSnapshot
         self.configuration = configuration
         self.onDismiss = onDismiss
+        self.onWillDismiss = onWillDismiss
         self.content = content
     }
 
@@ -406,6 +422,7 @@ struct StableAnchoredPopoverPresenter<Content: View>: NSViewRepresentable {
             isPresented: isPresented,
             configuration: configuration,
             onDismiss: onDismiss,
+            onWillDismiss: onWillDismiss,
             content: content()
         )
     }
@@ -425,8 +442,10 @@ struct StableAnchoredPopoverPresenter<Content: View>: NSViewRepresentable {
         private var anchorSnapshot: StablePopoverAnchorSnapshot?
         private var presentedEdge: NSRectEdge?
         private var presentedAnchorFrame: CGRect?
+        private var presentedContentSize: CGSize?
         private var configuration = StablePopoverConfiguration.hover
         private var onDismiss: () -> Void = {}
+        private var onWillDismiss: (() -> Void)?
         private var showIsScheduled = false
         private var presentationIsScheduled = false
         private var refreshIsScheduled = false
@@ -434,12 +453,17 @@ struct StableAnchoredPopoverPresenter<Content: View>: NSViewRepresentable {
         private var shouldPresent = false
         private var generation: UInt64 = 0
         private var geometryObserverTokens: [NSObjectProtocol] = []
+        private var outsideClickHandler: ((NSEvent) -> Bool)?
+        private var outsideClickMonitor: Any?
+        private var deactivateObserver: NSObjectProtocol?
         private var latestContent: Content?
         private var presentationIdentity: AnyHashable?
         private var programmaticallyClosingPopovers:
             [ObjectIdentifier: NSPopover] = [:]
 
         isolated deinit {
+            if let outsideClickMonitor { NSEvent.removeMonitor(outsideClickMonitor) }
+            if let deactivateObserver { NotificationCenter.default.removeObserver(deactivateObserver) }
             for token in geometryObserverTokens {
                 NotificationCenter.default.removeObserver(token)
             }
@@ -451,7 +475,9 @@ struct StableAnchoredPopoverPresenter<Content: View>: NSViewRepresentable {
             isPresented: Bool,
             configuration: StablePopoverConfiguration,
             onDismiss: @escaping () -> Void,
+            onWillDismiss: (() -> Void)? = nil,
             presentationIdentity: AnyHashable? = nil,
+            outsideClickHandler: ((NSEvent) -> Bool)? = nil,
             content: Content
         ) {
             let sourceChanged = self.anchor?.sourceView !== anchor.sourceView
@@ -464,6 +490,8 @@ struct StableAnchoredPopoverPresenter<Content: View>: NSViewRepresentable {
             self.anchorSnapshot = anchorSnapshot
             self.configuration = configuration
             self.onDismiss = onDismiss
+            self.onWillDismiss = onWillDismiss
+            self.outsideClickHandler = outsideClickHandler
             shouldPresent = isPresented
             latestContent = content
             self.presentationIdentity = presentationIdentity
@@ -478,7 +506,7 @@ struct StableAnchoredPopoverPresenter<Content: View>: NSViewRepresentable {
                 return
             }
             closeIsScheduled = false
-            if replacesPresentedContent {
+            if replacesPresentedContent, !configuration.reusesPresentationOnIdentityChange {
                 generation &+= 1
                 resetPresentation()
                 installGeometryTracking()
@@ -503,11 +531,11 @@ struct StableAnchoredPopoverPresenter<Content: View>: NSViewRepresentable {
             let scheduledGeneration = generation
             Task { @MainActor [weak self] in
                 try? await Task.sleep(for: .milliseconds(20))
-                guard let self else { return }
+                guard let self, self.generation == scheduledGeneration else { return }
                 self.showIsScheduled = false
-                guard self.shouldPresent, self.generation == scheduledGeneration else { return }
+                guard self.shouldPresent, let latestContent = self.latestContent else { return }
                 self.anchor?.sourceView?.window?.contentView?.layoutSubtreeIfNeeded()
-                self.show(content: content)
+                self.show(content: latestContent)
             }
         }
 
@@ -524,6 +552,12 @@ struct StableAnchoredPopoverPresenter<Content: View>: NSViewRepresentable {
                 return
             }
             let presentationContext = StablePopoverPresentationContext()
+            // Once open, resize in the same pass, before AppKit draws the bubble grown to
+            // one side of its anchor; the later refresh measures state set by the caller.
+            presentationContext.contentSizeDidChange = { [weak self, weak presentationContext] in
+                if presentationContext?.hasFinishedPresenting == true { self?.refreshPresentation() }
+                self?.scheduleRefresh()
+            }
             presentationContext.dismiss = { [weak self] in
                 self?.dismissPresentation()
             }
@@ -537,13 +571,14 @@ struct StableAnchoredPopoverPresenter<Content: View>: NSViewRepresentable {
                 }
             )
             let popover = NSPopover()
-            popover.behavior = configuration.behavior
-            popover.animates = configuration.animates
+            popover.behavior = outsideClickHandler == nil ? configuration.behavior : .applicationDefined
+            popover.animates = configuration.animates && AppMotionPolicy.animates(.overlays)
             popover.delegate = self
             popover.contentViewController = hostingController
             self.hostingController = hostingController
             self.presentationContext = presentationContext
             self.popover = popover
+            installOutsideClickHandling()
             if configuration.stabilizesInitialContentSize {
                 warmInitialContentSize(
                     popover: popover,
@@ -553,6 +588,47 @@ struct StableAnchoredPopoverPresenter<Content: View>: NSViewRepresentable {
             } else {
                 showPopover()
             }
+        }
+
+        // Semitransient AppKit popovers consume the first click outside their window.
+        // A reusable member card instead lets its source handle a different member
+        // immediately, without closing and recreating the popover.
+        private func installOutsideClickHandling() {
+            guard outsideClickHandler != nil else { return }
+            outsideClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+                let consumed = MainActor.assumeIsolated {
+                    guard let self, let popover = self.popover, popover.isShown,
+                          !self.isInsidePopover(event.window, popover: popover),
+                          self.popoverShouldClose(popover)
+                    else { return false }
+                    if self.outsideClickHandler?(event) == true { return true }
+                    self.dismissPresentation()
+                    return false
+                }
+                return consumed ? nil : event
+            }
+            deactivateObserver = NotificationCenter.default.addObserver(
+                forName: NSApplication.didResignActiveNotification, object: NSApp, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.dismissPresentation() }
+            }
+        }
+
+        private func isInsidePopover(_ window: NSWindow?, popover: NSPopover) -> Bool {
+            guard let popoverWindow = popover.contentViewController?.view.window else { return false }
+            var candidate = window
+            while let current = candidate {
+                if current === popoverWindow { return true }
+                candidate = current.parent
+            }
+            return false
+        }
+
+        private func removeOutsideClickHandling() {
+            if let outsideClickMonitor { NSEvent.removeMonitor(outsideClickMonitor) }
+            outsideClickMonitor = nil
+            if let deactivateObserver { NotificationCenter.default.removeObserver(deactivateObserver) }
+            deactivateObserver = nil
         }
 
         private func warmInitialContentSize(
@@ -597,6 +673,12 @@ struct StableAnchoredPopoverPresenter<Content: View>: NSViewRepresentable {
                   let visibleFrame = visibleScreenFrame(for: sourceFrame)
             else { return }
 
+            // An open popover resizes at once: animated, AppKit grows the bubble to one
+            // side of its anchor, then slides it back. The open animation stays intact.
+            let resizesInPlace = popover.isShown && presentationContext?.hasFinishedPresenting == true
+            let animates = configuration.animates && AppMotionPolicy.animates(.overlays)
+            if resizesInPlace { popover.animates = false }
+            defer { popover.animates = animates }
             let initialSize: CGSize
             switch configuration.contentSizing {
             case let .fixed(size):
@@ -634,11 +716,17 @@ struct StableAnchoredPopoverPresenter<Content: View>: NSViewRepresentable {
             let anchorView = anchorTracker.anchorView
             guard anchorView.window != nil, !anchorView.bounds.isEmpty else { return }
             // Re-presenting an already shown popover interrupts native scroll elasticity.
-            // Reposition only when the anchor actually moves or the preferred edge changes.
-            if !popover.isShown || presentedEdge != placement.edge || presentedAnchorFrame != sourceFrame {
+            // Reposition only when the anchor moves, the preferred edge changes, or a
+            // resize left the bubble off-center: AppKit keeps a resized popover's origin.
+            let resized = resizesInPlace && presentedContentSize != popover.contentSize
+            if !popover.isShown || resized || presentedEdge != placement.edge || presentedAnchorFrame != sourceFrame {
+                if popover.isShown, configuration.reusesPresentationOnIdentityChange {
+                    popover.animates = false
+                }
                 popover.show(relativeTo: anchorView.bounds, of: anchorView, preferredEdge: placement.edge)
                 presentedEdge = placement.edge
                 presentedAnchorFrame = sourceFrame
+                presentedContentSize = popover.contentSize
             } else if popover.positioningRect != anchorView.bounds {
                 popover.positioningRect = anchorView.bounds
             }
@@ -823,6 +911,10 @@ struct StableAnchoredPopoverPresenter<Content: View>: NSViewRepresentable {
         func popoverWillClose(_ notification: Notification) {
             guard let closingPopover = notification.object as? NSPopover else { return }
             PopoverSheetLifecycle.cancelSheets(in: closingPopover.contentViewController?.view.window)
+            if popover === closingPopover, shouldPresent,
+               programmaticallyClosingPopovers[ObjectIdentifier(closingPopover)] == nil {
+                onWillDismiss?()
+            }
         }
 
         func popoverDidClose(_ notification: Notification) {
@@ -832,6 +924,7 @@ struct StableAnchoredPopoverPresenter<Content: View>: NSViewRepresentable {
                 programmaticallyClosingPopovers.removeValue(forKey: identifier) != nil
             let closedCurrentPopover = popover === closedPopover
             if closedCurrentPopover {
+                removeOutsideClickHandling()
                 popover = nil
                 hostingController = nil
                 anchorTracker.detach()
@@ -857,6 +950,8 @@ struct StableAnchoredPopoverPresenter<Content: View>: NSViewRepresentable {
                   shownPopover === popover
             else { return }
             presentationContext?.markPresentationFinished()
+            // Re-center content that changed size while the popover opened.
+            refreshPresentation()
         }
 
         func close() {
@@ -870,6 +965,7 @@ struct StableAnchoredPopoverPresenter<Content: View>: NSViewRepresentable {
         }
 
         private func resetPresentation() {
+            removeOutsideClickHandling()
             showIsScheduled = false
             presentationIsScheduled = false
             refreshIsScheduled = false
@@ -882,11 +978,13 @@ struct StableAnchoredPopoverPresenter<Content: View>: NSViewRepresentable {
             anchorSnapshot = nil
             presentedEdge = nil
             presentedAnchorFrame = nil
+            presentedContentSize = nil
             anchorTracker.detach()
             // Clear the current presentation before close(), whose delegate can run synchronously.
             // Only shown popovers can deliver a close notification.
             if let closingPopover, closingPopover.isShown {
                 programmaticallyClosingPopovers[ObjectIdentifier(closingPopover)] = closingPopover
+                closingPopover.animates = closingPopover.animates && AppMotionPolicy.animates(.overlays)
                 closingPopover.close()
             }
             removeGeometryObservers()

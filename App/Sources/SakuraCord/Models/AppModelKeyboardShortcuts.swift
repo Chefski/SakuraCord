@@ -12,6 +12,8 @@ extension AppModel {
             performMessagingShortcutAction(action)
         case .voiceVideo:
             performVoiceShortcutAction(action)
+        case .interface:
+            performInterfaceShortcutAction(action)
         }
     }
 
@@ -35,13 +37,7 @@ extension AppModel {
             if let channel = selectedChannel, channel.kind == .voice {
                 if isVoiceChatOpen { closeVoiceChat() } else { openVoiceChat(for: channel) }
             } else {
-                prepareInspectorProfileForPresentation()
-                withAnimation(
-                    NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-                        ? nil : .smooth(duration: 0.24)
-                ) {
-                    showInspector.toggle()
-                }
+                toggleMemberInspector()
             }
         default:
             performConversationNavigationShortcut(action)
@@ -85,9 +81,9 @@ extension AppModel {
         case .markServerRead:
             if let guildID = selectedGuildID { markGuildRead(guildID) }
         case .copyChannelLink:
-            if let channelID = openThread?.id ?? selectedChannelID {
+            if let channelID = visibleThread?.id ?? selectedChannelID {
                 ChannelContextMenuValue.copy(ChannelContextMenuValue.link(
-                    guildID: openThread?.guildID ?? selectedChannel?.guildID,
+                    guildID: visibleThread?.guildID ?? selectedChannel?.guildID,
                     channelID: channelID
                 ))
             }
@@ -98,6 +94,8 @@ extension AppModel {
             )
         case .searchCurrentConversation:
             presentMessageSearchFromCommand()
+        case .translateDraft:
+            translateDraft(in: activeComposerDestination)
         default:
             preconditionFailure("Non-messaging shortcut routed as messaging")
         }
@@ -135,6 +133,10 @@ extension AppModel {
     }
 
     func keyboardShortcutActionIsEnabled(_ action: KeyboardShortcutAction) -> Bool {
+        // Interface size applies to every window and session state.
+        if action.group == .interface {
+            return interfaceShortcutIsEnabled(action)
+        }
         guard sessionState == .workspace else {
             return false
         }
@@ -142,6 +144,27 @@ extension AppModel {
         case .navigation: navigationShortcutIsEnabled(action)
         case .messaging: messagingShortcutIsEnabled(action)
         case .voiceVideo: voiceShortcutIsEnabled(action)
+        case .interface: false
+        }
+    }
+
+    private func performInterfaceShortcutAction(_ action: KeyboardShortcutAction) {
+        var value = appearanceSettings
+        value.interfaceSize = switch action {
+        case .increaseInterfaceSize: value.interfaceSize + InterfaceScale.step
+        case .decreaseInterfaceSize: value.interfaceSize - InterfaceScale.step
+        default: InterfaceScale.defaultFactor
+        }
+        applyAppearanceSettings(value)
+    }
+
+    private func interfaceShortcutIsEnabled(_ action: KeyboardShortcutAction) -> Bool {
+        let size = appearanceSettings.interfaceSize
+        return switch action {
+        case .increaseInterfaceSize: size < InterfaceScale.range.upperBound
+        case .decreaseInterfaceSize: size > InterfaceScale.range.lowerBound
+        case .resetInterfaceSize: size != InterfaceScale.defaultFactor
+        default: false
         }
     }
 
@@ -150,10 +173,7 @@ extension AppModel {
         case .quickSwitch, .toggleChannelSidebar, .toggleMemberList:
             true
         case .messageSearch:
-            MessageSearchSurfacePolicy.showsToolbar(
-                channelKind: selectedChannel?.kind,
-                hasOpenThread: hasThreadPane
-            )
+            isFriendsSearchActive || isBrowsingGuildChannels || canShowMessageSearch
         case .previousConversation, .nextConversation:
             hasKeyboardShortcutConversationDestination(unreadOnly: false)
         case .previousUnread, .nextUnread:
@@ -179,12 +199,9 @@ extension AppModel {
     private func messagingShortcutIsEnabled(_ action: KeyboardShortcutAction) -> Bool {
         switch action {
         case .searchCurrentConversation:
-            MessageSearchSurfacePolicy.showsToolbar(
-                channelKind: selectedChannel?.kind,
-                hasOpenThread: hasThreadPane
-            )
+            isFriendsSearchActive || isBrowsingGuildChannels || canShowMessageSearch
         case .copyChannelLink:
-            openThread != nil || selectedChannelID != nil
+            visibleThread != nil || selectedChannelID != nil
         case .togglePins:
             activePinsChannelID != nil
         case .toggleEmojiPicker, .toggleGIFPicker, .toggleStickerPicker:
@@ -195,6 +212,8 @@ extension AppModel {
             commandComposer(for: activeComposerDestination).activeCommand == nil
                 && selectedChannelID != nil
                 && selectedConversationAccess.canSend
+        case .translateDraft:
+            selectedChannelID != nil && canTranslateDraft(in: activeComposerDestination)
         default: false
         }
     }
@@ -218,10 +237,6 @@ extension AppModel {
                 && (voiceSessionState == .connected || localApplicationStreamKey != nil)
         default: false
         }
-    }
-
-    private var activeComposerDestination: MessageComposerDestination {
-        hasThreadPane ? .thread : .channel
     }
 
 }

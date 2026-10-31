@@ -18,8 +18,8 @@ final class InteractionLoadingDots: NSView {
 
     // Discord's Dots: radius 3.5, centres 2.5 radii apart, a 1.2 s wave whose
     // dots trail one another by 0.15 s (doubled under Reduce Motion).
-    static let dotRadius: CGFloat = 3.5
-    static let size = CGSize(width: dotRadius * 7, height: dotRadius * 2)
+    static var dotRadius: CGFloat { InterfaceScale.metric(3.5) }
+    static var size: CGSize { CGSize(width: dotRadius * 7, height: dotRadius * 2) }
     private static let cycle: CFTimeInterval = 1.2
     private static let phases: [CFTimeInterval] = [0, 1.05, 0.9]
 
@@ -92,9 +92,6 @@ final class InteractionLoadingDots: NSView {
     private func startAnimating() {
         let duration = Self.cycle
             * (NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 2 : 1)
-        // Anchor every indicator to the shared media clock so separate rows
-        // and buttons pulse in step.
-        let elapsed = CACurrentMediaTime().truncatingRemainder(dividingBy: duration)
         for (index, dot) in dots.enumerated() {
             let opacity = CAKeyframeAnimation(keyPath: "opacity")
             opacity.values = [0.32, 1, 0.32, 0.32]
@@ -106,12 +103,21 @@ final class InteractionLoadingDots: NSView {
                 animation.keyTimes = [0, 0.25, 0.5, 1]
                 animation.duration = duration
             }
-            pulse.duration = duration
-            pulse.repeatCount = .infinity
-            pulse.timeOffset = (elapsed + Self.phases[index] / Self.cycle * duration)
-                .truncatingRemainder(dividingBy: duration)
+            pulse.repeatOnMediaClock(cycle: duration, lead: Self.phases[index] / Self.cycle * duration)
             dot.add(pulse, forKey: "pulse")
         }
+    }
+}
+
+extension CAAnimation {
+    /// Repeats forever in step with the shared media clock, `lead` seconds
+    /// into its cycle, so separate indicators pulse together and a rebuilt
+    /// view never restarts the loop.
+    func repeatOnMediaClock(cycle: CFTimeInterval, lead: CFTimeInterval) {
+        duration = cycle
+        repeatCount = .infinity
+        let phase = (CACurrentMediaTime() + lead).truncatingRemainder(dividingBy: cycle)
+        timeOffset = phase < 0 ? phase + cycle : phase
     }
 }
 

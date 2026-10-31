@@ -55,7 +55,7 @@ struct VoiceVideoGrid: View {
 
     private var participants: [VoiceTileParticipant] {
         guard let activeChannel = channel ?? model.activeVoiceChannel else { return [] }
-        let currentUser = model.snapshot?.currentUser
+        let currentUser = model.currentUser
         let currentUserID = currentUser.map { String($0.id.rawValue) }
         let usesLocalVoiceSession = Self.usesLocalVoiceSession(
             displayedChannelID: activeChannel.id,
@@ -297,6 +297,7 @@ struct VoiceVideoGrid: View {
             ) { volume in
                 Task { await model.updateParticipantVolume(volume, userID: participant.id) }
             }
+            .overlay { userMenu(for: participant) }
         case .stream(let owner, let key, let state, let isPaused):
             VoiceStreamTile(
                 owner: owner,
@@ -307,6 +308,20 @@ struct VoiceVideoGrid: View {
                 model: model,
                 isDemanded: isDemanded
             )
+            .overlay { userMenu(for: owner) }
+        }
+    }
+
+    private func userMenu(for participant: VoiceTileParticipant) -> some View {
+        UserContextMenuBridge {
+            guard let id = UserID(participant.id) else { return nil }
+            let sourceChannel = channel ?? model.activeVoiceChannel
+            let user = sourceChannel?.recipients.first { $0.id == id }
+                ?? model.profileMember(id, in: sourceChannel?.guildID)?.user
+                ?? (model.currentUser?.id == id ? model.currentUser : nil)
+                ?? User(id: id, username: "", displayName: participant.name, avatarURL: participant.avatarURL)
+            return UserContextMenu.make(for: user,
+                context: .init(guildID: sourceChannel?.guildID, channelID: sourceChannel?.id), model: model)
         }
     }
 
@@ -968,7 +983,7 @@ struct VoiceParticipantNameCapsule: View {
             }
             Text(isLocal ? "\(name) (You)" : name).lineLimit(1)
         }
-        .font(.system(size: 12 * scale, weight: .semibold))
+        .font(.interfaceSystem(size: 12 * scale, weight: .semibold))
         .foregroundStyle(.primary)
         .padding(.horizontal, 10 * scale)
         .frame(height: 28 * scale)
@@ -990,7 +1005,7 @@ private struct ParticipantVolumeControl: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(name).font(.headline).lineLimit(1)
+            Text(name).font(.interface(.headline)).lineLimit(1)
             HStack(spacing: 10) {
                 Image(systemName: volume == 0 ? "speaker.slash.fill" : "speaker.wave.2.fill")
                     .foregroundStyle(.secondary)
@@ -999,7 +1014,7 @@ private struct ParticipantVolumeControl: View {
                     .tint(SakuraCordAccentColor.color)
                     .frame(width: 180)
                 Text("\(Int(volume * 100))%")
-                    .font(.caption.monospacedDigit())
+                    .font(.interface(.caption).monospacedDigit())
                     .foregroundStyle(.secondary)
                     .frame(width: 40, alignment: .trailing)
             }

@@ -145,7 +145,7 @@ final class ApplicationCommandComposerModel {
 
     @ObservationIgnored private var attachmentPasteRevision = 0
     /// Discord-synced command usage.
-    @ObservationIgnored let frecencyStore: ApplicationCommandFrecencyStore
+    @ObservationIgnored let frecencyStore: DiscordFrecencyStore
     var memberResults: [Member] = []
     @ObservationIgnored var loadTask: Task<Void, Never>?
     @ObservationIgnored var autocompleteDebounceNonce: String?
@@ -175,7 +175,7 @@ final class ApplicationCommandComposerModel {
 
     var activeCommand: ApplicationCommand? { draft?.command }
 
-    init(frecencyStore: ApplicationCommandFrecencyStore = ApplicationCommandFrecencyStore()) {
+    init(frecencyStore: DiscordFrecencyStore = DiscordFrecencyStore()) {
         self.frecencyStore = frecencyStore
         refreshPickerSections()
     }
@@ -189,7 +189,7 @@ final class ApplicationCommandComposerModel {
     }
 
     /// Discord's synced usage changed (initial load, another client, or a save).
-    func applyRemoteFrecency(_ history: ApplicationCommandFrecencyHistory) {
+    func applyRemoteFrecency(_ history: DiscordFrecencyHistory) {
         frecencyStore.overwrite(with: history)
         refreshPickerSections()
     }

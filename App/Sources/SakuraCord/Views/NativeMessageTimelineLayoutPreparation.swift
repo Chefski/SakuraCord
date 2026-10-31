@@ -41,6 +41,10 @@ extension NativeMessageTimelineCoordinator {
         parent newParent: NativeMessageTimelineView,
         scrollView: NSScrollView
     ) -> Bool {
+        guard newParent.model.ignoredUsers.ignoredUserIDs.isEmpty, newParent.model.ignoredUsers.blockedUserIDs.isEmpty else {
+            cancelLayoutPreparation()
+            return false
+        }
         let width = max(220, scrollView.contentView.bounds.width.rounded())
         guard timestampDay == Calendar.autoupdatingCurrent.startOfDay(for: .now),
               newParent.model === parent.model,
@@ -113,7 +117,7 @@ extension NativeMessageTimelineCoordinator {
                         for: item, width: width,
                         presentationRevision: preparation.presentationRevision
                     ) ?? NativeTimelineRowLayout.make(
-                        item: item, width: width, model: preparation.parent.model
+                        item: item, width: width, source: preparation.parent.model
                     )
                 }
                 preparation.layouts[item.identifier] = CachedItemLayout(

@@ -68,8 +68,9 @@ extension DiscordRESTProvider {
             let settings = try await task.value
             emojiUserSettingsTask = nil
             gatewayLogger.info(
-                "Decoded emoji settings; favorites=\(settings.favoriteKeys.count), frequent=\(settings.frequentlyUsedKeys.count)"
+                "Decoded emoji settings; favorites=\(settings.favoriteKeys.count), frequent=\(settings.messageHistory.entries.count)"
             )
+            if let current = cachedEmojiUserSettings, (current.dataVersion ?? 0) > (settings.dataVersion ?? 0) { return current }
             cachedEmojiUserSettings = settings
             return settings
         } catch {

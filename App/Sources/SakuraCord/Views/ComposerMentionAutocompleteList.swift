@@ -22,7 +22,7 @@ struct MentionAutocompleteList: View {
                 content: { suggestion in
                     VStack(spacing: 0) {
                         if hasDivider(before: suggestion) {
-                            Divider().padding(.horizontal, 8).frame(height: 8)
+                            Divider().padding(.horizontal, InterfaceScale.metric(8)).frame(height: InterfaceScale.metric(8))
                         }
                         MentionAutocompleteRow(
                             suggestion: suggestion,

@@ -12,6 +12,7 @@
 #include <openssl/bn.h>
 #include <openssl/ec.h>
 #include <openssl/evp.h>
+#include <openssl/pem.h>
 #include <openssl/rsa.h>
 
 using nlohmann::json;
@@ -96,6 +97,13 @@ struct GroupSignature : public Signature
   {
     return std::make_unique<PrivateKey>(
       group.deserialize_private(skm).release());
+  }
+
+  std::unique_ptr<Signature::PrivateKey> deserialize_private_der(
+    const bytes& der) const override
+  {
+    return std::make_unique<PrivateKey>(
+      group.deserialize_private_der(der).release());
   }
 
   bytes sign(const bytes& data, const Signature::PrivateKey& sk) const override
@@ -276,6 +284,12 @@ Signature::Signature(Signature::ID id_in)
 }
 
 std::unique_ptr<Signature::PrivateKey>
+Signature::deserialize_private_der(const bytes&) const
+{
+  throw std::runtime_error("Not implemented");
+}
+
+std::unique_ptr<Signature::PrivateKey>
 Signature::generate_rsa(size_t bits)
 {
   return RSASignature::generate_key_pair(bits);
@@ -285,14 +299,13 @@ static const Signature&
 sig_from_jwk(const std::string& jwk_json)
 {
   using KeyTypeAndCurve = std::tuple<std::string, std::string>;
-  static const auto alg_sig_map = std::map<KeyTypeAndCurve, const Signature&>
-  {
+  static const auto alg_sig_map = std::map<KeyTypeAndCurve, const Signature&>{
     { { "EC", "P-256" }, Signature::get<Signature::ID::P256_SHA256>() },
-      { { "EC", "P-384" }, Signature::get<Signature::ID::P384_SHA384>() },
-      { { "EC", "P-512" }, Signature::get<Signature::ID::P521_SHA512>() },
-      { { "OKP", "Ed25519" }, Signature::get<Signature::ID::Ed25519>() },
+    { { "EC", "P-384" }, Signature::get<Signature::ID::P384_SHA384>() },
+    { { "EC", "P-512" }, Signature::get<Signature::ID::P521_SHA512>() },
+    { { "OKP", "Ed25519" }, Signature::get<Signature::ID::Ed25519>() },
 #if !defined(WITH_BORINGSSL)
-      { { "OKP", "Ed448" }, Signature::get<Signature::ID::Ed448>() },
+    { { "OKP", "Ed448" }, Signature::get<Signature::ID::Ed448>() },
 #endif
     // TODO(RLB): RSA
   };

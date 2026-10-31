@@ -77,11 +77,11 @@ private struct SettingsAccountSidebarRow: View {
     let account: SavedAccount?
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: InterfaceScale.metric(8)) {
             AvatarView(
                 name: account?.resolvedDisplayName ?? "",
                 url: account?.avatarURL,
-                size: 28,
+                size: InterfaceScale.metric(28),
                 // Reuse the current profile's preloaded avatar rendition.
                 maximumPixelDimension: 140
             )
@@ -90,18 +90,18 @@ private struct SettingsAccountSidebarRow: View {
             VStack(alignment: .leading, spacing: 1) {
                 if let account {
                     Text(account.resolvedDisplayName)
-                        .font(.headline)
+                        .font(.interface(.headline))
                 } else {
                     Text("Discord Account", bundle: #bundle)
-                        .font(.headline)
+                        .font(.interface(.headline))
                 }
                 Text("Manage Account", bundle: #bundle)
-                    .font(.caption)
+                    .font(.interface(.caption))
                     .foregroundStyle(.secondary)
             }
             .lineLimit(1)
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, InterfaceScale.metric(2))
         .accessibilityElement(children: .combine)
     }
 }
@@ -110,13 +110,13 @@ private struct SettingsSidebarLabelStyle: LabelStyle {
     let isSelected: Bool
 
     func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: InterfaceScale.metric(8)) {
             configuration.icon
                 .symbolVariant(.fill)
                 .foregroundStyle(
                     isSelected ? Color.primary : SakuraCordAccentColor.color
                 )
-                .frame(width: 16)
+                .frame(width: InterfaceScale.metric(16))
             configuration.title
         }
     }
@@ -155,7 +155,7 @@ private struct SettingsSearchResults: View {
                     .buttonStyle(.plain)
                     .id(result.id)
                     .listRowBackground(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        RoundedRectangle(cornerRadius: InterfaceScale.metric(6), style: .continuous)
                             .fill(isSelected ? Color.primary.opacity(0.09) : .clear)
                     )
                     .onContinuousHover { phase in
@@ -179,19 +179,19 @@ private struct SettingsSearchResultRow: View {
     let result: SettingsSearchResult
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: InterfaceScale.metric(10)) {
             Image(systemName: result.systemImage)
                 .symbolVariant(.fill)
                 .foregroundStyle(.secondary)
-                .frame(width: 16)
+                .frame(width: InterfaceScale.metric(16))
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(2)) {
                 Text(result.title)
                     .lineLimit(1)
 
                 if let pageTitle = result.pageTitle {
                     Text(pageTitle)
-                        .font(.caption)
+                        .font(.interface(.caption))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }

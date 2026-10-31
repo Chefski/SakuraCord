@@ -31,6 +31,35 @@ import SakuraCordModels
             }
         }
 
+        func waitForNextGuildSubscriptionForTesting(guildID: GuildID, after taskID: UUID) async {
+            guard guildSubscriptionTaskIDs[guildID] == taskID else { return }
+            await withCheckedContinuation {
+                guildSubscriptionQueueWaitersForTesting[guildID, default: []].append($0)
+            }
+        }
+
+        func runScheduledMemberListRefreshForTesting(guildID: GuildID) async -> Bool {
+            if let task = memberListViewportRestoreTasks.removeValue(forKey: guildID),
+               let generation = guildSubscriptionGenerations[guildID] {
+                task.cancel()
+                gatewayOpcodeRateLimitDates[37] = nil
+                await restoreSelectedMemberListViewport(guildID: guildID, generation: generation)
+                return true
+            }
+            guard let task = memberListRefreshRetryTasks.removeValue(forKey: guildID),
+                  let memberListID = selectedMemberListID[guildID],
+                  let refresh = memberListsNeedingRefresh[guildID]?[memberListID]
+            else { return false }
+            task.cancel()
+            gatewayOpcodeRateLimitDates[37] = nil
+            await retryMemberListRefresh(guildID: guildID, memberListID: memberListID, refresh: refresh)
+            return true
+        }
+
+        func setPendingMemberGuildForTesting(_ guildID: GuildID) {
+            pendingMemberGuildID = guildID
+        }
+
         func seedGuildChannelForTesting(_ channel: Channel) {
             guard let guildID = channel.guildID else { return }
             cachedChannels[guildID, default: []].removeAll {
@@ -130,36 +159,12 @@ import SakuraCordModels
             cachedGuilds[guildID]
         }
 
-        func currentUserForTesting() -> User? {
-            currentUser
-        }
-
-        func cachedGuildsForTesting() -> [Guild] {
-            guildsInCurrentRailOrder()
-        }
-
         func cachedGuildRailItemsForTesting() -> [GuildRailItem] {
             cachedGuildRailItems
         }
 
-        func cachedGuildRolesForTesting(guildID: GuildID) -> [GuildRole] {
-            (cachedGuildRoles[guildID] ?? []).compactMap(\.domain)
-        }
-
         func cachedMembersForTesting(guildID: GuildID) -> [Member] {
             cachedMembers[guildID] ?? []
-        }
-
-        func gatewayOpcodeIsRateLimitedForTesting(_ opcode: Int) -> Bool {
-            gatewayOpcodeRateLimitDates[opcode].map { $0 > Date() } ?? false
-        }
-
-        func seedPrivateCallSubscriptionForTesting(channelID: ChannelID) {
-            subscribedPrivateCallChannelIDs.insert(channelID)
-        }
-
-        func hasPrivateCallSubscriptionForTesting(channelID: ChannelID) -> Bool {
-            subscribedPrivateCallChannelIDs.contains(channelID)
         }
     }
 #endif

@@ -3,28 +3,33 @@ import SakuraCordModels
 import SwiftUI
 
 nonisolated enum MessageReactionMetrics {
-    static let pillHeight: CGFloat = 28
-    static let emojiSize: CGFloat = 18
-    static let nativeEmojiVisualScale: CGFloat = 0.78
-    static let avatarSize: CGFloat = 16
-    static let maximumAvatarCount = 5
-    static let avatarCountBeforeOverflow = 4
-    static let horizontalSpacing: CGFloat = 4
-    static let verticalSpacing: CGFloat = 4
+    static var pillHeight: CGFloat { InterfaceScale.metric(28) }
+    static var emojiSize: CGFloat { InterfaceScale.metric(18) }
+    static var avatarSize: CGFloat { InterfaceScale.metric(16) }
+    static let maximumAvatarCount = 4
+    static var horizontalPadding: CGFloat { InterfaceScale.metric(6) }
+    static var avatarStride: CGFloat { avatarSize - InterfaceScale.metric(5) }
+    static var horizontalSpacing: CGFloat { InterfaceScale.metric(4) }
+    static var verticalSpacing: CGFloat { InterfaceScale.metric(4) }
 }
 
 nonisolated struct MessageReactionPreviewPlan: Equatable, Sendable {
     var reactors: [ReactionReactor]
-    var overflowCount: Int
+    var placeholderCount: Int
+
+    var avatarCount: Int {
+        reactors.count + placeholderCount
+    }
 
     var isEmpty: Bool {
-        reactors.isEmpty && overflowCount == 0
+        avatarCount == 0
     }
 }
 
 nonisolated struct MessageReactionPreviewLoadKey: Equatable, Hashable, Sendable {
     nonisolated struct Entry: Equatable, Hashable, Sendable {
         let reactionID: String
+        let count: Int
     }
 
     let entries: [Entry]
@@ -32,6 +37,7 @@ nonisolated struct MessageReactionPreviewLoadKey: Equatable, Hashable, Sendable 
 
 nonisolated struct MessageReactionAutomaticLoadKey: Equatable, Hashable, Sendable {
     let reactionID: String
+    let count: Int
     let needsLoad: Bool
 }
 
@@ -69,45 +75,40 @@ nonisolated enum MessageReactionPresentation {
     static func previewPlan(for reaction: Reaction) -> MessageReactionPreviewPlan {
         let safeCount = max(0, reaction.count)
         let knownReactors = uniqueReactors(reaction.reactors, maximumCount: safeCount)
-        guard !knownReactors.isEmpty else {
-            return MessageReactionPreviewPlan(reactors: [], overflowCount: 0)
-        }
-        if safeCount <= MessageReactionMetrics.maximumAvatarCount {
-            return MessageReactionPreviewPlan(
-                reactors: Array(knownReactors.prefix(MessageReactionMetrics.maximumAvatarCount)),
-                overflowCount: 0
-            )
-        }
-        let previews = Array(
-            knownReactors.prefix(MessageReactionMetrics.avatarCountBeforeOverflow)
-        )
+        // Reserve every preview slot before reactor metadata or images arrive.
+        let avatarCount = min(safeCount, MessageReactionMetrics.maximumAvatarCount)
+        let previews = Array(knownReactors.prefix(avatarCount))
         return MessageReactionPreviewPlan(
             reactors: previews,
-            overflowCount: max(0, safeCount - previews.count)
+            placeholderCount: avatarCount - previews.count
         )
     }
 
     static func previewLoadKey(for reactions: [Reaction]) -> MessageReactionPreviewLoadKey {
         MessageReactionPreviewLoadKey(
             entries: items(from: reactions).map {
-                MessageReactionPreviewLoadKey.Entry(reactionID: $0.id)
+                MessageReactionPreviewLoadKey.Entry(reactionID: $0.id, count: $0.count)
             })
     }
 
+    static func needsPreviewLoad(_ reaction: Reaction) -> Bool {
+        previewPlan(for: reaction).placeholderCount > 0
+    }
+
     static func previewLoadCandidates(from reactions: [Reaction]) -> [Reaction] {
-        items(from: reactions).filter { $0.reactors.isEmpty }
+        items(from: reactions).filter(needsPreviewLoad)
     }
 
     static func previewLoadKey(forPresented reactions: [Reaction]) -> MessageReactionPreviewLoadKey
     {
         MessageReactionPreviewLoadKey(
             entries: reactions.map {
-                MessageReactionPreviewLoadKey.Entry(reactionID: $0.id)
+                MessageReactionPreviewLoadKey.Entry(reactionID: $0.id, count: $0.count)
             })
     }
 
     static func previewLoadCandidates(fromPresented reactions: [Reaction]) -> [Reaction] {
-        reactions.filter { $0.reactors.isEmpty }
+        reactions.filter(needsPreviewLoad)
     }
 
     static func tooltipSummary(for reaction: Reaction) -> MessageReactionTooltipSummary {
@@ -246,16 +247,15 @@ struct MessageReactionPill: View {
 
     var body: some View {
         Button(action: react) {
-            HStack(spacing: 4) {
+            HStack(spacing: MessageReactionMetrics.horizontalPadding) {
                 MessageReactionEmoji(
                     reaction: reaction,
                     url: emojiURL,
                     size: MessageReactionMetrics.emojiSize
                 )
                 if reaction.count > 0 {
-                    Text(reaction.count, format: .number)
-                        .font(.caption.weight(.semibold))
-                        .monospacedDigit()
+                    Text(String(reaction.count))
+                        .font(Font(NativeTimelineReactionFonts.count))
                         .foregroundStyle(
                             reaction.didCurrentUserReact ? SakuraCordAccentColor.color : .primary
                         )
@@ -270,27 +270,28 @@ struct MessageReactionPill: View {
                     MessageReactionAvatarStack(plan: previewPlan)
                 }
             }
-            .padding(.horizontal, 6)
+            .padding(.horizontal, MessageReactionMetrics.horizontalPadding)
             .frame(height: MessageReactionMetrics.pillHeight)
             .background(
-                ConcentricRectangle(cornerRadius: 9, style: .continuous)
+                ConcentricRectangle(cornerRadius: InterfaceScale.metric(9), style: .continuous)
                     .fill(backgroundColor)
             )
             .overlay {
-                ConcentricRectangle(cornerRadius: 9, style: .continuous)
-                    .stroke(borderColor, lineWidth: reaction.didCurrentUserReact ? 1.5 : 1)
-                    .padding(reaction.didCurrentUserReact ? 0.75 : 0.5)
+                ConcentricRectangle(cornerRadius: InterfaceScale.metric(9), style: .continuous)
+                    .stroke(borderColor, lineWidth: 1)
+                    .padding(0.5)
             }
-            .contentShape(ConcentricRectangle(cornerRadius: 9, style: .continuous))
+            .contentShape(ConcentricRectangle(cornerRadius: InterfaceScale.metric(9), style: .continuous))
         }
         .buttonStyle(.plain)
         .task(
             id: MessageReactionAutomaticLoadKey(
                 reactionID: reaction.id,
-                needsLoad: reaction.count > 0 && reaction.reactors.isEmpty
+                count: reaction.count,
+                needsLoad: MessageReactionPresentation.needsPreviewLoad(reaction)
             )
         ) {
-            guard reaction.count > 0, reaction.reactors.isEmpty else { return }
+            guard MessageReactionPresentation.needsPreviewLoad(reaction) else { return }
             await loadReactors()
         }
         .onContinuousHover(coordinateSpace: .local) { phase in
@@ -339,7 +340,7 @@ struct MessageReactionPill: View {
     }
 }
 
-private struct MessageReactionEmoji: View {
+struct MessageReactionEmoji: View {
     let reaction: Reaction
     let url: URL?
     let size: CGFloat
@@ -356,7 +357,7 @@ private struct MessageReactionEmoji: View {
                         )
                     } else {
                         ZStack {
-                            ConcentricRectangle(cornerRadius: 5, style: .continuous)
+                            ConcentricRectangle(cornerRadius: InterfaceScale.metric(5), style: .continuous)
                                 .fill(Color.secondary.opacity(0.12))
                             SakuraCordSystemSymbol.emojiFaceGrinningImage
                                 .font(.system(size: size * 0.58, weight: .medium))
@@ -366,12 +367,14 @@ private struct MessageReactionEmoji: View {
                 }
                 .frame(width: size, height: size)
             } else {
-                Text(reaction.emoji)
-                    .font(.system(size: size))
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: true)
-                    .scaleEffect(MessageReactionMetrics.nativeEmojiVisualScale)
-                    .frame(width: size, height: size)
+                // Match timeline reactions: center the visible glyph, not its text line box.
+                Image(nsImage: ComponentUnicodeEmojiRenderer.image(for: reaction.emoji))
+                    .resizable()
+                    .scaledToFit()
+                    .frame(
+                        width: size,
+                        height: size
+                    )
             }
         }
         .frame(width: size, height: size)
@@ -383,28 +386,32 @@ private struct MessageReactionAvatarStack: View {
     let plan: MessageReactionPreviewPlan
 
     var body: some View {
-        HStack(spacing: 2) {
-            HStack(spacing: -5) {
-                ForEach(plan.reactors) { reactor in
-                    AvatarView(
-                        name: reactor.displayName,
-                        url: reactor.avatarURL,
-                        size: MessageReactionMetrics.avatarSize
-                    )
-                    .overlay {
-                        Circle().strokeBorder(Color.primary.opacity(0.24), lineWidth: 1)
+        HStack(spacing: MessageReactionMetrics.avatarStride - MessageReactionMetrics.avatarSize) {
+            ForEach(0 ..< plan.avatarCount, id: \.self) { index in
+                let reactor = index < plan.reactors.count ? plan.reactors[index] : nil
+                Group {
+                    if let reactor {
+                        AvatarView(
+                            name: reactor.displayName,
+                            url: reactor.avatarURL,
+                            size: MessageReactionMetrics.avatarSize
+                        )
+                        .background {
+                            Circle().fill(Color(nsColor: .quaternaryLabelColor))
+                        }
+                    } else {
+                        Circle()
+                            .fill(Color(nsColor: .quaternaryLabelColor))
+                            .frame(
+                                width: MessageReactionMetrics.avatarSize,
+                                height: MessageReactionMetrics.avatarSize
+                            )
                     }
-                    .accessibilityHidden(true)
                 }
-            }
-            if plan.overflowCount > 0 {
-                Text("+\(plan.overflowCount)")
-                    .font(.caption2.monospacedDigit().weight(.bold))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .frame(minWidth: MessageReactionMetrics.avatarSize)
-                    .accessibilityLabel("\(plan.overflowCount) more reactors")
+                .overlay {
+                    Circle().strokeBorder(Color.primary.opacity(0.24), lineWidth: 1)
+                }
+                .accessibilityHidden(true)
             }
         }
     }
@@ -415,23 +422,23 @@ struct MessageReactionTooltip: View {
     let emojiURL: URL?
 
     var body: some View {
-        HStack(spacing: 9) {
-            MessageReactionEmoji(reaction: reaction, url: emojiURL, size: 30)
+        HStack(spacing: InterfaceScale.metric(9)) {
+            MessageReactionEmoji(reaction: reaction, url: emojiURL, size: InterfaceScale.metric(30))
             VStack(alignment: .leading, spacing: 1) {
                 Text(MessageReactionPresentation.emojiName(for: reaction))
-                    .font(.caption.weight(.semibold))
+                    .font(.interface(.caption).weight(.semibold))
                     .lineLimit(1)
                 Text(MessageReactionPresentation.tooltipDescription(for: reaction))
-                    .font(.caption)
+                    .font(.interface(.caption))
                     .foregroundStyle(.secondary)
             }
             .multilineTextAlignment(.leading)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(width: 260, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .frame(width: InterfaceScale.metric(260), alignment: .leading)
+        .padding(.horizontal, InterfaceScale.metric(12))
+        .padding(.vertical, InterfaceScale.metric(10))
         .accessibilityHidden(true)
     }
 }

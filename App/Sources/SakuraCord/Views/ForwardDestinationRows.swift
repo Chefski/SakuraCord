@@ -15,7 +15,7 @@ struct ForwardSelectionControl: View {
                 )
             if isSelected {
                 Image(systemName: "checkmark")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.interfaceSystem(size: 10, weight: .bold))
                     .foregroundStyle(.white)
             }
         }
@@ -36,17 +36,17 @@ struct ForwardDestinationRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 12) {
+            HStack(spacing: InterfaceScale.metric(12)) {
                 ForwardDestinationAvatar(destination: destination)
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: InterfaceScale.metric(2)) {
                     Text(destination.title)
-                        .font(.body.weight(.medium))
+                        .font(.interface(.body).weight(.medium))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                     let detail = destination.unavailableReason ?? destination.detail
                     if !detail.isEmpty {
                         Text(detail)
-                            .font(.caption)
+                            .font(.interface(.caption))
                             .foregroundStyle(destination.unavailableReason == nil
                                 ? Color.secondary : Color.red)
                             .lineLimit(1)
@@ -55,11 +55,11 @@ struct ForwardDestinationRow: View {
                 Spacer()
                 ForwardSelectionControl(isSelected: isSelected)
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, InterfaceScale.metric(16))
             .frame(height: ForwardPickerLayoutMetrics.rowHeight)
-            .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: InterfaceScale.metric(9), style: .continuous))
             .background {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                RoundedRectangle(cornerRadius: InterfaceScale.metric(9), style: .continuous)
                     .fill(rowBackground)
             }
         }
@@ -96,7 +96,7 @@ private struct ForwardDestinationAvatar: View {
             AvatarView(
                 name: destination.title,
                 url: destination.avatarURL,
-                size: 28
+                size: InterfaceScale.metric(28)
             )
         }
     }
@@ -107,35 +107,35 @@ private struct ForwardDestinationAvatar: View {
                 GuildIconView(
                     name: destination.guild?.name ?? destination.title,
                     iconURL: destination.guild?.iconURL,
-                    size: 28,
-                    cornerRadius: 9,
+                    size: InterfaceScale.metric(28),
+                    cornerRadius: InterfaceScale.metric(9),
                     animates: false
                 )
             } else {
-                ConcentricRectangle(cornerRadius: 9, style: .continuous)
+                ConcentricRectangle(cornerRadius: InterfaceScale.metric(9), style: .continuous)
                     .fill(Color.secondary.opacity(0.16))
-                    .frame(width: 28, height: 28)
+                    .frame(width: InterfaceScale.metric(28), height: InterfaceScale.metric(28))
                     .overlay {
                         Text(guildInitials)
-                            .font(.system(size: 10, weight: .medium))
+                            .font(.interfaceSystem(size: 10, weight: .medium))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
             }
             Circle()
                 .fill(Color(nsColor: .windowBackgroundColor))
-                .frame(width: 18, height: 18)
+                .frame(width: InterfaceScale.metric(18), height: InterfaceScale.metric(18))
                 .overlay {
                     SakuraCordSystemSymbol.swiftUIImage(named: symbol)
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.interfaceSystem(size: 9, weight: .semibold))
                         .foregroundStyle(.secondary)
                 }
                 .overlay {
                     Circle().stroke(.black.opacity(0.12), lineWidth: 0.5)
                 }
-                .offset(x: 4, y: 4)
+                .offset(x: InterfaceScale.metric(4), y: InterfaceScale.metric(4))
         }
-        .frame(width: 34, height: 34)
+        .frame(width: InterfaceScale.metric(34), height: InterfaceScale.metric(34))
         .accessibilityHidden(true)
     }
 

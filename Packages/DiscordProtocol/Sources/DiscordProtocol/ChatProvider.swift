@@ -8,22 +8,25 @@ public enum MessageHistoryAnchor: Equatable, Sendable {
     case around(MessageID)
 }
 
-public struct PartialBulkReadAcknowledgementError: Error, Sendable {
-    public let acceptedReadStates: [BulkReadStateAcknowledgement]
-    public let failureDescription: String
+/// A pending emoji batch contributed to another type-2 settings save. The
+/// owner acknowledges its captured uses only after the merged response arrives.
+public struct EmojiFrecencySaveContribution: Sendable {
+    public var messages: DiscordFrecencyHistory
+    public var reactions: DiscordFrecencyHistory
+    public var complete: @Sendable (EmojiUserSettings?) async -> Void
 
-    public init(
-        acceptedReadStates: [BulkReadStateAcknowledgement],
-        failureDescription: String
-    ) {
-        self.acceptedReadStates = acceptedReadStates
-        self.failureDescription = failureDescription
+    public init(messages: DiscordFrecencyHistory, reactions: DiscordFrecencyHistory,
+                complete: @escaping @Sendable (EmojiUserSettings?) async -> Void) {
+        self.messages = messages
+        self.reactions = reactions
+        self.complete = complete
     }
 }
 
 public protocol ChatProvider: Sendable {
     func guildGuide(in guildID: GuildID) async throws -> GuildGuide
-    func guildGuideProfile(in guildID: GuildID) async throws -> GuildGuideProfile
+    func guildProfile(in guildID: GuildID) async throws -> GuildProfile
+    func messageInteractionData(channelID: ChannelID, messageID: MessageID) async throws -> MessageInteractionData
     func guildGuideProgress(in guildID: GuildID) async throws -> GuildGuideProgress
     func completeGuildGuideAction(in guildID: GuildID, channelID: ChannelID) async throws -> GuildGuideProgress
     func guildOnboarding(in guildID: GuildID) async throws -> GuildOnboarding
@@ -32,13 +35,15 @@ public protocol ChatProvider: Sendable {
     func updateGuildChannelSelection(in guildID: GuildID, enabled: Bool?, channels: [ChannelID: Bool]) async throws -> GuildNotificationSettings
 
     func serverInvite(_ reference: ServerInviteReference) async throws -> ServerInvite
-    func acceptServerInvite(_ reference: ServerInviteReference, messageID: MessageID?, captchaHandler: DiscordCaptchaHandler?) async throws -> ServerInviteAcceptance
+    func acceptServerInvite(_ reference: ServerInviteReference, messageID: MessageID?) async throws -> ServerInviteAcceptance
+    func joinDiscoverableGuild(_ guildID: GuildID) async throws -> Bool
     func createServerInvite(in channelID: ChannelID, guildID: GuildID, settings: ServerInviteSettings) async throws -> CreatedServerInvite
     func leaveGuild(_ guildID: GuildID) async throws
     func clearLocalSearchCache() async throws
     func prepareAuthentication() async throws
     func bootstrap() async throws -> BootstrapSnapshot
     func channels(in guildID: GuildID?) async throws -> [Channel]
+    func threadMembers(in thread: MessageThreadSummary) async throws -> [Member]?
     func members(in guildID: GuildID?) async throws -> [Member]
     func updateMemberListViewport(
         in guildID: GuildID,
@@ -74,12 +79,33 @@ public protocol ChatProvider: Sendable {
     func profileWidgetConnections(applicationIDs: [String]) async throws -> [String: ProfileWidgetConnection]
     /// Changes the current member's nickname; an empty string resets it.
     func setNickname(_ nickname: String, in guildID: GuildID) async throws -> String?
+    /// Changes any member's server nickname; an empty string resets it.
+    func setMemberNickname(_ nickname: String, for userID: UserID, in guildID: GuildID) async throws -> String?
+    /// Sets the private nickname for a friend; nil or blank text removes it.
+    func setFriendNickname(_ nickname: String?, for userID: UserID) async throws -> String?
+    /// Renames a group DM or changes its icon, returning the saved channel.
+    func editGroupDirectMessage(_ channelID: ChannelID, changes: GroupDirectMessageChanges) async throws -> Channel
+    /// Leaves a group DM, optionally without notifying the other members.
+    func leaveGroupDirectMessage(_ channelID: ChannelID, silently: Bool) async throws
+    /// Closes a 1:1 DM, hiding it from the list without deleting its messages.
+    func closeDirectMessage(_ channelID: ChannelID) async throws
+    /// Reads every relationship at most once per Gateway connection.
+    func loadRelationships() async throws
+    func setUserIgnored(_ userID: UserID, ignored: Bool, location: IgnoreActionLocation) async throws
+    func dismissIgnoredGroupWarning(in channelID: ChannelID) async throws
+    func sendFriendRequest(username: String, discriminator: Int?, note: String?) async throws
+    func sendFriendRequest(to user: User, location: IgnoreActionLocation) async throws
+    func acceptFriendRequest(from userID: UserID, confirmingStranger: Bool) async throws
+    func removeRelationship(with userID: UserID, as removal: RelationshipRemoval) async throws
+    func blockUser(_ userID: UserID) async throws
     func saveProfileChanges(
         _ changes: ProfileEditChanges, in scope: ProfileEditingScope,
         didSave: @Sendable (ProfileSaveConfirmation) async -> Void
     ) async throws
     func emojis(in guildID: GuildID) async throws -> [DiscordEmoji]
     func emojiUserSettings() async throws -> EmojiUserSettings
+    func configureEmojiFrecencyPersistence(_ prepare: @escaping @Sendable () async -> EmojiFrecencySaveContribution?) async
+    func saveEmojiFrecency(_ messages: DiscordFrecencyHistory, reactions: DiscordFrecencyHistory, favoriteKey: String?, isFavorite: Bool) async throws -> EmojiUserSettings
     func setEmojiFavorite(_ key: String, isFavorite: Bool) async throws -> EmojiUserSettings
     func defaultSoundboardSounds() async throws -> [SoundboardSound]
     func soundboardSounds(in guildIDs: [GuildID]) async throws -> [GuildID: [SoundboardSound]]
@@ -123,13 +149,28 @@ public protocol ChatProvider: Sendable {
     ) async throws
     func forumPosts(in channelID: ChannelID, query: ForumPostQuery) async throws -> ForumPostPage
     func forumPost(threadID: ChannelID) async throws -> ForumPost
+    /// Looks the thread up afresh, even when cached, so the result states the
+    /// current user's membership; newer cached metadata is kept.
+    func resolveThreadAccess(threadID: ChannelID) async throws -> ForumPost
     func createForumPost(
         _ draft: CreateForumPostDraft,
         progress: @escaping @Sendable (MessageSendProgress) -> Void
     ) async throws -> ForumPost
+    /// Creates a thread, or starts one from `draft.starterMessageID`.
     func createThread(_ draft: CreateThreadDraft) async throws -> MessageThreadSummary
+    /// Applies one thread or forum-post change, unarchiving first when it requires.
     func updateForumPost(_ post: ForumPost, mutation: ForumPostMutation) async throws -> ForumPost
     func deleteForumPost(_ post: ForumPost) async throws
+    func setThreadMembership(
+        threadID: ChannelID,
+        isJoined: Bool,
+        location: ThreadMembershipLocation
+    ) async throws
+    /// One archived page or name-search result for a parent channel's threads.
+    func threadBrowserPage(in parentID: ChannelID, query: ThreadBrowserQuery) async throws
+        -> ForumPostPage
+    /// Known active threads in a parent channel, joined or not, newest activity first.
+    func activeThreads(in parentID: ChannelID) async -> [ForumPost]
     func updateForumPostNotificationLevel(
         _ post: ForumPost,
         level: MessageNotificationLevel
@@ -144,9 +185,24 @@ public protocol ChatProvider: Sendable {
     func send(_ draft: SendMessageDraft) async throws -> Message
     func send(_ draft: SendMessageDraft, progress: @escaping @Sendable (MessageSendProgress) -> Void)
         async throws -> Message
+    /// Stops one file of a send in progress, by its draft attachment ID. The
+    /// message goes without it, or not at all once every file is stopped.
+    /// Returns false when the file can no longer leave the message.
+    func cancelAttachmentUpload(_ attachmentID: UUID) async -> Bool
+    /// Stores a staged file before its message is sent; returns whether
+    /// storage accepted it. Its message then posts it as it is.
+    func preuploadAttachment(
+        _ attachment: ForumPostAttachment,
+        channelID: ChannelID,
+        progress: @escaping @Sendable (MessageSendProgress) -> Void
+    ) async -> Bool
+    /// Drops a staged file's early upload when it will not be sent.
+    func discardPreuploadedAttachment(_ attachmentID: UUID) async
     func setPollAnswers(_ answerIDs: [Int], messageID: MessageID, channelID: ChannelID) async throws
-    func pollVoters(messageID: MessageID, channelID: ChannelID, answerID: Int, after: UserID?, limit: Int) async throws -> PollVoterPage
+    func pollVoters(messageID: MessageID, channelID: ChannelID, answerID: Int, after: UserID?, limit: Int) async throws -> MessagePeoplePage
     func endPoll(messageID: MessageID, channelID: ChannelID) async throws -> Message
+    /// Returns a freshly signed copy of a Discord attachment URL, or nil when Discord returns none.
+    func refreshAttachmentURL(_ url: URL) async throws -> URL?
     func forward(_ draft: ForwardMessageDraft) async throws -> Message
     func supports(_ capability: ChatCapability) async -> Bool
     func applicationCommandCatalog(for target: ApplicationCommandIndexTarget) async throws
@@ -179,11 +235,11 @@ public protocol ChatProvider: Sendable {
         -> StickerUserSettings
     func recordStickerUse(_ stickerID: String) async throws -> StickerUserSettings
     /// Synced slash-command usage from Discord's frecency settings.
-    func applicationCommandFrecency() async throws -> ApplicationCommandFrecencyHistory
+    func applicationCommandFrecency() async throws -> DiscordFrecencyHistory
     /// Replaces the synced command usage, as Discord's client does when it
     /// flushes pending uses. Returns what the server stored.
-    func saveApplicationCommandFrecency(_ history: ApplicationCommandFrecencyHistory) async throws
-        -> ApplicationCommandFrecencyHistory
+    func saveApplicationCommandFrecency(_ history: DiscordFrecencyHistory) async throws
+        -> DiscordFrecencyHistory
     func edit(messageID: MessageID, channelID: ChannelID, content: String) async throws -> Message
     func delete(messageID: MessageID, channelID: ChannelID) async throws
     func acknowledge(
@@ -256,6 +312,7 @@ public protocol ChatProvider: Sendable {
         channelID: ChannelID,
         reactionCount: Int
     ) async throws -> [ReactionReactor]
+    func reactionUsers(for emoji: String, messageID: MessageID, channelID: ChannelID, after: UserID?, limit: Int) async throws -> MessagePeoplePage
     func joinVoice(
         channelID: ChannelID,
         guildID: GuildID?,
@@ -289,6 +346,8 @@ public protocol ChatProvider: Sendable {
     func ringPrivateCall(channelID: ChannelID, recipients: [UserID]?) async throws
     func stopRingingPrivateCall(channelID: ChannelID, recipients: [UserID]) async throws
     func updateClientAppState(isFocused: Bool) async
+    /// The app's human-solving presentation for challenges on any route.
+    func setCaptchaHandler(_ handler: @escaping DiscordCaptchaHandler) async
     func eventStream() async -> AsyncStream<ClientEvent>
     func disconnect() async
 }
@@ -306,7 +365,10 @@ public extension ChatProvider {
         throw ChatProviderError.invalidRequest("Rearranging servers is unavailable for this session.")
     }
     func guildGuide(in guildID: GuildID) async throws -> GuildGuide { throw ChatProviderError.invalidRequest("Server Guide is unavailable.") }
-    func guildGuideProfile(in guildID: GuildID) async throws -> GuildGuideProfile { throw ChatProviderError.invalidRequest("Server profile is unavailable.") }
+    func guildProfile(in guildID: GuildID) async throws -> GuildProfile { throw ChatProviderError.invalidRequest("Server profile is unavailable.") }
+    func messageInteractionData(channelID: ChannelID, messageID: MessageID) async throws -> MessageInteractionData {
+        throw ChatProviderError.invalidRequest("Command details are unavailable.")
+    }
     func guildGuideProgress(in guildID: GuildID) async throws -> GuildGuideProgress { throw ChatProviderError.invalidRequest("Server Guide is unavailable.") }
     func completeGuildGuideAction(in guildID: GuildID, channelID: ChannelID) async throws -> GuildGuideProgress { throw ChatProviderError.invalidRequest("Server Guide is unavailable.") }
     func guildOnboarding(in guildID: GuildID) async throws -> GuildOnboarding {
@@ -327,10 +389,10 @@ public extension ChatProvider {
     }
 
     func acceptServerInvite(_ reference: ServerInviteReference, messageID: MessageID?) async throws -> ServerInviteAcceptance {
-        try await acceptServerInvite(reference, messageID: messageID, captchaHandler: nil)
+        throw ServerInviteError.unsupported("Joining servers is unavailable for this session.")
     }
 
-    func acceptServerInvite(_ reference: ServerInviteReference, messageID: MessageID?, captchaHandler: DiscordCaptchaHandler?) async throws -> ServerInviteAcceptance {
+    func joinDiscoverableGuild(_ guildID: GuildID) async throws -> Bool {
         throw ServerInviteError.unsupported("Joining servers is unavailable for this session.")
     }
 
@@ -424,6 +486,56 @@ public extension ChatProvider {
         throw ChatProviderError.invalidRequest("Nickname editing is unavailable for this session.")
     }
 
+    func setMemberNickname(_ nickname: String, for userID: UserID, in guildID: GuildID) async throws -> String? {
+        throw ChatProviderError.invalidRequest("Nickname editing is unavailable for this session.")
+    }
+
+    func setFriendNickname(_ nickname: String?, for userID: UserID) async throws -> String? {
+        throw ChatProviderError.invalidRequest("Friend nicknames are unavailable for this session.")
+    }
+
+    func editGroupDirectMessage(_ channelID: ChannelID, changes: GroupDirectMessageChanges) async throws -> Channel {
+        throw ChatProviderError.invalidRequest("Group editing is unavailable for this session.")
+    }
+
+    func leaveGroupDirectMessage(_ channelID: ChannelID, silently: Bool) async throws {
+        throw ChatProviderError.invalidRequest("Leaving groups is unavailable for this session.")
+    }
+
+    func closeDirectMessage(_ channelID: ChannelID) async throws {
+        throw ChatProviderError.invalidRequest("Closing direct messages is unavailable for this session.")
+    }
+
+    func loadRelationships() async throws {}
+
+    func dismissIgnoredGroupWarning(in channelID: ChannelID) async throws {
+        throw ChatProviderError.invalidRequest("Group warning dismissal is unavailable for this session.")
+    }
+
+    func setUserIgnored(_ userID: UserID, ignored: Bool, location: IgnoreActionLocation) async throws {
+        throw ChatProviderError.invalidRequest("This provider doesn’t support Ignore.")
+    }
+
+    func sendFriendRequest(username: String, discriminator: Int?, note: String?) async throws {
+        throw RelationshipActionError.failed("Friend requests are unavailable for this session.")
+    }
+
+    func sendFriendRequest(to user: User, location: IgnoreActionLocation) async throws {
+        throw RelationshipActionError.failed("Friend requests are unavailable for this session.")
+    }
+
+    func acceptFriendRequest(from userID: UserID, confirmingStranger: Bool) async throws {
+        throw RelationshipActionError.failed("Friend requests are unavailable for this session.")
+    }
+
+    func removeRelationship(with userID: UserID, as removal: RelationshipRemoval) async throws {
+        throw RelationshipActionError.failed("Friend management is unavailable for this session.")
+    }
+
+    func blockUser(_ userID: UserID) async throws {
+        throw RelationshipActionError.failed("Blocking is unavailable for this session.")
+    }
+
     func saveProfileChanges(
         _ changes: ProfileEditChanges, in scope: ProfileEditingScope,
         didSave: @Sendable (ProfileSaveConfirmation) async -> Void
@@ -452,6 +564,8 @@ public extension ChatProvider {
     }
 
     func updateClientAppState(isFocused: Bool) async {}
+
+    func setCaptchaHandler(_ handler: @escaping DiscordCaptchaHandler) async {}
 
     func startApplicationStream(
         channelID _: ChannelID,
@@ -598,6 +712,8 @@ public extension ChatProvider {
         }
     }
 
+    func threadMembers(in thread: MessageThreadSummary) async throws -> [Member]? { [] }
+
     func updateMemberListViewport(
         in guildID: GuildID,
         channelID: ChannelID,
@@ -645,6 +761,16 @@ public extension ChatProvider {
         progress(.completed(messageID: message.id))
         return message
     }
+
+    func cancelAttachmentUpload(_ attachmentID: UUID) async -> Bool { false }
+
+    func preuploadAttachment(
+        _ attachment: ForumPostAttachment,
+        channelID: ChannelID,
+        progress: @escaping @Sendable (MessageSendProgress) -> Void
+    ) async -> Bool { false }
+
+    func discardPreuploadedAttachment(_ attachmentID: UUID) async {}
 
     func forward(_ draft: ForwardMessageDraft) async throws -> Message {
         throw ChatProviderError.capabilityDisabled(.messageForwarding)
@@ -741,12 +867,12 @@ public extension ChatProvider {
         StickerUserSettings()
     }
 
-    func applicationCommandFrecency() async throws -> ApplicationCommandFrecencyHistory {
-        ApplicationCommandFrecencyHistory()
+    func applicationCommandFrecency() async throws -> DiscordFrecencyHistory {
+        DiscordFrecencyHistory()
     }
 
-    func saveApplicationCommandFrecency(_ history: ApplicationCommandFrecencyHistory) async throws
-        -> ApplicationCommandFrecencyHistory
+    func saveApplicationCommandFrecency(_ history: DiscordFrecencyHistory) async throws
+        -> DiscordFrecencyHistory
     {
         history
     }
@@ -757,6 +883,12 @@ public extension ChatProvider {
 
     func emojiUserSettings() async throws -> EmojiUserSettings {
         EmojiUserSettings()
+    }
+
+    func configureEmojiFrecencyPersistence(_ prepare: @escaping @Sendable () async -> EmojiFrecencySaveContribution?) async {}
+
+    func saveEmojiFrecency(_ messages: DiscordFrecencyHistory, reactions: DiscordFrecencyHistory, favoriteKey: String?, isFavorite: Bool) async throws -> EmojiUserSettings {
+        throw ChatProviderError.invalidRequest("Emoji usage updates are unavailable for this provider.")
     }
 
     func setEmojiFavorite(_ key: String, isFavorite: Bool) async throws -> EmojiUserSettings {
@@ -870,6 +1002,10 @@ public extension ChatProvider {
         throw ChatProviderError.capabilityDisabled(.forums)
     }
 
+    func resolveThreadAccess(threadID: ChannelID) async throws -> ForumPost {
+        try await forumPost(threadID: threadID)
+    }
+
     func createForumPost(
         _ draft: CreateForumPostDraft,
         progress: @escaping @Sendable (MessageSendProgress) -> Void
@@ -888,6 +1024,22 @@ public extension ChatProvider {
     func deleteForumPost(_ post: ForumPost) async throws {
         throw ChatProviderError.capabilityDisabled(.forums)
     }
+
+    func setThreadMembership(
+        threadID: ChannelID,
+        isJoined: Bool,
+        location: ThreadMembershipLocation
+    ) async throws {
+        throw ChatProviderError.capabilityDisabled(.forums)
+    }
+
+    func threadBrowserPage(in parentID: ChannelID, query: ThreadBrowserQuery) async throws
+        -> ForumPostPage
+    {
+        throw ChatProviderError.capabilityDisabled(.forums)
+    }
+
+    func activeThreads(in parentID: ChannelID) async -> [ForumPost] { [] }
 
     func updateForumPostNotificationLevel(
         _ post: ForumPost,
@@ -920,6 +1072,10 @@ public extension ChatProvider {
         reactionCount: Int
     ) async throws -> [ReactionReactor] {
         []
+    }
+
+    func reactionUsers(for emoji: String, messageID: MessageID, channelID: ChannelID, after: UserID?, limit: Int) async throws -> MessagePeoplePage {
+        throw ChatProviderError.invalidRequest("Reaction details are unavailable for this provider.")
     }
 
     func joinVoice(
@@ -982,9 +1138,12 @@ public enum ChatProviderError: LocalizedError, Equatable, Sendable {
     case channelNotFound
     case slowmode(retryAfter: TimeInterval)
     case messageNotFound
+    case autoModerationBlocked(explanation: String?)
     case invalidRequest(String)
+    case rateLimited(retryAfter: TimeInterval, requestID: String?)
     case transport(status: Int, requestID: String?)
     case capabilityDisabled(ChatCapability)
+    case threadMemberLimitReached
 
     public var errorDescription: String? {
         switch self {
@@ -992,12 +1151,16 @@ public enum ChatProviderError: LocalizedError, Equatable, Sendable {
         case .slowmode: "This conversation is on a slowmode cooldown. Please wait before sending again."
         case .channelNotFound: "The selected channel is unavailable."
         case .messageNotFound: "The message no longer exists."
+        case .autoModerationBlocked: "This message was blocked by AutoMod."
         case let .invalidRequest(message): message
+        case let .rateLimited(_, requestID):
+            ChatProviderError.transport(status: 429, requestID: requestID).errorDescription
         case let .transport(status, requestID):
             requestID.map { "Discord returned HTTP \(status) (request \($0))." }
                 ?? "Discord returned HTTP \(status)."
         case let .capabilityDisabled(capability):
             "\(capability.displayName) is not enabled for this account session."
+        case .threadMemberLimitReached: "This thread has reached its member limit."
         }
     }
 }
@@ -1034,10 +1197,13 @@ public extension ChatProvider {
     func setPollAnswers(_ answerIDs: [Int], messageID: MessageID, channelID: ChannelID) async throws {
         throw ChatProviderError.invalidRequest("Poll voting is unavailable.")
     }
-    func pollVoters(messageID: MessageID, channelID: ChannelID, answerID: Int, after: UserID?, limit: Int) async throws -> PollVoterPage {
+    func pollVoters(messageID: MessageID, channelID: ChannelID, answerID: Int, after: UserID?, limit: Int) async throws -> MessagePeoplePage {
         throw ChatProviderError.invalidRequest("Poll voters are unavailable.")
     }
     func endPoll(messageID: MessageID, channelID: ChannelID) async throws -> Message {
         throw ChatProviderError.invalidRequest("Ending polls is unavailable.")
+    }
+    func refreshAttachmentURL(_ url: URL) async throws -> URL? {
+        throw ChatProviderError.invalidRequest("Opening attachment links is unavailable.")
     }
 }

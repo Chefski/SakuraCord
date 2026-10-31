@@ -107,6 +107,7 @@ extension DiscordRESTProvider {
             let channels = try (payload.threads ?? []).map {
                 try $0.domain(guildID: guildID)
             }
+            self.ingestForumThreads(payload.threads ?? [], fallbackGuildID: guildID)
             return MessageSearchPage(
                 results: results,
                 channels: channels,
@@ -136,10 +137,7 @@ extension DiscordRESTProvider {
                 fallbackGuildID: nil
             )
             let channels = try tab.channels.map {
-                try $0.domain(
-                    guildID: nil,
-                    knownUsersByID: self.cachedGatewayUsersByID
-                )
+                try self.privateChannel(from: $0)
             }
             self.cacheSearchPrivateChannels(channels)
             return MessageSearchPage(
@@ -190,10 +188,7 @@ extension DiscordRESTProvider {
                 authorizationValue = nil
                 throw apiDiagnostics.coalescing(ChatProviderError.unauthenticated, with: response)
             default:
-                throw apiDiagnostics.coalescing(ChatProviderError.transport(
-                    status: response.statusCode,
-                    requestID: response.value(forHTTPHeaderField: "x-request-id")
-                ), with: response)
+                throw unexplainedFailure(data, response)
             }
         }
         preconditionFailure("The bounded message-search loop always returns or throws.")

@@ -26,7 +26,7 @@ nonisolated struct GIFMasonryColumns {
 }
 
 nonisolated enum GIFMasonryLayout {
-    static let spacing: CGFloat = 10
+    static var spacing: CGFloat { InterfaceScale.metric(10) }
 
     static func columns(
         for results: [GIFSearchResult],
@@ -231,7 +231,7 @@ struct GIFPickerView: View {
                 resultsPage
             }
         }
-        .frame(width: ChatChromeMetrics.emojiPickerWidth, height: 420)
+        .frame(width: ChatChromeMetrics.emojiPickerWidth, height: InterfaceScale.metric(420))
         .task {
             model.loadGIFPicker()
         }
@@ -279,9 +279,9 @@ struct GIFPickerView: View {
                 }
             }
             .frame(maxWidth: .infinity)
-            .padding(.horizontal, 12)
-            .padding(.top, 10)
-            .padding(.bottom, 10)
+            .padding(.horizontal, InterfaceScale.metric(12))
+            .padding(.top, InterfaceScale.metric(10))
+            .padding(.bottom, InterfaceScale.metric(10))
         }
         .scrollIndicators(.hidden)
         .overlay {
@@ -396,13 +396,13 @@ private struct GIFPickerHeader: View {
                 GIFPickerBackButton(action: back)
             }
             Image(systemName: "magnifyingglass")
-                .font(.system(
+                .font(.interfaceSystem(
                     size: ChatChromeMetrics.pickerSearchHeaderIconSize,
                     weight: .medium
                 ))
                 .foregroundStyle(.secondary)
             TextField("Search GIFs", text: $text)
-                .font(.system(size: ChatChromeMetrics.pickerSearchHeaderFontSize))
+                .font(.interfaceSystem(size: ChatChromeMetrics.pickerSearchHeaderFontSize))
                 .tint(SakuraCordAccentColor.color)
                 .textFieldStyle(.plain)
                 .focused($isFocused)
@@ -434,8 +434,8 @@ private struct GIFPickerBackButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: "chevron.left")
-                .font(.system(size: 12, weight: .semibold))
-                .frame(width: 30, height: 30)
+                .font(.interfaceSystem(size: 12, weight: .semibold))
+                .frame(width: InterfaceScale.metric(30), height: InterfaceScale.metric(30))
                 .contentShape(Circle())
                 .background {
                     Circle()
@@ -483,26 +483,26 @@ private struct GIFCategoryButton: View {
                     .opacity(0.78)
                 }
                 Color.black.opacity(hovering ? 0.28 : 0.40)
-                VStack(spacing: 5) {
+                VStack(spacing: InterfaceScale.metric(5)) {
                     if let systemImage {
                         Image(systemName: systemImage)
-                            .font(.system(size: 20, weight: .bold))
+                            .font(.interfaceSystem(size: 20, weight: .bold))
                     }
                     Text(title)
-                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .font(.interfaceSystem(size: 15, weight: .bold, design: .rounded))
                         .lineLimit(1)
                 }
                 .foregroundStyle(.white)
-                .shadow(color: .black.opacity(0.65), radius: 4, y: 1)
+                .shadow(color: .black.opacity(0.65), radius: InterfaceScale.metric(4), y: 1)
             }
-            .frame(maxWidth: .infinity, minHeight: 102, maxHeight: 102)
+            .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(102), maxHeight: InterfaceScale.metric(102))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity)
-        .clipShape(ConcentricRectangle(cornerRadius: 13, style: .continuous))
+        .clipShape(ConcentricRectangle(cornerRadius: InterfaceScale.metric(13), style: .continuous))
         .overlay {
-            ConcentricRectangle(cornerRadius: 13, style: .continuous)
+            ConcentricRectangle(cornerRadius: InterfaceScale.metric(13), style: .continuous)
                 .stroke(.white.opacity(hovering ? 0.20 : 0.08), lineWidth: 1)
         }
         .scaleEffect(hovering ? 1.012 : 1)
@@ -516,9 +516,9 @@ private struct GIFPickerStatus: View {
     let retry: () -> Void
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: InterfaceScale.metric(8)) {
             Text(message)
-                .font(.caption)
+                .font(.interface(.caption))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .lineLimit(3)
@@ -526,6 +526,6 @@ private struct GIFPickerStatus: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
         }
-        .padding(20)
+        .padding(InterfaceScale.metric(20))
     }
 }

@@ -238,7 +238,7 @@ extension NativeTimelineCanvasView {
     ) {
         let message = row.message
         for sticker in message.stickers
-        where sticker.format == .apng || sticker.format == .gif {
+        where sticker.format?.isAnimated == true {
             if let url = sticker.mediaURL {
                 keys.insert(.media(url, maximumPixelDimension: 384))
             }
@@ -394,13 +394,60 @@ extension NativeTimelineCanvasView {
         )
     }
 
-    func showReactionPicker(
-        for message: Message,
-        anchor: CGRect,
-        preferredEdge: NSRectEdge
-    ) {
-        guard let model else { return }
+    /// Both native reaction popovers use the visible message row as their anchor.
+    /// The presenters freeze this rectangle while the popover remains open.
+    func messageReactionPopoverAnchor(for message: Message) -> CGRect? {
+        guard let index = items.firstIndex(where: { $0.messageID == message.id }),
+              layouts.indices.contains(index) else { return nil }
+        let viewport = enclosingScrollView?.documentVisibleRect ?? visibleRect
+        let visibleRow = rowFrame(at: index).intersection(viewport)
+        let anchor = visibleRow.isNull || visibleRow.isEmpty ? viewport : visibleRow
+        return anchor.isNull || anchor.isEmpty ? nil : anchor
+    }
+
+    func beginReactionPopoverLayout() {
+        // Layout may restore the viewport or rebase history coordinates. Keep
+        // open popovers steady through that correction, independently of scroll.
+        reactionPopoverLayoutAnchors = [reactionPickerSource.installedSnapshotAnchor, reactionDetailsPopoverAnchor]
+            .compactMap { anchor in
+                guard let anchor, anchor.window != nil, anchor.superview != nil else { return nil }
+                return (anchor, anchor.convert(anchor.bounds, to: nil))
+            }
+    }
+
+    func endReactionPopoverLayout() {
+        for (anchor, frameInWindow) in reactionPopoverLayoutAnchors {
+            guard let parent = anchor.superview, anchor.window === window else { continue }
+            anchor.frame = parent.convert(frameInWindow, from: nil)
+        }
+        reactionPopoverLayoutAnchors.removeAll(keepingCapacity: true)
+        dismissOffscreenReactionPopovers()
+    }
+
+    func dismissOffscreenReactionPopovers() {
+        guard reactionPickerCoordinator.isShown || reactionDetailsPopover?.isShown == true else { return }
+        let viewport = enclosingScrollView?.documentVisibleRect ?? visibleRect
+        func isVisible(_ messageID: MessageID?) -> Bool {
+            guard let messageID, let index = items.firstIndex(where: { $0.messageID == messageID }) else { return false }
+            let intersection = rowFrame(at: index).intersection(viewport)
+            return !intersection.isNull && !intersection.isEmpty
+        }
+        if reactionPickerCoordinator.isShown, !isVisible(reactionPickerMessageID) {
+            reactionPickerMessageID = nil
+            reactionPickerCoordinator.close(notifyBinding: true)
+        }
+        if reactionDetailsPopover?.isShown == true, !isVisible(reactionDetailsMessageID) {
+            reactionDetailsMessageID = nil
+            reactionDetailsPopover?.close()
+        }
+    }
+
+    func showReactionPicker(forMessageRow message: Message) {
+        guard let model, model.canCreateReactions(on: message),
+              let anchor = messageReactionPopoverAnchor(for: message) else { return }
+        reactionPickerMessageID = message.id
         reactionPickerSource.frame = anchor
+        reactionPickerSource.followsScrolling = true
         let content = EmojiPickerView(
             model: model,
             useCase: .reaction(
@@ -430,11 +477,8 @@ extension NativeTimelineCanvasView {
         reactionPickerCoordinator.update(
             sourceView: reactionPickerSource,
             isPresented: true,
-            preferredEdge: preferredEdge,
-            accessibilityIdentifier:
-                preferredEdge == .maxX
-                    ? "reaction-picker-inline"
-                    : "reaction-picker-toolbar",
+            preferredEdge: .maxX,
+            accessibilityIdentifier: ReactionActionMenuPresentation.inline.pickerAccessibilityIdentifier,
             content: content,
             setPresented: { [weak self] isPresented in
                 if !isPresented {
@@ -588,7 +632,8 @@ extension NativeTimelineCanvasView {
         guard textRegion.value.attribute(
             .link,
             at: pointerHit.hit.characterIndex,
-            effectiveRange: &linkRange
+            longestEffectiveRange: &linkRange,
+            in: NSRange(location: 0, length: textRegion.value.length)
         ) != nil,
             let localFrame = NativeTimelineTextHitTester.rangeFrame(
                 value: textRegion.value,
@@ -622,6 +667,15 @@ extension NativeTimelineCanvasView {
                 || hit.spoilerRange != nil
         {
             return TextPointerHit(hit: hit, region: .content)
+        }
+        if let translation = layout.translationRegion,
+           let frame = translation.textFrame, let value = translation.attributedText,
+           let framesetter = translation.framesetter,
+           let hit = NativeTimelineTextHitTester.hit(
+               value: value, framesetter: framesetter,
+               frame: NativeTimelineTextGeometry.messageContentDrawingFrame(frame), point: point
+           ), hit.mention != nil || hit.url != nil || hit.spoilerRange != nil {
+            return TextPointerHit(hit: hit, region: translation.regionID)
         }
         for embed in layout.embedRegions {
             for (textIndex, region) in embed.textRegions.enumerated() {
@@ -713,6 +767,7 @@ extension NativeTimelineCanvasView {
             url,
             model: model,
             sourceMessage: message,
+            displayedText: hit.displayedText,
             presentSystemProfile: presentSystemProfile
         )
     }
@@ -745,7 +800,7 @@ extension NativeTimelineCanvasView {
         case .unresolved:
             break
         case let .game(id):
-            model.presentedProfileGame = model.gameMentionsByID[id]
+            model.presentedProfileGame = model.gameMentions.gamesByID[id]
         case let .user(id):
             let resolver = MessageMentionResolver(
                 model: model,
@@ -803,6 +858,15 @@ extension NativeTimelineCanvasView {
                     .messageContentDrawingFrame(frame),
                 characterIndex: characterIndex,
                 rawToken: rawToken
+            )
+        case .translation:
+            guard let translation = layout.translationRegion, translation.regionID == region,
+                  let value = translation.attributedText, let framesetter = translation.framesetter,
+                  let frame = translation.textFrame else { return nil }
+            localFrame = NativeTimelineTextHitTester.mentionAnchorFrame(
+                value: value, framesetter: framesetter,
+                frame: NativeTimelineTextGeometry.messageContentDrawingFrame(frame),
+                characterIndex: characterIndex, rawToken: rawToken
             )
         case let .embed(embedID, textIndex):
             guard let embed = layout.embedRegions.first(where: {
@@ -1046,7 +1110,7 @@ extension NativeTimelineCanvasView {
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
-        guard !overlayBlocksInteractions else { return nil }
+        guard !overlayBlocksInteractions, !sendTransitionBlocksInteractions else { return nil }
         let point = convert(event.locationInWindow, from: nil)
         guard let index = rowIndex(at: point.y),
               layouts.indices.contains(index),
@@ -1060,6 +1124,9 @@ extension NativeTimelineCanvasView {
             x: point.x,
             y: point.y - displayedRowOrigin(at: index)
         )
+        if let menu = userContextMenu(for: row, index: index, localPoint: localPoint) {
+            return menu
+        }
         let imageItem = NativeTimelineImageContextMenuPlan.item(
             in: row.message,
             layout: layouts[index],
@@ -1092,53 +1159,78 @@ extension NativeTimelineCanvasView {
                 actions: imageContextMenuActions(for: imageItem)
             )
         }
-        guard let actions else { return nil }
-        return messageContextMenu(
+        guard let actions,
+              TimelineContextMenuHitTesting.contains(
+                  point,
+                  rowOrigin: displayedRowOrigin(at: index),
+                  highlightFrame: layouts[index].highlightFrame
+              )
+        else { return nil }
+        guard let menu = messageContextMenu(
             for: row,
             at: index,
-            point: point,
+            targetsAuthor: NativeTimelineAuthorProfileGeometry.hitFrame(
+                at: localPoint,
+                avatarFrame: layouts[index].avatarFrame,
+                authorFrame: layouts[index].authorFrame
+            ) != nil,
+            lookupPoint: point,
             actions: actions,
             failedMediaActions: interactionMode == .failed
                 ? imageItem.map(imageContextMenuActions(for:))
                 : nil
-        )
+        ) else { return nil }
+        prependTextLinkActions(to: menu, row: row, index: index, localPoint: localPoint)
+        return menu
     }
 
+    /// `targetsAuthor` offers user commands instead of message commands in
+    /// the Apps submenu, as when the author's avatar or name was clicked.
     func messageContextMenu(
         for row: MessageRowPresentation,
         at index: Int,
-        point: CGPoint,
+        targetsAuthor: Bool,
+        lookupPoint: CGPoint? = nil,
         actions: NativeTimelineRowActions,
         failedMediaActions: MediaImageContextMenuActions?
     ) -> NSMenu? {
-        guard MessageOutboxPresentation.interactionMode(for: row.message).allowsMessageContextMenu,
-              TimelineContextMenuHitTesting.contains(
-            point,
-            rowOrigin: displayedRowOrigin(at: index),
-            highlightFrame: layouts[index].highlightFrame
-        ) else { return nil }
+        guard MessageOutboxPresentation.interactionMode(for: row.message).allowsMessageContextMenu else { return nil }
+        // Discord does not allow editing voice messages.
         let canEdit =
-            row.message.author.id == model?.snapshot?.currentUser.id
+            row.message.author.id == model?.currentUser?.id
                 && !row.message.hasPoll
+                && !row.message.flags.contains(.voiceMessage)
+                && model?.guildTimeoutUntil(in: row.message.channelID, guildID: row.message.guildID) == nil
                 && MessageReplyPresentationPolicy.allowsReplyAction(
                     for: row.message
                 )
         let canDelete = model?.canDeleteMessage(row.message) == true
         let menu = NSMenu()
         menu.autoenablesItems = false
+        if let lookupPoint, let lookup = dictionaryLookupAction(at: lookupPoint, usesSelection: true) {
+            menu.addItem(actionItem("Look Up", systemImage: "character.book.closed", action: lookup))
+            menu.addItem(.separator())
+        }
         var insertedFailedMediaActions = false
         for entry in NativeTimelineMessageMenuPolicy.entries(
             canEdit: canEdit,
             canDelete: canDelete,
-            canRetry: row.message.outboxState == .failed,
+            canRetry: row.message.canRetrySending,
+            isFailed: row.message.outboxState == .failed,
             canReply: actions.reply != nil
+                && model?.guildTimeoutUntil(in: row.message.channelID, guildID: row.message.guildID) == nil
                 && MessageReplyPresentationPolicy.allowsReplyAction(
                     for: row.message
                 ),
-            canEndPoll: row.message.outboxState == .confirmed && row.message.author.id == model?.snapshot?.currentUser.id && row.message.poll?.isClosed() == false,
+            canEndPoll: row.message.outboxState == .confirmed && row.message.author.id == model?.currentUser?.id && row.message.poll?.isClosed() == false,
             canForward: actions.forward != nil && model?.canForward(row.message) == true,
+            threadAction: row.message.thread != nil
+                ? .viewThread
+                : (model?.canCreateThread(from: row.message) == true ? .createThread : nil),
             canPin: model?.canManagePins(for: row.message) == true,
             isPinned: row.message.isPinned,
+            translationTitle: row.isResource ? nil : model?.messageTranslationMenuTitle(for: row.message),
+            canCopyTranslation: !row.isResource && model?.translatedMessageText(row.message) != nil,
             context: messageInteractionContext
         ) {
             guard case let .action(
@@ -1162,6 +1254,7 @@ extension NativeTimelineCanvasView {
                 }
                 continue
             }
+            if case .addReaction = action, model?.canCreateReactions(on: row.message) != true { continue }
             let handler = messageMenuHandler(
                 action: action,
                 row: row,
@@ -1177,8 +1270,35 @@ extension NativeTimelineCanvasView {
                 )
             )
         }
-        appendApplicationCommandMenu(to: menu, row: row, index: index, point: point)
+        appendApplicationCommandMenu(to: menu, row: row, targetsAuthor: targetsAuthor)
         return menu
+    }
+
+    private func userContextMenu(
+        for row: MessageRowPresentation, index: Int, localPoint: CGPoint
+    ) -> NSMenu? {
+        guard let model, row.message.outboxState == .confirmed else { return nil }
+        let message = row.message
+        let textHit = textPointerHit(in: layouts[index], point: localPoint)
+        if let textHit, let spoilerRange = textHit.hit.spoilerRange,
+           let key = textSpoilerRevealKey(itemIdentifier: items[index].identifier,
+                                         region: textHit.region, rangeLocation: spoilerRange.location),
+           !spoilerRevealStore.isTextRevealed(key) { return nil }
+        let user: User?
+        if NativeTimelineAuthorProfileGeometry.hitFrame(at: localPoint,
+            avatarFrame: layouts[index].avatarFrame, authorFrame: layouts[index].authorFrame) != nil {
+            user = message.author
+        } else if let mention = textHit?.hit.mention,
+                  mention.isInteractive, case let .user(userID) = mention.target {
+            user = model.systemMessageUser(userID: userID, sourceMessage: message)
+        } else if let url = textHit?.hit.url,
+                  url.scheme == "sakuracord-action", url.host == "profile", let userID = UserID(url.lastPathComponent) {
+            user = model.systemMessageUser(userID: userID, sourceMessage: message)
+        } else { return nil }
+        guard let user else { return nil }
+        return UserContextMenu.make(for: user,
+            context: .init(guildID: model.messagePresentationGuildID(for: message), channelID: message.channelID,
+                           isLocalIdentity: user.id == message.author.id && (message.webhookID != nil || DiscordBuiltInCommands.isClydeMessage(message))), model: model)
     }
 
     /// Discord's Apps submenu: message commands for the message, or user
@@ -1186,20 +1306,13 @@ extension NativeTimelineCanvasView {
     private func appendApplicationCommandMenu(
         to menu: NSMenu,
         row: MessageRowPresentation,
-        index: Int,
-        point: CGPoint
+        targetsAuthor: Bool
     ) {
         let message = row.message
         guard let model, messageInteractionContext == .conversation,
               message.outboxState == .confirmed, !message.flags.contains(.ephemeral),
               model.supportsCapability(.slashCommands)
         else { return }
-        let localPoint = CGPoint(x: point.x, y: point.y - displayedRowOrigin(at: index))
-        let targetsAuthor = NativeTimelineAuthorProfileGeometry.hitFrame(
-            at: localPoint,
-            avatarFrame: layouts[index].avatarFrame,
-            authorFrame: layouts[index].authorFrame
-        ) != nil
         let type: ApplicationCommandType = targetsAuthor ? .user : .message
         let targetID = targetsAuthor ? message.author.id.description : message.id.description
         let destination = model.commandDestination(in: message.channelID)
@@ -1232,6 +1345,8 @@ extension NativeTimelineCanvasView {
         switch action {
         case .pinMessage, .unpinMessage:
             return { actions.togglePin(row.message) }
+        case .toggleTranslation:
+            return { [weak model] in model?.toggleMessageTranslation(row.message) }
         default:
             return nonPinMessageMenuHandler(
                 action: action,
@@ -1242,14 +1357,34 @@ extension NativeTimelineCanvasView {
         }
     }
 
+    private func threadMessageMenuHandler(
+        action: NativeTimelineMessageMenuAction,
+        row: MessageRowPresentation,
+        actions: NativeTimelineRowActions
+    ) -> (() -> Void)? {
+        switch action {
+        case .createThread:
+            { [weak model] in model?.beginThreadCreation(from: row.message) }
+        case .viewThread:
+            {
+                guard let thread = row.message.thread else { return }
+                actions.openThread(thread)
+            }
+        default:
+            nil
+        }
+    }
+
     private func nonPinMessageMenuHandler(
         action: NativeTimelineMessageMenuAction,
         row: MessageRowPresentation,
         index: Int,
         actions: NativeTimelineRowActions
     ) -> () -> Void {
-        if let copyHandler = copyMessageMenuHandler(action: action, row: row) {
-            return copyHandler
+        if let handler = copyMessageMenuHandler(action: action, row: row)
+            ?? threadMessageMenuHandler(action: action, row: row, actions: actions)
+        {
+            return handler
         }
         return switch action {
         case .jumpToMessage:
@@ -1257,7 +1392,9 @@ extension NativeTimelineCanvasView {
         case .retrySending:
             { actions.retry(row.message) }
         case .addReaction:
-            { actions.react("👍", row.message) }
+            { [weak self] in self?.showReactionPicker(forMessageRow: row.message) }
+        case .viewReactions:
+            { [weak self] in self?.showMessageReactions(row.message) }
         case .reply:
             {
                 guard let reply = actions.reply else { return }
@@ -1288,6 +1425,10 @@ extension NativeTimelineCanvasView {
         row: MessageRowPresentation
     ) -> (() -> Void)? {
         switch action {
+        case .copyTranslation:
+            { [weak model] in
+                if let text = model?.translatedMessageText(row.message) { Self.copyText(text) }
+            }
         case .copyText:
             { Self.copyText(row.message.content) }
         case .copyLink:
@@ -1325,7 +1466,7 @@ extension NativeTimelineCanvasView {
                             from: item.url
                         )
                     } catch {
-                        self?.presentMediaActionError(error)
+                        self?.presentActionError(error)
                     }
                 }
             },
@@ -1357,7 +1498,7 @@ extension NativeTimelineCanvasView {
                     to: destination
                 )
             } catch {
-                self?.presentMediaActionError(error)
+                self?.presentActionError(error)
             }
         }
     }
@@ -1383,7 +1524,7 @@ extension NativeTimelineCanvasView {
         )
     }
 
-    func presentMediaActionError(_ error: Error) {
+    func presentActionError(_ error: Error) {
         let alert = NSAlert(error: error)
         if let window {
             alert.beginSheetModal(for: window)

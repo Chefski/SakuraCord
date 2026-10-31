@@ -20,6 +20,7 @@ final class NativeCommandPickerRow: NSView, NativePickerReusableRow {
     private var titleWidth: CGFloat = 0
     private var detailWidth: CGFloat = 0
     private var attributionWidth: CGFloat = 0
+    private var appliedScale: CGFloat = 0
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { false }
 
@@ -46,6 +47,8 @@ final class NativeCommandPickerRow: NSView, NativePickerReusableRow {
                    colorScheme: ColorScheme, choose: @escaping (ApplicationCommand) -> Void,
                    highlight: @escaping (String) -> Void) {
         let changed = self.row?.id != row.id || self.row?.command != row.command || self.row?.title != row.title
+            || appliedScale != InterfaceScale.factor
+        appliedScale = InterfaceScale.factor
         self.row = row
         self.choose = choose
         self.highlight = highlight
@@ -56,16 +59,16 @@ final class NativeCommandPickerRow: NSView, NativePickerReusableRow {
         if changed {
             pressedID = nil
             title.stringValue = row.title
-            title.font = .systemFont(ofSize: row.command == nil ? 12 : 13, weight: .semibold)
+            title.font = .interfaceSystemFont(ofSize: row.command == nil ? 12 : 13, weight: .semibold)
             title.textColor = row.command == nil ? .secondaryLabelColor : .labelColor
             subtitle.stringValue = row.subtitle
-            subtitle.font = .systemFont(ofSize: 12)
+            subtitle.font = .interfaceSystemFont(ofSize: 12)
             subtitle.textColor = .secondaryLabelColor
             detail.stringValue = row.detail
-            detail.font = .systemFont(ofSize: 11)
+            detail.font = .interfaceSystemFont(ofSize: 11)
             detail.textColor = .tertiaryLabelColor
             attribution.stringValue = row.command == nil ? "" : row.application?.name ?? ""
-            attribution.font = .systemFont(ofSize: 11)
+            attribution.font = .interfaceSystemFont(ofSize: 11)
             attribution.textColor = .tertiaryLabelColor
             setAccessibilityRole(row.command == nil ? .staticText : .button)
             setAccessibilityLabel([row.title, row.detail, row.subtitle, attribution.stringValue].filter { !$0.isEmpty }.joined(separator: ", "))
@@ -84,30 +87,30 @@ final class NativeCommandPickerRow: NSView, NativePickerReusableRow {
         super.layout()
         guard let row else { return }
         let header = row.command == nil
-        let iconSize: CGFloat = header ? 16 : 28
-        let textX: CGFloat = row.showsIcon ? 9 + iconSize + 9 : 10
+        let iconSize = InterfaceScale.metric(header ? 16 : 28)
+        let textX = row.showsIcon ? InterfaceScale.metric(9) + iconSize + InterfaceScale.metric(9) : InterfaceScale.metric(10)
         icon.isHidden = !row.showsIcon
-        icon.frame = CGRect(x: 9, y: (bounds.height - iconSize) / 2, width: iconSize, height: iconSize)
-        icon.layer?.cornerRadius = header ? 4 : 8
-        let available = max(0, bounds.width - textX - 10)
+        icon.frame = CGRect(x: InterfaceScale.metric(9), y: (bounds.height - iconSize) / 2, width: iconSize, height: iconSize)
+        icon.layer?.cornerRadius = InterfaceScale.metric(header ? 4 : 8)
+        let available = max(0, bounds.width - textX - InterfaceScale.metric(10))
         let attributionWidth = min(self.attributionWidth, available * 0.22)
-        attribution.frame = CGRect(x: bounds.width - 10 - attributionWidth, y: 15, width: attributionWidth, height: 16)
-        let contentWidth = max(0, available - (attributionWidth > 0 ? attributionWidth + 12 : 0))
+        attribution.frame = CGRect(x: bounds.width - InterfaceScale.metric(10) - attributionWidth, y: InterfaceScale.metric(15), width: attributionWidth, height: InterfaceScale.metric(16))
+        let contentWidth = max(0, available - (attributionWidth > 0 ? attributionWidth + InterfaceScale.metric(12) : 0))
         let detailWidth = min(self.detailWidth, contentWidth * 0.4)
-        let titleWidth = header ? available : min(self.titleWidth, max(0, contentWidth - (detailWidth > 0 ? detailWidth + 7 : 0)))
-        title.frame = CGRect(x: textX, y: header ? 7 : 5, width: titleWidth, height: 18)
-        detail.frame = CGRect(x: textX + titleWidth + 7, y: 7, width: detailWidth, height: 16)
-        subtitle.frame = CGRect(x: textX, y: 24, width: contentWidth, height: 17)
+        let titleWidth = header ? available : min(self.titleWidth, max(0, contentWidth - (detailWidth > 0 ? detailWidth + InterfaceScale.metric(7) : 0)))
+        title.frame = CGRect(x: textX, y: header ? InterfaceScale.metric(7) : InterfaceScale.metric(5), width: titleWidth, height: InterfaceScale.metric(18))
+        detail.frame = CGRect(x: textX + titleWidth + InterfaceScale.metric(7), y: InterfaceScale.metric(7), width: detailWidth, height: InterfaceScale.metric(16))
+        subtitle.frame = CGRect(x: textX, y: InterfaceScale.metric(24), width: contentWidth, height: InterfaceScale.metric(17))
     }
 
     private func naturalWidth(of label: NSTextField) -> CGFloat {
         guard !label.stringValue.isEmpty else { return 0 }
-        return ceil((label.stringValue as NSString).size(withAttributes: [.font: label.font ?? NSFont.systemFont(ofSize: 12)]).width) + 5
+        return ceil((label.stringValue as NSString).size(withAttributes: [.font: label.font ?? NSFont.interfaceSystemFont(ofSize: 12)]).width) + 5
     }
 
     private func updateImage(_ row: ApplicationCommandDocumentRow, colorScheme: ColorScheme) {
         let url = row.showsIcon ? row.application?.displayIconURL : nil
-        let size: CGFloat = row.command == nil ? 16 : 28
+        let size = InterfaceScale.metric(row.command == nil ? 16 : 28)
         let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
         let identity = "\(row.isFrequent):\(row.application?.id ?? ""):\(row.application?.name ?? ""):\(url?.absoluteString ?? ""):\(size):\(scale):\(colorScheme)"
         guard identity != imageIdentity else { return }

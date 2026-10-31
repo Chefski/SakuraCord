@@ -72,7 +72,9 @@ struct NativeTimelineTextPlan: Equatable, Sendable {
     nonisolated static func make(
         for message: Message,
         currentUserID: UserID? = nil,
-        systemActorColor: NSColor? = nil
+        systemRecipient: User? = nil,
+        systemActorColor: NSColor? = nil,
+        systemLinkColor: NSColor? = nil
     ) -> Self {
         let baseFontSize: CGFloat =
             if message.type.hasGeneratedContent {
@@ -84,7 +86,8 @@ struct NativeTimelineTextPlan: Equatable, Sendable {
             if message.type.hasGeneratedContent {
                 SystemMessagePresentation.label(
                     for: message,
-                    currentUserID: currentUserID
+                    currentUserID: currentUserID,
+                    recipient: systemRecipient
                 )
             } else {
                 MessageEmbedPresentation.visibleMessageContent(
@@ -118,8 +121,10 @@ struct NativeTimelineTextPlan: Equatable, Sendable {
                 SystemMessagePresentation.attributedLabel(
                     for: message,
                     currentUserID: currentUserID,
+                    recipient: systemRecipient,
                     baseFontSize: baseFontSize,
-                    actorColor: systemActorColor
+                    actorColor: systemActorColor,
+                    linkColor: systemLinkColor
                 )
             )
         } else if let prepared, prepared.tokens.isEmpty {
@@ -190,6 +195,11 @@ final class MessageRowPresentation: Identifiable, Equatable, Sendable {
         MessageRowIdentity(message)
     }
 
+    /// A row in its own channel or thread, not a search, pin or Guide entry.
+    nonisolated var isConversationRow: Bool {
+        searchContext == nil && pinnedAt == nil && !isResource
+    }
+
     var replyMessageID: MessageID? {
         guard MessageReplyPresentationPolicy.showsPreview(for: message) else {
             return nil
@@ -228,6 +238,24 @@ final class MessageRowPresentation: Identifiable, Equatable, Sendable {
         )
         self.searchContext = searchContext
         self.pinnedAt = pinnedAt
+    }
+
+    /// The row with its own author header, as after a NEW divider, which
+    /// breaks a group like Discord's.
+    nonisolated func startingGroup() -> MessageRowPresentation {
+        guard !startsGroup else { return self }
+        return MessageRowPresentation(
+            message: message,
+            startsGroup: true,
+            endsGroup: endsGroup,
+            startsDay: startsDay,
+            replyPreview: replyPreview,
+            isReplyAvailable: isReplyAvailable,
+            textPlan: textPlan,
+            searchContext: searchContext,
+            pinnedAt: pinnedAt,
+            isResource: isResource
+        )
     }
 
     nonisolated static func == (
@@ -333,7 +361,7 @@ nonisolated enum MessageSearchPresentation {
                     channelID: message.channelID,
                     sectionTitle: sectionTitle(for: channel, message: message),
                     sectionSubtitle: channel?.category,
-                    systemImage: sectionSystemImage(for: channel),
+                    systemImage: sectionSystemImage(for: channel, channelsByID: channelsByID),
                     showsSectionHeader: showsSectionHeader
                 )
             )
@@ -347,15 +375,23 @@ nonisolated enum MessageSearchPresentation {
         guard let channel else {
             return "Channel \(message.channelID.description.suffix(6))"
         }
-        switch channel.kind {
-        case .directMessage, .groupDirectMessage:
-            return channel.name
-        default:
-            return "# \(channel.name)"
-        }
+        // The section symbol already identifies the channel type.
+        return channel.name
     }
 
-    private static func sectionSystemImage(for channel: Channel?) -> String {
+    private static func sectionSystemImage(
+        for channel: Channel?,
+        channelsByID: [ChannelID: Channel]
+    ) -> String {
+        // A thread's parent is a conversation channel rather than a category,
+        // and it takes the same symbol as its toolbar title.
+        if let parentID = channel?.categoryID, let parent = channelsByID[parentID] {
+            switch parent.kind {
+            case .forum: return "bubble.left.and.bubble.right.fill"
+            case .text, .announcement: return SakuraCordSystemSymbol.thread
+            case .voice, .directMessage, .groupDirectMessage, .unknown: break
+            }
+        }
         switch channel?.kind {
         case .directMessage:
             return "at"
@@ -400,13 +436,16 @@ nonisolated enum MessageGrouping {
         for messages: [Message],
         calendar: Calendar = .autoupdatingCurrent,
         continuationInterval: TimeInterval = defaultContinuationInterval,
-        batchSize: Int = 4
+        batchSize: Int = 4,
+        checkpoint: (@Sendable (Int) async -> Void)? = nil
     ) async -> [MessageRowPresentation] {
+        guard !Task.isCancelled else { return [] }
         let messagesByID = messageLookup(for: messages)
         let batchSize = max(1, batchSize)
         var result: [MessageRowPresentation] = []
         result.reserveCapacity(messages.count)
         for index in messages.indices {
+            guard !Task.isCancelled else { return [] }
             result.append(
                 autoreleasepool {
                     row(
@@ -418,6 +457,7 @@ nonisolated enum MessageGrouping {
                     )
                 }
             )
+            if let checkpoint { await checkpoint(index + 1) }
             if (index + 1).isMultiple(of: batchSize),
                index + 1 < messages.endIndex
             {
@@ -493,6 +533,31 @@ nonisolated enum MessageGrouping {
                     messagesByID[$0.messageID] != nil
                 } ?? false
         )
+    }
+
+    /// Guide resources read as a document: every message is an ungrouped,
+    /// undated row without reply previews.
+    static func resourceRow(for message: Message) -> MessageRowPresentation {
+        MessageRowPresentation(
+            message: message,
+            startsGroup: false,
+            startsDay: false,
+            replyPreview: nil,
+            isReplyAvailable: false,
+            isResource: true
+        )
+    }
+
+    /// Resource rows for `messages`, reusing each unchanged existing row.
+    static func resourceRows(
+        for messages: [Message],
+        reusing existing: [MessageRowPresentation]
+    ) -> [MessageRowPresentation] {
+        let existingByID = Dictionary(existing.map { ($0.message.id, $0) }, uniquingKeysWith: { _, newer in newer })
+        return messages.map { message in
+            if let row = existingByID[message.id], row.message == message { return row }
+            return resourceRow(for: message)
+        }
     }
 
     private static func isGroupable(_ message: Message) -> Bool {
@@ -581,10 +646,14 @@ nonisolated enum MessageGrouping {
             if messages.indices.contains(index + 1) {
                 affected.insert(index + 1)
             }
-        } else if let neighborIndex,
-                  messages.indices.contains(neighborIndex)
-        {
-            affected.insert(neighborIndex)
+        } else if let neighborIndex {
+            // Deletion changes the group boundary on both sides of the gap.
+            if messages.indices.contains(neighborIndex - 1) {
+                affected.insert(neighborIndex - 1)
+            }
+            if messages.indices.contains(neighborIndex) {
+                affected.insert(neighborIndex)
+            }
         }
         if let replyingMessageIDs, let messageIndex {
             for replyingMessageID in replyingMessageIDs {
@@ -844,12 +913,16 @@ nonisolated enum MessageGrouping {
         calendar: Calendar,
         continuationInterval: TimeInterval
     ) -> Bool {
-        isGroupable(previous)
+        // An unconfirmed local send always follows the row above it, but its
+        // local timestamp can trail a confirmation's server timestamp.
+        let interval = message.timestamp.timeIntervalSince(previous.timestamp)
+        return isGroupable(previous)
             && isGroupable(message)
+            && !previous.isPostStarter
             && sharesAuthorIdentity(previous, message)
             && message.replyTo == nil
-            && message.timestamp.timeIntervalSince(previous.timestamp) >= 0
-            && message.timestamp.timeIntervalSince(previous.timestamp) < continuationInterval
+            && (interval >= 0 || message.isUnconfirmedLocalSend)
+            && abs(interval) < continuationInterval
             && calendar.isDate(previous.timestamp, inSameDayAs: message.timestamp)
     }
 
@@ -1138,5 +1211,12 @@ nonisolated enum MessageGrouping {
             replyPreview: replyPreview,
             isReplyAvailable: replyPreview.map { messagesByID[$0.messageID] != nil } ?? false
         )
+    }
+}
+
+nonisolated extension Message {
+    /// A forum or media post's original message, which shares its thread's ID.
+    var isPostStarter: Bool {
+        id.rawValue == channelID.rawValue
     }
 }
