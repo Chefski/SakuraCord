@@ -45,6 +45,7 @@ struct ComposerView: View {
     @State private var autocompleteKeyboardSelectionRevision = 0
     @State private var isAutocompleteDismissed = false
     @State private var commandAwaitingClear: ApplicationCommand?
+    @State private var timestampClock = RelativeTimestampDisplayClock()
     @State private var mentionPicker: ComposerMentionPicker?
     @State private var sendTransitionAnchor = ComposerSendTransitionAnchor()
     @State private var holdsPlaceholderForSendTransition = false
@@ -433,6 +434,9 @@ struct ComposerView: View {
             }
         }
         .background { commandMentionHandling }
+        .onChange(of: draftHasRelativeTimestamp, initial: true) { _, counts in
+            counts ? timestampClock.start() : timestampClock.stop()
+        }
         .onChange(of: model.builtInExpressionPickerRequest) { _, request in
             guard let request,
                   request.channelID == activeConversationID else { return }
@@ -858,16 +862,6 @@ struct ComposerView: View {
                 currentMember: (model.currentUser?.id).flatMap { model.membersByID[$0] },
                 roles: model.guildRoles
             )
-        }
-    }
-
-    private var composerMentionPresentations: [String: MentionPresentation] {
-        _ = model.timelinePresentationRevision
-        let resolver = MessageMentionResolver(model: model)
-        return MessageDocumentCache.shared.document(for: draft).segments.reduce(into: [:]) { values, segment in
-            if case let .mention(mention) = segment {
-                values[mention.rawToken] = resolver.presentation(mention)
-            }
         }
     }
 
@@ -1312,6 +1306,23 @@ private extension ComposerView {
         appearsActive && (isFocused || isPickingGame)
     }
 
+    private var composerMentionPresentations: [String: MentionPresentation] {
+        _ = model.timelinePresentationRevision
+        let resolver = MessageMentionResolver(model: model)
+        let values = MessageDocumentCache.shared.document(for: draft).segments.reduce(into: [String: MentionPresentation]()) { values, segment in
+            if case let .mention(mention) = segment {
+                values[mention.rawToken] = resolver.presentation(mention)
+            }
+        }
+        guard draftHasRelativeTimestamp else { return values }
+        return TimestampMentionPresentation.refreshed(values, source: draft, at: timestampClock.date)
+    }
+
+    /// A relative time in the draft counts on, as it will once sent.
+    private var draftHasRelativeTimestamp: Bool {
+        draft.contains(":R>")
+    }
+
     private var isPickingGame: Bool {
         if case .game = mentionPicker { true } else { false }
     }
@@ -1410,7 +1421,7 @@ private extension ComposerView {
             if draft.isEmpty { updateDraft("/\(mention.name)") }
             return
         }
-        if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, attachments.isEmpty {
+        if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, attachments.isEmpty, !hasActiveCommand {
             activateCommand(command)
         } else {
             commandAwaitingClear = command
@@ -1428,6 +1439,7 @@ private extension ComposerView {
 
 extension ComposerView {
     private func composerDidDisappear() {
+        timestampClock.stop()
         if let channelID = sendTransitionAnchor.channelID,
            channelID == activeConversationID,
            model.guildTimeoutUntil(in: channelID) != nil {

@@ -96,7 +96,7 @@ private func timestampAttachment(in text: NSAttributedString) -> MentionTextAtta
     coordinator.reconcileViewportGeometryForTesting()
     coordinator.refreshTimestampLayouts(at: before)
     let oldHeight = coordinator.rowHeights[index]
-    coordinator.scroll(toDocumentY: coordinator.rowOrigins[10], scrollView: scrollView)
+    coordinator.scroll(toDocumentY: coordinator.rowOrigins[2], scrollView: scrollView)
     let oldAnchor = try #require(coordinator.visibleAnchor())
     let first = try #require(nativeTimestampLabel(in: coordinator.layouts[index].attributedContent))
     // A stale recent-conversation layout must not win over the clock refresh.

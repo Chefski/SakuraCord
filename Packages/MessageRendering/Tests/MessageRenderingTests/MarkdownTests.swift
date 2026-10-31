@@ -344,6 +344,7 @@ import Testing
         "🌸 `\(raw)`", "**`\(raw)`**", "```swift\n\(raw)\n```",
         "* `**\(raw)**`", ">>> quote\n\n* `**\(raw)**`",
         #"\@everyone \<t:1000000:R> \<@$356875221078245376> \</role add:1234>"#,
+        "[open](https://example.com/@here) https://example.com/@everyone",
     ] {
         #expect(MessageDocument(source: source).segments == [.markdown(source)])
     }

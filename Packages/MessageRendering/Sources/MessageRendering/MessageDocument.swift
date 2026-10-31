@@ -202,7 +202,7 @@ public struct MessageDocument: Hashable, Sendable {
             in: source, range: NSRange(source.startIndex ..< source.endIndex, in: source)
         )
         guard !matches.isEmpty else { return source.isEmpty ? [] : [.markdown(source)] }
-        let codeRanges = DiscordMarkdown.sourceCodeRanges(source)
+        let literalRanges = DiscordMarkdown.sourceCodeRanges(source) + urlRanges(in: source)
         var result: [Segment] = []
         var cursor = source.startIndex
         for match in matches {
@@ -214,7 +214,7 @@ public struct MessageDocument: Hashable, Sendable {
             if let emoji = RenderedEmoji(rawToken: token) {
                 result.append(.customEmoji(emoji))
             } else if !isMaskedLinkTarget(range, in: source), let mention = RenderedMention(rawToken: token),
-                      !isLiteralMention(mention, range: range, in: source, codeRanges: codeRanges) {
+                      !isLiteralMention(mention, range: range, in: source, literalRanges: literalRanges) {
                 result.append(.mention(mention))
             } else {
                 result.append(.markdown(token))
@@ -234,12 +234,20 @@ public struct MessageDocument: Hashable, Sendable {
         }
     }
 
+    private static let urlExpression = MessageRegularExpression.make(#"https?://[^\s<>]+"#)
+
+    /// A link's own text, such as `https://example.com/@here`, holds no mentions.
+    private static func urlRanges(in source: String) -> [NSRange] {
+        guard source.contains("://") else { return [] }
+        return urlExpression.matches(in: source, range: NSRange(source.startIndex ..< source.endIndex, in: source)).map(\.range)
+    }
+
     private static func isLiteralMention(
-        _ mention: RenderedMention, range: Range<String.Index>, in source: String, codeRanges: [NSRange]
+        _ mention: RenderedMention, range: Range<String.Index>, in source: String, literalRanges: [NSRange]
     ) -> Bool {
         guard [.game, .broadcast, .timestamp, .command].contains(mention.kind) else { return false }
         let tokenRange = NSRange(range, in: source)
-        if codeRanges.contains(where: { NSIntersectionRange($0, tokenRange).length > 0 }) { return true }
+        if literalRanges.contains(where: { NSIntersectionRange($0, tokenRange).length > 0 }) { return true }
         var cursor = range.lowerBound
         var escaped = false
         while cursor > source.startIndex {

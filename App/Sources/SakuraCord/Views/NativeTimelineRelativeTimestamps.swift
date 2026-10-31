@@ -32,9 +32,14 @@ extension NativeMessageTimelineCoordinator {
 
     func refreshTimestampLayouts(at date: Date) {
         guard !isApplyingUpdate, layoutPreparation == nil, pendingLayoutWidth == nil,
-              let canvas, let scrollView, layoutWidth > 0
+              let canvas, let scrollView, layoutWidth > 0,
+              let visibleRange = visiblePreviewRange()
         else { return }
+        // Rows out of view keep their labels until they scroll in, when the
+        // next tick refreshes them, so a tick lays out only a screenful.
+        let visibleIdentifiers = Set(items[visibleRange].map(\.identifier))
         let changedIdentifiers = Set(timestampSources.compactMap { identifier, source in
+            guard visibleIdentifiers.contains(identifier) else { return nil as NativeMessageTimelineItem.Identifier? }
             let labels = source.reduce(into: [String: String]()) { result, text in
                 result.merge(TimestampMentionPresentation.labels(in: text, at: date)) { _, latest in latest }
             }

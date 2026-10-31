@@ -84,7 +84,10 @@ extension AppModel {
             for id in ids where !resolved.contains(id) { gameMentions.failedIDs[id] = retryAt }
             if !games.isEmpty { timelinePresentationRevision &+= 1 }
         } catch is CancellationError {
-            return
+            // An account reset cancels this task and clears its state; a fresh
+            // READY cancels only the request, so its games are asked for again.
+            guard !Task.isCancelled, isCurrentAccountSession(session) else { return }
+            gameMentions.pendingIDs.formUnion(ids)
         } catch {
             guard isCurrentAccountSession(session) else { return }
             DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
